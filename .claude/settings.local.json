@@ -48,7 +48,8 @@
       "PowerShell(netstat -ano)",
       "PowerShell(Stop-Process -Id 24564 -Force)",
       "PowerShell($projectRoot = \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\"; cd \"$projectRoot\\\\app\"; $proc = Start-Process -FilePath python -ArgumentList \"-m uvicorn main:app --host 0.0.0.0 --port 8000 --reload\" -PassThru -NoNewWindow; Write-Host \"Server starting \\(PID: $\\($proc.Id\\)\\)\"; Start-Sleep -Seconds 5; $proc.HasExited | Write-Host)",
-      "PowerShell(try { $response = Invoke-WebRequest -Uri \"http://localhost:8000/api/activities\" -Method Get -ErrorAction Stop; $response.StatusCode } catch { \"Error: $_\" })"
+      "PowerShell(try { $response = Invoke-WebRequest -Uri \"http://localhost:8000/api/activities\" -Method Get -ErrorAction Stop; $response.StatusCode } catch { \"Error: $_\" })",
+      "PowerShell(cd \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\\\\app\\\\static\\\\js\"; Get-Content app.js | Select-Object -Index \\(395..415\\) | ForEach-Object -Begin {$i=396} -Process { \"${i}: $_\"; $i++ })"
     ]
   }
 }
