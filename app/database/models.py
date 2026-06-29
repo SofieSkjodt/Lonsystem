@@ -82,6 +82,7 @@ class Employee(Base):
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
     activities = relationship("Activity", back_populates="employee")
+    baselines = relationship("EmployeeBaseline", back_populates="employee")
     dispatcher_groups = relationship(
         "DispatcherGroup",
         secondary="employee_dispatcher_groups",
@@ -147,6 +148,8 @@ class Activity(Base):
     km_end = Column(Integer, nullable=True)
     salt_supplement = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
+    auto_approved = Column(Boolean, default=False, nullable=False, server_default="0")
+    auto_approval_flags = Column(JSON, nullable=False, default=list)
 
     employee = relationship("Employee", back_populates="activities")
     pay_period = relationship("PayPeriod", back_populates="activities")
@@ -304,3 +307,20 @@ class Holiday(Base):
     name              = Column(String(200), nullable=False)
     half_day_from     = Column(String(5), nullable=True)    # "12:00" = fri fra middag; NULL = heldagshelligdag
     is_auto_generated = Column(Boolean, default=True, nullable=False)
+
+
+class EmployeeBaseline(Base):
+    __tablename__ = "employee_baselines"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    weekday = Column(Integer, nullable=False)          # 0=mandag … 6=søndag
+    sample_count = Column(Integer, default=0, nullable=False)
+    duration_mean_minutes = Column(Numeric(10, 4), default=0, nullable=False)
+    duration_m2_minutes = Column(Numeric(14, 6), default=0, nullable=False)  # Welford M2
+    start_hour_mean = Column(Numeric(8, 4), default=0, nullable=False)       # float timer, fx 7.5 = 07:30
+    start_hour_m2 = Column(Numeric(12, 6), default=0, nullable=False)        # Welford M2
+    salt_count = Column(Integer, default=0, nullable=False)                  # antal aktiviteter med salt
+    last_updated = Column(DateTime, nullable=True)
+
+    employee = relationship("Employee", back_populates="baselines")
