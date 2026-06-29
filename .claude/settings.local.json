@@ -40,7 +40,8 @@
       "PowerShell(Get-Content \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\\\\docs\\\\unpacked_brug\\\\word\\\\document.xml\" | Select-String -Pattern \"w:t\" | Select-Object -Skip 1600 | ForEach-Object { $_.Line.Trim\\(\\) } | Select-Object -First 100)",
       "PowerShell(Get-Content \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\\\\docs\\\\unpacked_brug\\\\word\\\\document.xml\" | Select-String -Pattern \"Frav.rsoversigt|FravÃ|10 \" | ForEach-Object { $_.LineNumber.ToString\\(\\) + \": \" + $_.Line.Trim\\(\\) } | Select-Object -First 20)",
       "PowerShell(Get-Content \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\\\\docs\\\\unpacked_brug\\\\word\\\\document.xml\" | Select-String -Pattern \"w:t\" | Select-Object -Skip 1720 | ForEach-Object { $_.Line.Trim\\(\\) } | Select-Object -First 80)",
-      "PowerShell(python -m pip install pytest 2>&1)"
+      "PowerShell(python -m pip install pytest 2>&1)",
+      "PowerShell(cd \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\"; git ls-files --cached | Select-String \"__pycache__\" | ForEach-Object { git rm --cached $_.ToString\\(\\).Trim\\(\\) } 2>&1 | Select-Object -Last 5; git commit -m \"chore: untrack pycache files\" 2>&1 | Select-Object -Last 3)"
     ]
   }
 }
