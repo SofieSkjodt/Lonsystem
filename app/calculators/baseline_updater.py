@@ -1,5 +1,4 @@
 from datetime import datetime
-from math import sqrt
 
 from sqlalchemy.orm import Session
 
@@ -12,6 +11,8 @@ def update_baseline_from_activity(activity: Activity, db: Session) -> None:
     if activity.activity_type != "normal":
         return
     if activity.source != ActivitySource.tachograph:
+        return
+    if activity.status != ActivityStatus.approved:
         return
 
     weekday = activity.start_time.weekday()
@@ -95,9 +96,8 @@ def _effective_duration_minutes(activity: Activity) -> float:
     total = (activity.end_time - activity.start_time).total_seconds() / 60.0
     for p in (activity.pause_intervals or []):
         try:
-            from datetime import datetime as _dt
-            ps = _dt.fromisoformat(p[0])
-            pe = _dt.fromisoformat(p[1])
+            ps = datetime.fromisoformat(p[0])
+            pe = datetime.fromisoformat(p[1])
             actual_start = max(activity.start_time, ps)
             actual_end = min(activity.end_time, pe)
             if actual_end > actual_start:

@@ -77,6 +77,19 @@ def test_skip_non_normal_activity(db, employee):
     assert count == 0
 
 
+def test_skip_unapproved_activity(db, employee):
+    act = make_activity(
+        db, employee,
+        start=datetime(2026, 6, 1, 7, 0),
+        end=datetime(2026, 6, 1, 15, 0),
+        status=ActivityStatus.pending,
+    )
+    update_baseline_from_activity(act, db)
+
+    count = db.query(EmployeeBaseline).filter_by(employee_id=employee.id).count()
+    assert count == 0
+
+
 def test_skip_manual_activity(db, employee):
     act = make_activity(
         db, employee,
