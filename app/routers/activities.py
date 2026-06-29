@@ -7,6 +7,7 @@ from openpyxl import load_workbook
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, log_action
+from calculators.baseline_updater import update_baseline_from_activity
 from calculators.pay_period import get_or_create_period_for_date
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee
 from database.schemas import (
@@ -395,8 +396,56 @@ def approve_activity(activity_id: int, body: ActivityApprove,
     log_action(db, current_user, "approve", "activity", a.id,
                f"Godkendt for {a.employee.name} ({a.start_time.strftime('%d-%m-%Y')})")
     db.commit()
+    update_baseline_from_activity(a, db)
     db.refresh(a)
     return _to_response(a)
+
+
+@router.post("/auto-approve-pending")
+def bulk_auto_approve(
+    period_start: Optional[str] = None,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Auto-godkend alle egnede pending-aktiviteter i en lønperiode."""
+    from datetime import date as _date
+    from datetime import datetime as _dt
+    from calculators.auto_approval import should_auto_approve
+
+    start_date = _date.fromisoformat(period_start) if period_start else _date.today()
+    period = get_or_create_period_for_date(start_date, db)
+
+    pending = (
+        db.query(Activity)
+        .filter(
+            Activity.pay_period_id == period.id,
+            Activity.status == ActivityStatus.pending,
+        )
+        .all()
+    )
+
+    approved_count = 0
+    flagged_count = 0
+
+    for act in pending:
+        ok, flags = should_auto_approve(act, db)
+        if ok:
+            act.status = ActivityStatus.approved
+            act.auto_approved = True
+            act.auto_approval_flags = []
+            act.approved_by = "AUTO"
+            act.approved_at = _dt.utcnow()
+            db.commit()
+            update_baseline_from_activity(act, db)
+            approved_count += 1
+        else:
+            act.auto_approval_flags = flags
+            db.commit()
+            flagged_count += 1
+
+    log_action(db, current_user, "auto_approve_bulk", details=f"periode={period.start_date}, godkendt={approved_count}, flagget={flagged_count}")
+
+    return {"approved": approved_count, "flagged": flagged_count}
 
 
 @router.post("/{activity_id}/deactivate", response_model=ActivityResponse)

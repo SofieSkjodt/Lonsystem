@@ -1,3 +1,4 @@
+from datetime import datetime as _dt_now
 from pathlib import Path
 from typing import List, Optional
 
@@ -6,6 +7,8 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from auth import require_permission
+from calculators.auto_approval import should_auto_approve
+from calculators.baseline_updater import update_baseline_from_activity
 from database.session import get_db
 from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, Vehicle
 from calculators.pay_period import get_or_create_period_for_date
@@ -226,4 +229,19 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
     )
     db.add(activity)
     db.commit()
+    db.refresh(activity)
+
+    ok, flags = should_auto_approve(activity, db)
+    if ok:
+        activity.status = ActivityStatus.approved
+        activity.auto_approved = True
+        activity.auto_approval_flags = []
+        activity.approved_by = "AUTO"
+        activity.approved_at = _dt_now.utcnow()
+        db.commit()
+        update_baseline_from_activity(activity, db)
+    else:
+        activity.auto_approval_flags = flags
+        db.commit()
+
     return "new"
