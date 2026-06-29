@@ -31,6 +31,7 @@ app/
     stamdata.py                # /api/stamdata – CVR-numre, løntypekoder, overtidssatser, helligdage (admin)
     vehicles.py                # /api/vehicles – alle roller
     import_ddd.py              # /api/import-ddd-from, browse-ddd-* – admin+lonbogholder
+    auto_approval_router.py    # POST /api/auto-approval/rebuild-baselines, GET /baseline-summary (manage_baselines perm)
   calculators/
     overtime.py                # calculate_overtime() → OvertimeResult
     pay_period.py              # get_or_create_period_for_date(), is_even_week()
@@ -38,6 +39,8 @@ app/
     pay_rates.py               # DANLOEN_CODE_* konstanter (NORMAL/OT_*/SALT/AFSPADSERING/SYGDOM/PARAGRAF_56/BARN_1SYGEDAG – "1" placeholder, DB-værdier er authoritative)
     day_type.py                # Dag-klassifikation og lønberegning for lørdage, søndage og helligdage (SH-betaling)
     holidays.py                # easter_date() + danish_holidays(year) – genererer helligdage via Computus
+    auto_approval.py           # should_auto_approve(activity, db) → (bool, list[str]); MIN_SAMPLES=5
+    baseline_updater.py        # update_baseline_from_activity(), rebuild_baselines_for_employee()
   parsers/ddd_parser.py        # .ddd-filparsing
   templates/index.html         # Eneste HTML-side (alle modaler herinde)
   static/
@@ -86,6 +89,18 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 - **Vehicle**: registration_number (nummerplade), vehicle_number (vognnr)
 - **PayrollRun**: pay_period_id, run_type, csv_path, excel_path
 
+### EmployeeBaseline (tabel: employee_baselines)
+| Felt | Type | Bemærk |
+|---|---|---|
+| employee_id | Int FK | |
+| weekday | Int | 0=mandag…6=søndag |
+| sample_count | Int | Antal godkendte aktiviteter |
+| duration_mean_minutes | Numeric | Welford mean |
+| duration_m2_minutes | Numeric | Welford M2 (til std-beregning: sqrt(M2/n)) |
+| start_hour_mean | Numeric | Starttid som float-timer (7.5 = 07:30) |
+| start_hour_m2 | Numeric | Welford M2 |
+| salt_count | Int | Antal aktiviteter med salttillæg |
+
 ---
 
 ## API-endpoints
@@ -105,6 +120,7 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | POST | /{id}/split | Body: {split_at: ISO}; begge dele → pending |
 | POST | /{id}/undo-edit | Gendan originale tider |
 | POST | /{id}/undo-split | Slet children, gendan forælder |
+| POST | /auto-approve-pending | Auto-godkend egnede pending-aktiviteter i periode |
 
 ### /api/employees
 | Method | Sti | Beskrivelse |
@@ -114,6 +130,12 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | PATCH | /{id} | Rediger |
 | GET | /agreement-types | [{name, hourly_rate}] fra Excel |
 | GET | /anciennitet-alerts | Medarbejdere med ≥9 mdr der mangler variant |
+
+### /api/auto-approval
+| Method | Sti | Beskrivelse |
+|---|---|---|
+| POST | /rebuild-baselines | Genbyg baselines fra historik (manage_baselines) |
+| GET | /baseline-summary | Oversigt over baseline-status per medarbejder |
 
 ### /api/payroll
 | Method | Sti | Beskrivelse |
