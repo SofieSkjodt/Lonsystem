@@ -19,6 +19,7 @@ from routers import roles as roles_router
 from routers import absence_overview_router
 from routers import timeseddel_router
 from routers import stamdata as stamdata_router
+from routers.auto_approval_router import router as auto_approval_router
 
 BASE_DIR = Path(__file__).resolve().parent
 
@@ -96,6 +97,7 @@ app.include_router(absence_overview_router.router)
 app.include_router(timeseddel_router.router)
 app.include_router(vehicles.router)
 app.include_router(stamdata_router.router)
+app.include_router(auto_approval_router)
 
 
 @app.get("/", response_class=HTMLResponse)

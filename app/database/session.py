@@ -49,6 +49,7 @@ def init_db():
     _seed_holidays()
     _ensure_sh_pay_types()    # SH-løntypekoder kode 4 og 63
     _ensure_anciennitet_alert_permission()
+    _ensure_manage_baselines_permission()
 
 
 def _migrate():
@@ -108,7 +109,7 @@ def _seed_roles():
         if db.query(Role).count() == 0:
             for r in [
                 Role(name="admin", display_name="Administrator", is_system=True,
-                     permissions=["payroll", "import_ddd", "user_management", "reopen_period"]),
+                     permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines"]),
                 Role(name="lonbogholder", display_name="Lønbogholder", is_system=False,
                      permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert"]),
                 Role(name="disponent", display_name="Disponent", is_system=False,
@@ -348,5 +349,24 @@ def _ensure_anciennitet_alert_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af anciennitet_alert-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_manage_baselines_permission():
+    """Tilføjer manage_baselines til admin-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "admin").first()
+        if role:
+            perms = list(role.permissions or [])
+            if "manage_baselines" not in perms:
+                perms.append("manage_baselines")
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af manage_baselines-tilladelse: {e}")
     finally:
         db.close()
