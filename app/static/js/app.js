@@ -306,9 +306,11 @@ function renderCellActivity(a) {
     </div>`;
   }
   const title = `${a.employee_name}: ${formatTime(a.start_time)}–${formatTime(a.end_time)} (${formatDuration(a.duration_minutes)}) – ${statusLabel(a.status)}${a.is_manual ? " – manuel" : ""}`;
+  const autoCls = (a.status === "approved" && a.auto_approved) ? " auto-approved" : "";
+  const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<sup title="Auto-godkendt">A</sup>` : "";
   return `<div class="badge-group">
-    <span class="time-badge ${a.status}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}</span>
-    <span class="time-badge ${a.status}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}</span>
+    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
+    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
   </div>`;
 }
 
@@ -349,6 +351,14 @@ async function quickReopen(id) {
     toast("Aktivitet genåbnet");
     await refreshActivities();
   } catch (e) { toast(e.message, "error"); }
+}
+async function bulkAutoApprove() {
+  const params = state.currentPeriodStart ? `?period_start=${state.currentPeriodStart}` : '';
+  const res = await POST(`/api/activities/auto-approve-pending${params}`, {});
+  if (res) {
+    toast(`Auto-godkendt: ${res.approved} aktiviteter. Flagget til gennemgang: ${res.flagged}.`);
+    await refreshActivities();
+  }
 }
 async function refreshActivities() {
   state.activities = await GET(`/api/activities?period_start=${state.currentPeriodStart}`);
@@ -397,6 +407,7 @@ function openActivityDetail(id) {
       <div class="detail-item"><label>Slut</label><span>${formatDateTime(a.end_time)}</span></div>
       <div class="detail-item"><label>Sum, effektiv tid</label><span>${formatDuration(a.duration_minutes)}</span></div>
       <div class="detail-item"><label>Oprettet af</label><span>${a.is_manual ? (a.created_by || "Manuelt") : "System"}</span></div>
+      ${(a.auto_approval_flags && a.auto_approval_flags.length > 0) ? `<div class="auto-approval-flags"><strong>Afvigelser registreret (ikke auto-godkendt):</strong><ul>${a.auto_approval_flags.map(f => `<li>${h(f)}</li>`).join('')}</ul></div>` : ""}
       ${a.status === "approved" && a.approved_by ? `<div class="detail-item"><label>Godkendt af</label><span>${h(a.approved_by)}</span></div>` : ""}
       ${a.status === "deactivated" && (a.deactivated_by || a.approved_by) ? `<div class="detail-item"><label>Deaktiveret af</label><span>${h(a.deactivated_by || a.approved_by)}</span></div>` : ""}
     </div>

@@ -304,8 +304,27 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 .time-badge:hover { filter: brightness(1.12); }
 .time-badge.pending     { background: #44546a; }
 .time-badge.approved    { background: #27ae60; }
+.time-badge.auto-approved { background: var(--accent); }
 .time-badge.deactivated { background: #d93025; }
 .time-badge.absence     { font-size: 11px; letter-spacing: .3px; }
+.auto-approval-flags {
+  background: #fff8e1;
+  border: 1px solid #f9a825;
+  border-radius: 6px;
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  font-size: 0.85rem;
+  color: #5d4037;
+}
+.auto-approval-flags strong {
+  display: block;
+  margin-bottom: 4px;
+  color: #e65100;
+}
+.auto-approval-flags ul {
+  margin: 0;
+  padding-left: 16px;
+}
 
 .badge-group { margin-bottom: 6px; }
 .badge-group:last-child { margin-bottom: 0; }
