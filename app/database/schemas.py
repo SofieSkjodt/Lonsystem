@@ -126,6 +126,8 @@ class ActivityResponse(BaseModel):
     km_start: Optional[int] = None
     km_end: Optional[int] = None
     salt_supplement: bool = False
+    auto_approved: bool = False
+    auto_approval_flags: list[str] = []
 
 
 class ActivityCreate(BaseModel):

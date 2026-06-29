@@ -149,6 +149,8 @@ def _to_response(a: Activity) -> ActivityResponse:
         km_start=a.km_start,
         km_end=a.km_end,
         salt_supplement=bool(a.salt_supplement),
+        auto_approved=bool(a.auto_approved),
+        auto_approval_flags=a.auto_approval_flags or [],
     )
 
 
