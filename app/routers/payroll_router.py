@@ -1,0 +1,909 @@
+"""
+Lønkørsel:
+- /api/payroll/preview           – JSON-mellemregninger til forsiden
+- /api/payroll/proevekoersel     – Excel-fil (alle eller én medarbejder)
+- /api/payroll/export-csv        – "Kør løn": Danløn CSV
+- /api/payroll/pdf-timesedler    – dan PDF-timesedler pr. medarbejder (gemmes
+                                   lokalt i output/timesedler; e-mail-afsendelse
+                                   tilføjes senere, jf. aftale 10/6-2026)
+"""
+import csv
+import io
+from datetime import date, datetime, timedelta
+from decimal import Decimal, ROUND_HALF_UP
+from pathlib import Path
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
+from sqlalchemy.orm import Session
+
+from auth import get_current_user, log_action, require_permission
+from database.models import AppUser
+
+from calculators.overtime import (
+    OT_13_KEY,
+    OT_BEFORE_KEY,
+    OT_EXTRA_KEY,
+    calculate_overtime,
+)
+from calculators.day_type import (
+    DayType,
+    classify_day,
+    compute_sh_hours,
+    calculate_special_day_overtime,
+)
+from calculators.pay_period import get_or_create_period_for_date, is_even_week
+import logging as _logging
+from calculators.rates_loader import (
+    load_agreement_types_from_db,
+    load_overtime_rates_from_db,
+    load_salt_supplement_rate_from_db,
+    load_overnight_rate_from_db,
+    load_dagpenge_rate_from_db,
+)
+from database.models import Activity, ActivityStatus, Employee, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
+from database.session import get_db
+
+router = APIRouter(prefix="/api/payroll", tags=["payroll"])
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+OUTPUT_DIR = BASE_DIR / "output"
+
+_payroll_access = require_permission("payroll")
+_reopen_access = require_permission("reopen_period")
+
+_ALLOWED_SAVE_ROOTS = [Path.home(), Path("C:/"), Path("D:/")]
+
+
+def _safe_save_dir(raw_path: str) -> Path:
+    """Valider at den bruger-angivne sti ikke forsøger path traversal til systemkritiske steder."""
+    save_dir = Path(raw_path).resolve()
+    app_dir = BASE_DIR.resolve()
+    # Tillad stier under brugerens hjemmemappe eller under rod-drev (Windows)
+    # Afvis stier inde i selve applikationsmappen (undgår overskrivning af kildekode)
+    try:
+        save_dir.relative_to(app_dir)
+        raise HTTPException(400, "Ugyldig gemmemappe – kan ikke gemme i applikationsmappen")
+    except ValueError:
+        pass  # Stien er IKKE inde i app-mappen – det er ønsket
+    return save_dir
+
+TWO = Decimal("0.01")
+
+
+def _round2(v: Decimal) -> Decimal:
+    return v.quantize(TWO, rounding=ROUND_HALF_UP)
+
+
+def _get_employee_cvr(emp: Employee, db: Session) -> str:
+    """Returnerer CVR-nummeret for medarbejderen (eget hvis sat, ellers standard fra Stamdata)."""
+    if emp.cvr_number:
+        return emp.cvr_number
+    default = db.query(MasterCvrNumber).filter(MasterCvrNumber.is_default == True).first()
+    if default:
+        return default.cvr_number
+    raise HTTPException(500, "Intet standard-CVR fundet – tilføj et CVR-nummer i Stamdata → CVR-nummer")
+
+
+def _get_pay_type_data(db: Session) -> dict:
+    """Returnerer {code_key: {code, in_csv, qty_type, rate_src, inc_total}} fra stamdata-tabellen."""
+    from database.models import MasterPayType
+    rows = db.query(MasterPayType).all()
+    return {r.code_key: {
+        "code": r.danloen_code,
+        "in_csv": r.include_in_csv,
+        "qty_type": r.csv_quantity_type or "hours",
+        "rate_src": r.csv_rate_source or "hourly",
+        "inc_rate": r.csv_include_rate if r.csv_include_rate is not None else True,
+        "inc_total": r.csv_include_total or False,
+    } for r in rows}
+
+
+def _resolve_rate(rate_src: str, calc: dict) -> float:
+    """Opslår en sats fra calc-dict baseret på rate_src-streng."""
+    if rate_src == "ot_before":
+        return float(calc["ot_rates"][OT_BEFORE_KEY])
+    if rate_src == "ot_13":
+        return float(calc["ot_rates"][OT_13_KEY])
+    if rate_src == "ot_extra":
+        return float(calc["ot_rates"][OT_EXTRA_KEY])
+    if rate_src == "salt":
+        return float(calc.get("salt_rate", 0))
+    if rate_src == "overnight":
+        return float(calc.get("overnight_rate", 0))
+    if rate_src == "dagpenge":
+        return float(calc.get("dagpenge_sats", 137.43))
+    return float(calc["hourly_rate"])
+
+
+def _user_pay_type_rows(emp_id: int, start: date, end: date, calc: dict, db: Session) -> list:
+    """Beregner antal/timer pr. brugerdefineret løntypekode for én medarbejder i perioden."""
+    from database.models import MasterPayType
+    user_types = db.query(MasterPayType).filter(MasterPayType.is_user_created == True).all()
+    result = []
+    start_str = start.isoformat()
+    end_str = (end + timedelta(days=1)).isoformat()
+    for upt in user_types:
+        acts = db.query(Activity).filter(
+            Activity.employee_id == emp_id,
+            Activity.activity_type == upt.code_key,
+            Activity.status == ActivityStatus.approved,
+            Activity.start_time >= start_str,
+            Activity.start_time < end_str,
+        ).all()
+        qty_type = upt.csv_quantity_type or "hours"
+        if qty_type == "count":
+            qty = float(len(acts))
+        else:
+            qty = sum((a.end_time - a.start_time).total_seconds() / 3600 for a in acts)
+        if qty > 0:
+            rate = _resolve_rate(upt.csv_rate_source or "hourly", calc)
+            result.append((upt.code_key.upper(), qty, rate))
+    return result
+
+
+def _normal_hours_for_day(emp: Employee, d: date) -> Decimal:
+    """Normaltid for en given dag fra medarbejderens timefordeling."""
+    schedule = emp.work_schedule or {"even": [0] * 7, "odd": [0] * 7}
+    key = "even" if is_even_week(d) else "odd"
+    return Decimal(str(schedule[key][d.weekday()]))
+
+
+def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> dict:
+    """Beregn timefordeling og kr. for én medarbejder i et datointerval.
+    Alle dage i perioden medtages – dage uden aktivitet vises som 0,
+    fraværsdage vises med typenavn (beregning tilføjes senere)."""
+    from collections import defaultdict
+    from datetime import datetime as _dt
+
+    activities = (
+        db.query(Activity)
+        .filter(
+            Activity.employee_id == emp.id,
+            Activity.status == ActivityStatus.approved,
+            Activity.start_time >= start.isoformat(),
+            Activity.start_time < (end + timedelta(days=1)).isoformat(),
+        )
+        .order_by(Activity.start_time)
+        .all()
+    )
+
+    try:
+        hourly_rate = load_agreement_types_from_db(db).get(emp.agreement_type, Decimal("0"))
+    except Exception:
+        hourly_rate = Decimal("0")
+    ot_rates = load_overtime_rates_from_db(db)
+    salt_rate = load_salt_supplement_rate_from_db(db)
+    overnight_rate = load_overnight_rate_from_db(db)
+    dagpenge_sats = load_dagpenge_rate_from_db(db)
+
+    _ABSENCE_LABELS = {
+        "ferie":        "Ferie",
+        "fri":          "Fri",
+        "afspadsering": "Afspadsering",
+        "skole_kursus": "Skole/kursus",
+        "sygdom":                  "Sygdom",
+        "sygdom_u_8uger":          "Sygdom u. 8 uger",
+        "sygdom_u_8_uger":         "Sygdom u. 8 uger",
+        "barn_1sygedag":           "Barn 1.sygedag",
+        "barn_1sygedag_u_8uger":   "Barn 1.sygedag u. 8 uger",
+        "barn_2_3sygedag":         "Barn 2-3.sygedag",
+        "paragraf_56_syg":         "§56 syg",
+        "selvbetalt_fridag":       "Selvbetalt fridag",
+        "feriefri":                "Feriefri",
+        "barsel":                        "Barsel",
+        "barsel_u_loen":                 "Barsel u. løn",
+        "graviditetsbetinget_sygdom":    "Graviditetsbetinget sygdom",
+    }
+
+    # Gruppér aktiviteter på dato (kan være flere pr. dag ved opdelinger)
+    acts_by_date = defaultdict(list)
+    for act in activities:
+        acts_by_date[act.start_time.date()].append(act)
+
+    totals = {
+        "normal": Decimal("0"), "ot_before": Decimal("0"),
+        "ot_13": Decimal("0"), "ot_extra": Decimal("0"),
+        "sh_kode8": Decimal("0"), "sh_kode9": Decimal("0"),
+        "sh_fuldloennet": Decimal("0"), "sh_timeloennet": Decimal("0"),
+        "afspadsering": Decimal("0"),
+        "sygdom": Decimal("0"),
+        "paragraf_56_syg": Decimal("0"),
+        "barn_1sygedag_u_loen": Decimal("0"),
+        "feriefri":     Decimal("0"),
+        "barsel":       Decimal("0"),
+        "skole_kursus": Decimal("0"),
+        "salt_hours": Decimal("0"), "salt_kr": Decimal("0"),
+        "overnight_count": 0,
+    }
+    days = []
+    total_kr = Decimal("0")
+
+    # Indlæs helligdage for perioden (fra v14-helligdagskalender)
+    holiday_rows = db.query(Holiday).filter(
+        Holiday.date >= start,
+        Holiday.date <= end,
+    ).all()
+    holiday_map = {h.date: h for h in holiday_rows}
+
+    # Overnatning håndteres som kolonne (ikke fraværsrække) – forhåndsberegn datoer
+    overnight_dates = {a.start_time.date() for a in activities if a.activity_type == "overnatning"}
+    totals["overnight_count"] = sum(1 for a in activities if a.activity_type == "overnatning")
+
+    # Gennemløb alle dage i perioden
+    cur = start
+    while cur <= end:
+        acts_today = [a for a in acts_by_date.get(cur, []) if a.activity_type != "overnatning"]
+        overnight_today = 1 if cur in overnight_dates else 0
+
+        # Dag-klassifikation og SH-betaling (gælder uanset om der køres)
+        day_type = classify_day(cur, holiday_map)
+        guaranteed_today = _normal_hours_for_day(emp, cur)
+        sh_h = compute_sh_hours(day_type, guaranteed_today)
+        if sh_h > 0:
+            if emp.fuldloennet:
+                totals["sh_fuldloennet"] += sh_h
+            else:
+                totals["sh_timeloennet"] += sh_h
+            total_kr += sh_h * hourly_rate
+
+        if not acts_today:
+            days.append({
+                "date": cur.isoformat(),
+                "normal": 0.0, "ot_before": 0.0, "ot_13": 0.0,
+                "ot_extra": 0.0, "total_hours": 0.0, "total_kr": 0.0,
+                "absence_type": None,
+                "start_time": None, "end_time": None,
+                "vehicle_number": None,
+                "overnight": overnight_today,
+            })
+        else:
+            for act in acts_today:
+                label = _ABSENCE_LABELS.get(act.activity_type)
+                if label:
+                    if act.activity_type == "afspadsering":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["afspadsering"] += dur
+                    elif act.activity_type in ("sygdom", "barn_1sygedag", "graviditetsbetinget_sygdom"):
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["sygdom"] += dur
+                    elif act.activity_type == "paragraf_56_syg":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["paragraf_56_syg"] += dur
+                    elif act.activity_type == "feriefri":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["feriefri"] += dur
+                    elif act.activity_type == "barsel":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["barsel"] += dur
+                    elif act.activity_type == "barn_1sygedag_u_8uger":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["barn_1sygedag_u_loen"] += dur
+                    elif act.activity_type == "skole_kursus":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        totals["skole_kursus"] += dur
+                    # sygdom_u_8uger / barn_2_3sygedag / selvbetalt_fridag / barsel_u_loen: ikke i CSV
+                    days.append({
+                        "date": cur.isoformat(),
+                        "normal": 0.0, "ot_before": 0.0, "ot_13": 0.0,
+                        "ot_extra": 0.0, "total_hours": 0.0, "total_kr": 0.0,
+                        "absence_type": label,
+                        "start_time": None, "end_time": None,
+                        "vehicle_number": None,
+                        "overnight": overnight_today,
+                    })
+                else:
+                    pauses = [
+                        (_dt.fromisoformat(s), _dt.fromisoformat(e))
+                        for s, e in (act.pause_intervals or [])
+                    ]
+                    if day_type == DayType.NORMAL:
+                        ot = calculate_overtime(
+                            act.start_time, act.end_time,
+                            guaranteed_today, pauses, ot_rates,
+                        )
+                    else:
+                        ot = calculate_special_day_overtime(
+                            act.start_time, act.end_time,
+                            day_type, guaranteed_today, pauses,
+                        )
+                    day_salt_hours = ot.total_hours if act.salt_supplement else Decimal("0")
+                    day_salt_kr = day_salt_hours * salt_rate
+                    day_kr = (
+                        ot.total_hours * hourly_rate
+                        + ot.ot_before_hours * ot_rates[OT_BEFORE_KEY]
+                        + ot.ot_13_hours * ot_rates[OT_13_KEY]
+                        + ot.ot_extra_hours * ot_rates[OT_EXTRA_KEY]
+                        + ot.sh_kode8_hours * ot_rates[OT_13_KEY]
+                        + ot.sh_kode9_hours * ot_rates[OT_EXTRA_KEY]
+                        + day_salt_kr
+                    )
+                    totals["normal"]     += ot.normal_hours
+                    totals["ot_before"]  += ot.ot_before_hours
+                    totals["ot_13"]      += ot.ot_13_hours
+                    totals["ot_extra"]   += ot.ot_extra_hours
+                    totals["sh_kode8"]   += ot.sh_kode8_hours
+                    totals["sh_kode9"]   += ot.sh_kode9_hours
+                    totals["salt_hours"] += day_salt_hours
+                    totals["salt_kr"]    += day_salt_kr
+                    total_kr             += day_kr
+                    days.append({
+                        "date": cur.isoformat(),
+                        "normal":       float(_round2(ot.normal_hours)),
+                        "ot_before":    float(_round2(ot.ot_before_hours)),
+                        "ot_13":        float(_round2(ot.ot_13_hours)),
+                        "ot_extra":     float(_round2(ot.ot_extra_hours)),
+                        "total_hours":  float(_round2(ot.total_hours)),
+                        "total_kr":     float(_round2(day_kr)),
+                        "absence_type": None,
+                        "sh_kode8":     float(_round2(ot.sh_kode8_hours)),
+                        "sh_kode9":     float(_round2(ot.sh_kode9_hours)),
+                        "salt_hours":   float(_round2(day_salt_hours)),
+                        "salt_kr":      float(_round2(day_salt_kr)),
+                        "start_time":   act.start_time.strftime("%H:%M"),
+                        "end_time":     act.end_time.strftime("%H:%M"),
+                        "vehicle_number": act.vehicle_number or "",
+                        "overnight":    overnight_today,
+                    })
+        cur += timedelta(days=1)
+
+    has_pending = (
+        db.query(Activity)
+        .filter(
+            Activity.employee_id == emp.id,
+            Activity.status == ActivityStatus.pending,
+            Activity.start_time >= start.isoformat(),
+            Activity.start_time < (end + timedelta(days=1)).isoformat(),
+        )
+        .count() > 0
+    )
+
+    # normal_hours indeholder nu alle arbejdede timer (tillæg er additive)
+    total_hours = totals["normal"]
+
+    return {
+        "employee_id":        emp.id,
+        "employee_number":    emp.employee_number,
+        "employee_name":      emp.name,
+        "email":              emp.email,
+        "agreement_type":     emp.agreement_type,
+        "hourly_rate":        float(hourly_rate),
+        "salt_rate":          float(salt_rate),
+        "ot_rates":           {k: float(v) for k, v in ot_rates.items()},
+        "days":               days,
+        "normal_hours":       float(_round2(totals["normal"])),
+        "ot_before_hours":    float(_round2(totals["ot_before"])),
+        "ot_13_hours":        float(_round2(totals["ot_13"])),
+        "ot_extra_hours":     float(_round2(totals["ot_extra"])),
+        "salt_hours":         float(_round2(totals["salt_hours"])),
+        "salt_kr":            float(_round2(totals["salt_kr"])),
+        "overnight_count":    totals["overnight_count"],
+        "overnight_rate":     float(overnight_rate),
+        "overnight_kr":       float(_round2(Decimal(str(totals["overnight_count"])) * overnight_rate)),
+        "afspadsering_hours":   float(_round2(totals["afspadsering"])),
+        "sygdom_hours":         float(_round2(totals["sygdom"])),
+        "paragraf_56_syg_hours":  float(_round2(totals["paragraf_56_syg"])),
+        "barn_1sygedag_u_loen_hours": float(_round2(totals["barn_1sygedag_u_loen"])),
+        "feriefri_hours":         float(_round2(totals["feriefri"])),
+        "barsel_hours":           float(_round2(totals["barsel"])),
+        "skole_kursus_hours":     float(_round2(totals["skole_kursus"])),
+        "dagpenge_sats":          float(dagpenge_sats),
+        "total_hours":        float(_round2(total_hours)),
+        "total_kr":                float(_round2(total_kr)),
+        "activity_count":          len(activities),
+        "has_pending":             has_pending,
+        "sh_fuldloennet_hours":    float(_round2(totals["sh_fuldloennet"])),
+        "sh_timeloennet_hours":    float(_round2(totals["sh_timeloennet"])),
+        "sh_kode8_hours":          float(_round2(totals["sh_kode8"])),
+        "sh_kode9_hours":          float(_round2(totals["sh_kode9"])),
+    }
+
+
+def _resolve_period(period_start: Optional[str], db: Session):
+    d = date.fromisoformat(period_start) if period_start else date.today()
+    return get_or_create_period_for_date(d, db)
+
+
+def _active_employees(db: Session, employee_id: Optional[int] = None):
+    q = db.query(Employee).filter(Employee.active == True)
+    if employee_id:
+        q = q.filter(Employee.id == employee_id)
+    return q.order_by(Employee.first_name, Employee.last_name).all()
+
+
+@router.get("/preview")
+def payroll_preview(period_start: Optional[str] = None,
+                    current_user: AppUser = Depends(_payroll_access),
+                    db: Session = Depends(get_db)):
+    period = _resolve_period(period_start, db)
+    employees = _active_employees(db)
+    results = [_calculate_employee(e, period.start_date, period.end_date, db) for e in employees]
+    return {
+        "period_start": period.start_date.isoformat(),
+        "period_end": period.end_date.isoformat(),
+        "period_status": period.status.value,
+        "employees": results,
+        "has_unresolved_pending": any(r["has_pending"] for r in results),
+    }
+
+
+def _build_proevekoersel_workbook(employees, period, db):
+    """Bygger prøvekørsel-Excel-arbejdsbog og returnerer den (fælles for download og gem)."""
+    import openpyxl
+    from openpyxl.styles import Font, PatternFill
+
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = "Prøvekørsel"
+    bold = Font(bold=True)
+    header_fill = PatternFill(start_color="317423", end_color="317423", fill_type="solid")
+    row_fill = PatternFill(start_color="D4EDCC", end_color="D4EDCC", fill_type="solid")
+
+    headers = ["Medarbejder", "Lønnr", "Vognnr.", "Dag", "Starttid", "Sluttid", "Normal tid",
+               "Overtid 1 time før", "Overtid 1-3 timer efter", "Øvrig overtid",
+               "Salttillæg (t)", "Salttillæg (kr.)", "Overnatning", "Total tid", "Total kr."]
+    ws.append(headers)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = header_fill
+    ws.freeze_panes = "A2"
+
+    for emp in employees:
+        calc = _calculate_employee(emp, period.start_date, period.end_date, db)
+        first_row = True
+        for day in calc["days"]:
+            vn = day.get("vehicle_number") or ""
+            st = day.get("start_time") or ""
+            et = day.get("end_time") or ""
+            on = day.get("overnight", 0) or ""
+            if day["absence_type"]:
+                row = [calc["employee_name"], calc["employee_number"], "", day["date"],
+                       "", "", day["absence_type"], "", "", "", "", "",
+                       on, "", ""]
+            else:
+                salt_t = day.get("salt_hours", 0) or ""
+                salt_kr = day.get("salt_kr", 0) or ""
+                row = [calc["employee_name"], calc["employee_number"], vn, day["date"],
+                       st, et,
+                       day["normal"], day["ot_before"],
+                       day["ot_13"] + day.get("sh_kode8", 0),
+                       day["ot_extra"] + day.get("sh_kode9", 0),
+                       salt_t, salt_kr, on,
+                       day["total_hours"], day["total_kr"]]
+            ws.append(row)
+            if first_row:
+                for cell in ws[ws.max_row]:
+                    cell.fill = row_fill
+                first_row = False
+        total_row = [calc["employee_name"], calc["employee_number"], "", "TOTAL",
+                     "", "",
+                     calc["normal_hours"], calc["ot_before_hours"],
+                     calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),
+                     calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),
+                     calc.get("salt_hours", 0) or "", calc.get("salt_kr", 0) or "",
+                     calc.get("overnight_count", 0) or "",
+                     calc["total_hours"], calc["total_kr"]]
+        ws.append(total_row)
+        for cell in ws[ws.max_row]:
+            cell.font = bold
+        sh_fl = calc.get("sh_fuldloennet_hours", 0)
+        sh_tl = calc.get("sh_timeloennet_hours", 0)
+        hr = calc["hourly_rate"]
+        if sh_fl > 0:
+            sh_row = [calc["employee_name"], calc["employee_number"], "", "Søgnehelligdag",
+                      "", "", sh_fl, "", "", "", "", "", "", sh_fl, round(sh_fl * hr, 2)]
+            ws.append(sh_row)
+            for cell in ws[ws.max_row]:
+                cell.font = bold
+        if sh_tl > 0:
+            sh_row = [calc["employee_name"], calc["employee_number"], "", "SH-Udbetaling",
+                      "", "", sh_tl, "", "", "", "", "", "", sh_tl, round(sh_tl * hr, 2)]
+            ws.append(sh_row)
+            for cell in ws[ws.max_row]:
+                cell.font = bold
+        on_kr = calc.get("overnight_kr", 0.0)
+        dagpenge = calc.get("dagpenge_sats", 137.43)
+        for abs_lbl, abs_h, abs_rate in [
+            ("Sygdom med løn",  calc.get("sygdom_hours", 0),              hr),
+            ("§56 syg",         calc.get("paragraf_56_syg_hours", 0),     dagpenge),
+            ("Barn 1.sygedag",  calc.get("barn_1sygedag_u_loen_hours", 0), dagpenge),
+            ("Feriefri",        calc.get("feriefri_hours", 0),            hr),
+            ("Barsel",          calc.get("barsel_hours", 0),              hr),
+            ("Kursus/Skole",    calc.get("skole_kursus_hours", 0),        hr),
+        ]:
+            if abs_h > 0:
+                ws.append([calc["employee_name"], calc["employee_number"], "", abs_lbl,
+                           "", "", abs_h, "", "", "", "", "", "", abs_h, round(abs_h * abs_rate, 2)])
+                for cell in ws[ws.max_row]:
+                    cell.font = bold
+        if on_kr > 0:
+            ws.append([calc["employee_name"], calc["employee_number"], "", "Overnatning (kr.)",
+                       "", "", "", "", "", "", "", "", "", "", round(on_kr, 2)])
+            for cell in ws[ws.max_row]:
+                cell.font = bold
+        ws.append([])
+
+    for col in "ABCDEFGHIJKLMNO":
+        ws.column_dimensions[col].width = 22
+    return wb
+
+
+@router.get("/proevekoersel")
+def proevekoersel(
+    period_start: Optional[str] = None,
+    employee_id: Optional[int] = None,
+    current_user: AppUser = Depends(_payroll_access),
+    db: Session = Depends(get_db),
+):
+    """Prøvekørsel: Excel-fil med mellemregninger – alle eller én medarbejder."""
+    period = _resolve_period(period_start, db)
+    employees = _active_employees(db, employee_id)
+    if not employees:
+        raise HTTPException(404, "Ingen medarbejdere fundet")
+
+    wb = _build_proevekoersel_workbook(employees, period, db)
+    filename = f"proevekoersel_{period.start_date.isoformat()}_{period.end_date.isoformat()}.xlsx"
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    (OUTPUT_DIR / filename).write_bytes(buf.getvalue())
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+class ProevekoerselSaveRequest(BaseModel):
+    period_start: Optional[str] = None
+    employee_id: Optional[int] = None
+    output_folder: str
+
+
+@router.post("/proevekoersel-gem")
+def proevekoersel_gem(body: ProevekoerselSaveRequest,
+                      current_user: AppUser = Depends(_payroll_access),
+                      db: Session = Depends(get_db)):
+    """Prøvekørsel gemt til valgt mappe i stedet for browser-download."""
+    period = _resolve_period(body.period_start, db)
+    employees = _active_employees(db, body.employee_id)
+    if not employees:
+        raise HTTPException(404, "Ingen medarbejdere fundet")
+
+    wb = _build_proevekoersel_workbook(employees, period, db)
+    save_dir = _safe_save_dir(body.output_folder)
+    try:
+        save_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        _logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
+        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
+
+    filename = f"proevekoersel_{period.start_date.isoformat()}_{period.end_date.isoformat()}.xlsx"
+    filepath = save_dir / filename
+    wb.save(str(filepath))
+    return {"path": str(filepath), "filename": filename}
+
+
+@router.get("/export-csv")
+def export_csv(period_start: Optional[str] = None,
+               current_user: AppUser = Depends(_payroll_access),
+               db: Session = Depends(get_db)):
+    """
+    Kør løn: Danløn CSV.
+    Kolonner: A=CVR, B=medarbejdernummer, C=Danløn-kode,
+              D=antal timer, E=time-/tillægssats.
+    """
+    period = _resolve_period(period_start, db)
+    employees = _active_employees(db)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    def fmt(v: float) -> str:
+        return f"{v:.2f}".replace(".", ",")
+
+    pt = _get_pay_type_data(db)
+    _code     = lambda k: pt.get(k, {}).get("code", "1")
+    _in_csv   = lambda k: pt.get(k, {}).get("in_csv", True)
+    _qty_type = lambda k: pt.get(k, {}).get("qty_type", "hours")
+    _inc_rate = lambda k: pt.get(k, {}).get("inc_rate", True)
+    _inc_tot  = lambda k: pt.get(k, {}).get("inc_total", False)
+
+    for emp in employees:
+        calc = _calculate_employee(emp, period.start_date, period.end_date, db)
+        if (calc["activity_count"] == 0
+                and calc["afspadsering_hours"] == 0
+                and calc["sygdom_hours"] == 0
+                and calc["paragraf_56_syg_hours"] == 0
+                and calc["barn_1sygedag_u_loen_hours"] == 0
+                and calc["feriefri_hours"] == 0
+                and calc["barsel_hours"] == 0
+                and calc["skole_kursus_hours"] == 0
+                and calc.get("sh_fuldloennet_hours", 0) == 0
+                and calc.get("sh_timeloennet_hours", 0) == 0):
+            continue
+
+        raw_rows = [
+            ("NORMAL",         calc["normal_hours"],                                               calc["hourly_rate"]),
+            ("OT_BEFORE",      calc["ot_before_hours"],                                            calc["ot_rates"][OT_BEFORE_KEY]),
+            ("OT_13",          calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),               calc["ot_rates"][OT_13_KEY]),
+            ("OT_EXTRA",       calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),            calc["ot_rates"][OT_EXTRA_KEY]),
+            ("SH_FULDLOENNET", calc.get("sh_fuldloennet_hours", 0),                               calc["hourly_rate"]),
+            ("SH_TIMELOENNET", calc.get("sh_timeloennet_hours", 0),                               calc["hourly_rate"]),
+            ("SALT",           calc.get("salt_hours", 0),                                         calc.get("salt_rate", 0)),
+            ("OVERNATNING",    calc.get("overnight_count", 0),                                    calc.get("overnight_rate", 0)),
+            ("AFSPADSERING",   calc["afspadsering_hours"],                                        calc["hourly_rate"]),
+            ("SYGDOM",         calc["sygdom_hours"],                                              calc["hourly_rate"]),
+            ("PARAGRAF_56",    calc["paragraf_56_syg_hours"],                                     calc.get("dagpenge_sats", 137.43)),
+            ("BARN_1SYGEDAG",  calc["barn_1sygedag_u_loen_hours"],                                calc.get("dagpenge_sats", 137.43)),
+            ("FERIEFRI",       calc["feriefri_hours"],                                            calc["hourly_rate"]),
+            ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
+            ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
+        ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
+        for key, qty, rate in raw_rows:
+            if not _in_csv(key) or qty == 0:
+                continue
+            qty_fmt = str(int(qty)) if _qty_type(key) == "count" else fmt(qty)
+            row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
+            if _inc_rate(key):
+                row.append(fmt(rate))
+            if _inc_tot(key):
+                row.append(fmt(qty * float(rate)))
+            writer.writerow(row)
+
+    filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
+    OUTPUT_DIR.mkdir(exist_ok=True)
+    (OUTPUT_DIR / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
+
+
+class ExportCsvRequest(BaseModel):
+    period_start: Optional[str] = None
+    output_folder: str
+
+
+@router.post("/export-csv")
+def export_csv_post(body: ExportCsvRequest,
+                    current_user: AppUser = Depends(_payroll_access),
+                    db: Session = Depends(get_db)):
+    """
+    Kør løn: låser perioden og gemmer Danløn CSV til valgt mappe.
+    """
+    period = _resolve_period(body.period_start, db)
+
+    period.status = PayPeriodStatus.closed
+    period.closed_at = datetime.utcnow()
+    period.closed_by = current_user.initials
+    log_action(db, current_user, "payroll_run", "pay_period", period.id,
+               f"Løn kørt for periode {period.start_date} – {period.end_date}")
+    db.commit()
+
+    employees = _active_employees(db)
+
+    output = io.StringIO()
+    writer = csv.writer(output, delimiter=";")
+
+    def fmt(v: float) -> str:
+        return f"{v:.2f}".replace(".", ",")
+
+    pt = _get_pay_type_data(db)
+    _code     = lambda k: pt.get(k, {}).get("code", "1")
+    _in_csv   = lambda k: pt.get(k, {}).get("in_csv", True)
+    _qty_type = lambda k: pt.get(k, {}).get("qty_type", "hours")
+    _inc_rate = lambda k: pt.get(k, {}).get("inc_rate", True)
+    _inc_tot  = lambda k: pt.get(k, {}).get("inc_total", False)
+
+    for emp in employees:
+        calc = _calculate_employee(emp, period.start_date, period.end_date, db)
+        if (calc["activity_count"] == 0
+                and calc["afspadsering_hours"] == 0
+                and calc["sygdom_hours"] == 0
+                and calc["paragraf_56_syg_hours"] == 0
+                and calc["barn_1sygedag_u_loen_hours"] == 0
+                and calc["feriefri_hours"] == 0
+                and calc["barsel_hours"] == 0
+                and calc["skole_kursus_hours"] == 0
+                and calc.get("sh_fuldloennet_hours", 0) == 0
+                and calc.get("sh_timeloennet_hours", 0) == 0):
+            continue
+        raw_rows = [
+            ("NORMAL",         calc["normal_hours"],                                               calc["hourly_rate"]),
+            ("OT_BEFORE",      calc["ot_before_hours"],                                            calc["ot_rates"][OT_BEFORE_KEY]),
+            ("OT_13",          calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),               calc["ot_rates"][OT_13_KEY]),
+            ("OT_EXTRA",       calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),            calc["ot_rates"][OT_EXTRA_KEY]),
+            ("SH_FULDLOENNET", calc.get("sh_fuldloennet_hours", 0),                               calc["hourly_rate"]),
+            ("SH_TIMELOENNET", calc.get("sh_timeloennet_hours", 0),                               calc["hourly_rate"]),
+            ("SALT",           calc.get("salt_hours", 0),                                         calc.get("salt_rate", 0)),
+            ("OVERNATNING",    calc.get("overnight_count", 0),                                    calc.get("overnight_rate", 0)),
+            ("AFSPADSERING",   calc["afspadsering_hours"],                                        calc["hourly_rate"]),
+            ("SYGDOM",         calc["sygdom_hours"],                                              calc["hourly_rate"]),
+            ("PARAGRAF_56",    calc["paragraf_56_syg_hours"],                                     calc.get("dagpenge_sats", 137.43)),
+            ("BARN_1SYGEDAG",  calc["barn_1sygedag_u_loen_hours"],                                calc.get("dagpenge_sats", 137.43)),
+            ("FERIEFRI",       calc["feriefri_hours"],                                            calc["hourly_rate"]),
+            ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
+            ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
+        ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
+        for key, qty, rate in raw_rows:
+            if not _in_csv(key) or qty == 0:
+                continue
+            qty_fmt = str(int(qty)) if _qty_type(key) == "count" else fmt(qty)
+            row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
+            if _inc_rate(key):
+                row.append(fmt(rate))
+            if _inc_tot(key):
+                row.append(fmt(qty * float(rate)))
+            writer.writerow(row)
+
+    filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
+    save_dir = _safe_save_dir(body.output_folder)
+    try:
+        save_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        import logging; logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
+        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
+    (save_dir / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+
+    return {"filename": filename, "path": str(save_dir / filename)}
+
+
+@router.post("/reopen-period")
+def reopen_period(period_start: Optional[str] = None,
+                  current_user: AppUser = Depends(_reopen_access),
+                  db: Session = Depends(get_db)):
+    """Åbner en lukket lønperiode igen (sætter status tilbage til 'open')."""
+    period = _resolve_period(period_start, db)
+    period.status = PayPeriodStatus.open
+    period.closed_at = None
+    period.closed_by = None
+    log_action(db, current_user, "reopen_period", "pay_period", period.id,
+               f"Lønperiode genåbnet: {period.start_date} – {period.end_date}")
+    db.commit()
+    return {"status": "open", "period_start": period.start_date.isoformat()}
+
+
+class PdfRequest(BaseModel):
+    from_date: date
+    to_date: date
+    employee_id: Optional[int] = None
+    output_folder: Optional[str] = None
+
+
+@router.get("/downloads-folder")
+def get_downloads_folder(current_user: AppUser = Depends(_payroll_access)):
+    """Returnerer brugerens Downloads-mappe som forslag til gem-placering."""
+    from pathlib import Path as _P
+    folder = _P.home() / "Downloads"
+    return {"path": str(folder)}
+
+
+@router.get("/browse-folder")
+def browse_folder(initial: str = "",
+                  current_user: AppUser = Depends(_payroll_access)):
+    """Åbner en native Windows-mappevælger og returnerer den valgte sti."""
+    import tkinter as tk
+    from tkinter import filedialog
+    root = tk.Tk()
+    root.withdraw()
+    root.wm_attributes("-topmost", True)
+    start = initial if initial else str(Path.home() / "Downloads")
+    chosen = filedialog.askdirectory(initialdir=start, title="Vælg mappe til PDF-filer")
+    root.destroy()
+    if not chosen:
+        return {"path": None}
+    return {"path": str(Path(chosen))}
+
+
+@router.post("/pdf-timesedler")
+def pdf_timesedler(body: PdfRequest,
+                   current_user: AppUser = Depends(_payroll_access),
+                   db: Session = Depends(get_db)):
+    """
+    Dan PDF-timesedler for valgt datointerval.
+    PDF'erne gemmes i output/timesedler/ (e-mail-afsendelse tilføjes senere).
+    """
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.units import mm
+        from reportlab.platypus import (
+            Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
+        )
+        from reportlab.lib.styles import getSampleStyleSheet
+    except ImportError:
+        raise HTTPException(500, "reportlab er ikke installeret (pip install reportlab)")
+
+    if body.to_date < body.from_date:
+        raise HTTPException(400, "Til-dato skal være efter fra-dato")
+
+    employees = _active_employees(db, body.employee_id)
+    if body.output_folder:
+        pdf_dir = _safe_save_dir(body.output_folder)
+    else:
+        pdf_dir = OUTPUT_DIR / "timesedler"
+    try:
+        pdf_dir.mkdir(parents=True, exist_ok=True)
+    except Exception as exc:
+        import logging; logging.error(f"Kan ikke oprette mappe '{pdf_dir}': {exc}")
+        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
+
+    styles = getSampleStyleSheet()
+    created = []
+    skipped = []
+
+    for emp in employees:
+        calc = _calculate_employee(emp, body.from_date, body.to_date, db)
+        if calc["activity_count"] == 0:
+            skipped.append(calc["employee_name"])
+            continue
+
+        filename = f"timeseddel_{emp.employee_number}_{body.from_date.isoformat()}_{body.to_date.isoformat()}.pdf"
+        path = pdf_dir / filename
+
+        doc = SimpleDocTemplate(str(path), pagesize=landscape(A4),
+                                topMargin=15 * mm, bottomMargin=15 * mm,
+                                leftMargin=15 * mm, rightMargin=15 * mm)
+        elements = [
+            Paragraph(f"Timeseddel – {calc['employee_name']} (lønnr. {calc['employee_number']})", styles["Title"]),
+            Paragraph(f"Periode: {body.from_date.strftime('%d-%m-%Y')} til {body.to_date.strftime('%d-%m-%Y')}", styles["Normal"]),
+            Paragraph(f"Overenskomst: {calc['agreement_type']}", styles["Normal"]),
+            Spacer(1, 8 * mm),
+        ]
+
+        header = ["Dag", "Vognnr.", "Starttid", "Sluttid", "Normal tid", "Overtid 1 time før",
+                  "Overtid 1-3 timer efter", "Øvrig overtid", "Salttillæg (t)", "Total tid", "Total kr."]
+        rates_row = ["Satser", "", "", "", f"{calc['hourly_rate']:.2f}",
+                     f"{calc['ot_rates'][OT_BEFORE_KEY]:.2f}",
+                     f"{calc['ot_rates'][OT_13_KEY]:.2f}",
+                     f"{calc['ot_rates'][OT_EXTRA_KEY]:.2f}",
+                     f"{calc.get('salt_rate', 0):.2f}", "", ""]
+        data = [header, rates_row]
+        for day in calc["days"]:
+            d = date.fromisoformat(day["date"])
+            vn = day.get("vehicle_number") or ""
+            st = day.get("start_time") or ""
+            et = day.get("end_time") or ""
+            if day["absence_type"]:
+                data.append([d.strftime("%d-%m-%Y"), "", "", "", day["absence_type"], "", "", "", "", "", ""])
+            else:
+                data.append([
+                    d.strftime("%d-%m-%Y"), vn, st, et,
+                    f"{day['normal']:.2f}", f"{day['ot_before']:.2f}",
+                    f"{day['ot_13']:.2f}", f"{day['ot_extra']:.2f}",
+                    f"{day.get('salt_hours', 0):.2f}",
+                    f"{day['total_hours']:.2f}", f"{day['total_kr']:.2f}",
+                ])
+        data.append(["Total for perioden, kr.", "", "", "", "", "", "", "", "", "", f"{calc['total_kr']:.2f}"])
+
+        col_widths = [25*mm, 20*mm, 19*mm, 19*mm, 24*mm, 27*mm, 31*mm, 23*mm, 21*mm, 20*mm, 22*mm]
+        table = Table(data, colWidths=col_widths, repeatRows=2)
+        table.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#317423")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
+            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 8),
+            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
+            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#d4edcc")),
+            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#d4edcc")),
+            ("ALIGN", (2, 2), (3, -1), "CENTER"),
+            ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
+        ]))
+        elements.append(table)
+        doc.build(elements)
+        created.append({"employee": calc["employee_name"], "email": calc["email"], "file": str(path)})
+
+    return {
+        "created": created,
+        "skipped": skipped,
+        "folder": str(pdf_dir),
+        "note": "PDF'er gemt lokalt – e-mail-afsendelse er ikke konfigureret endnu.",
+    }

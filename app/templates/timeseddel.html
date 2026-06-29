@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: Arial, sans-serif; font-size: 11px; color: #222; background: #fff; }
+
+  .page { padding: 28px 32px; }
+
+  /* Header */
+  .header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 24px; border-bottom: 3px solid #317423; padding-bottom: 14px; }
+  .company-name { font-size: 20px; font-weight: 700; color: #317423; }
+  .company-sub  { font-size: 11px; color: #555; margin-top: 2px; }
+  .doc-title    { text-align: right; }
+  .doc-title h1 { font-size: 16px; font-weight: 700; color: #317423; }
+  .doc-title p  { font-size: 11px; color: #555; margin-top: 3px; }
+
+  /* Medarbejder-info */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px; margin-bottom: 20px; background: #f5faf3; border: 1px solid #d4edcc; border-radius: 6px; padding: 12px 16px; }
+  .info-item label { font-size: 10px; color: #555; display: block; }
+  .info-item span  { font-weight: 600; font-size: 12px; }
+
+  /* Opsummering */
+  h2 { font-size: 12px; font-weight: 700; color: #317423; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+
+  table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+  th { background: #317423; color: #fff; padding: 6px 10px; text-align: left; font-size: 10px; font-weight: 600; }
+  th.right, td.right { text-align: right; }
+  td { padding: 5px 10px; border-bottom: 1px solid #e8e8e8; font-size: 11px; }
+  tr:nth-child(even) td { background: #f9f9f9; }
+  tr.total td { font-weight: 700; background: #eaf5e4; border-top: 2px solid #78b21a; font-size: 12px; }
+  tr.absence td { color: #555; font-style: italic; }
+
+  /* Dagsoversigt */
+  .day-table th { font-size: 9.5px; }
+  .day-table td { font-size: 10px; padding: 4px 10px; }
+  .day-table tr.weekend td { color: #aaa; }
+  .day-table tr.absence-row td { color: #317423; font-style: italic; }
+
+  .footer { margin-top: 28px; border-top: 1px solid #ddd; padding-top: 10px; font-size: 9px; color: #888; display: flex; justify-content: space-between; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Header -->
+  <div class="header">
+    <div>
+      <div class="company-name">Poul Schou A/S</div>
+      <div class="company-sub">CVR: {{ cvr }}</div>
+    </div>
+    <div class="doc-title">
+      <h1>Timeseddel</h1>
+      <p>Periode: {{ period_label }}</p>
+      <p>Genereret: {{ generated }}</p>
+    </div>
+  </div>
+
+  <!-- Medarbejderinfo -->
+  <div class="info-grid">
+    <div class="info-item"><label>Medarbejder</label><span>{{ emp.employee_name }}</span></div>
+    <div class="info-item"><label>Lønnummer</label><span>{{ emp.employee_number }}</span></div>
+    <div class="info-item"><label>Overenskomsttype</label><span>{{ emp.agreement_type }}</span></div>
+    <div class="info-item"><label>Timesats</label><span>{{ "%.2f"|format(emp.hourly_rate) }} kr/t</span></div>
+  </div>
+
+  <!-- Lønopsummering -->
+  <h2>Lønopsummering</h2>
+  <table>
+    <thead>
+      <tr>
+        <th>Type</th>
+        <th class="right">Timer</th>
+        <th class="right">Sats</th>
+        <th class="right">DKK</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% if emp.normal_hours > 0.001 %}
+      <tr>
+        <td>Normal tid</td>
+        <td class="right">{{ "%.2f"|format(emp.normal_hours) }}</td>
+        <td class="right">{{ "%.2f"|format(emp.hourly_rate) }} kr/t</td>
+        <td class="right">{{ "%.2f"|format(emp.normal_hours * emp.hourly_rate) }}</td>
+      </tr>
+      {% endif %}
+      {% if emp.ot_before_hours > 0.001 %}
+      <tr>
+        <td>Overtid 1 time før</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_before_hours) }}</td>
+        <td class="right">{{ "%.2f"|format(ot_before_rate) }} kr/t</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_before_hours * ot_before_rate) }}</td>
+      </tr>
+      {% endif %}
+      {% if emp.ot_13_hours > 0.001 %}
+      <tr>
+        <td>Overtid 1–3 timer efter</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_13_hours) }}</td>
+        <td class="right">{{ "%.2f"|format(ot_13_rate) }} kr/t</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_13_hours * ot_13_rate) }}</td>
+      </tr>
+      {% endif %}
+      {% if emp.ot_extra_hours > 0.001 %}
+      <tr>
+        <td>Øvrig overtid</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_extra_hours) }}</td>
+        <td class="right">{{ "%.2f"|format(ot_extra_rate) }} kr/t</td>
+        <td class="right">{{ "%.2f"|format(emp.ot_extra_hours * ot_extra_rate) }}</td>
+      </tr>
+      {% endif %}
+      {% if emp.salt_hours > 0.001 %}
+      <tr>
+        <td>Salttillæg</td>
+        <td class="right">{{ "%.2f"|format(emp.salt_hours) }}</td>
+        <td class="right">{{ "%.2f"|format(emp.salt_rate) }} kr/t</td>
+        <td class="right">{{ "%.2f"|format(emp.salt_kr) }}</td>
+      </tr>
+      {% endif %}
+      {% if emp.afspadsering_hours > 0.001 %}
+      <tr class="absence">
+        <td>Afspadsering</td>
+        <td class="right">{{ "%.2f"|format(emp.afspadsering_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.sygdom_hours > 0.001 %}
+      <tr class="absence">
+        <td>Sygdom</td>
+        <td class="right">{{ "%.2f"|format(emp.sygdom_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.feriefri_hours > 0.001 %}
+      <tr class="absence">
+        <td>Feriefri</td>
+        <td class="right">{{ "%.2f"|format(emp.feriefri_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.barsel_hours > 0.001 %}
+      <tr class="absence">
+        <td>Barsel</td>
+        <td class="right">{{ "%.2f"|format(emp.barsel_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.paragraf_56_syg_hours > 0.001 %}
+      <tr class="absence">
+        <td>§56 syg</td>
+        <td class="right">{{ "%.2f"|format(emp.paragraf_56_syg_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.barn_1sygedag_u_loen_hours > 0.001 %}
+      <tr class="absence">
+        <td>Barn 1.sygedag u. løn</td>
+        <td class="right">{{ "%.2f"|format(emp.barn_1sygedag_u_loen_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      {% if emp.skole_kursus_hours > 0.001 %}
+      <tr class="absence">
+        <td>Kursus/Skole</td>
+        <td class="right">{{ "%.2f"|format(emp.skole_kursus_hours) }}</td>
+        <td class="right">–</td>
+        <td class="right">–</td>
+      </tr>
+      {% endif %}
+      <tr class="total">
+        <td>I alt</td>
+        <td class="right">{{ "%.2f"|format(emp.total_hours) }} t</td>
+        <td class="right"></td>
+        <td class="right">{{ "%.2f"|format(emp.total_kr) }} kr</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <!-- Dagsoversigt -->
+  <h2>Dagsoversigt</h2>
+  <table class="day-table">
+    <thead>
+      <tr>
+        <th>Dato</th>
+        <th>Dag</th>
+        <th class="right">Normal</th>
+        <th class="right">OT før</th>
+        <th class="right">OT 1–3</th>
+        <th class="right">Øvrig OT</th>
+        <th class="right">Total timer</th>
+        <th class="right">Total kr.</th>
+        <th>Fravær / Note</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for day in emp.days %}
+      {% set d = day.date %}
+      {% set weekday = weekdays[day.weekday] %}
+      {% set is_weekend = day.weekday >= 5 %}
+      <tr class="{% if day.absence_type %}absence-row{% elif is_weekend %}weekend{% endif %}">
+        <td>{{ d[8:10] }}-{{ d[5:7] }}-{{ d[0:4] }}</td>
+        <td>{{ weekday }}</td>
+        <td class="right">{% if day.normal > 0 %}{{ "%.2f"|format(day.normal) }}{% endif %}</td>
+        <td class="right">{% if day.ot_before > 0 %}{{ "%.2f"|format(day.ot_before) }}{% endif %}</td>
+        <td class="right">{% if day.ot_13 > 0 %}{{ "%.2f"|format(day.ot_13) }}{% endif %}</td>
+        <td class="right">{% if day.ot_extra > 0 %}{{ "%.2f"|format(day.ot_extra) }}{% endif %}</td>
+        <td class="right">{% if day.total_hours > 0 %}{{ "%.2f"|format(day.total_hours) }}{% endif %}</td>
+        <td class="right">{% if day.total_kr > 0 %}{{ "%.2f"|format(day.total_kr) }}{% endif %}</td>
+        <td>{{ day.absence_type or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <span>Poul Schou A/S · CVR: {{ cvr }}</span>
+    <span>{{ emp.employee_name }} · {{ period_label }}</span>
+    <span>Genereret {{ generated }}</span>
+  </div>
+
+</div>
+</body>
+</html>

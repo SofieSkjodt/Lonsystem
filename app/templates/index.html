@@ -1,0 +1,1502 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PS Løn – Poul Schou A/S</title>
+  <link rel="stylesheet" href="/static/css/style.css?v=5">
+  <script src="/static/js/msal-browser.min.js"></script>
+  <script>
+    const ENTRA_TENANT_ID = "{{ entra_tenant_id }}";
+    const ENTRA_CLIENT_ID = "{{ entra_client_id }}";
+  </script>
+</head>
+<body>
+
+<!-- Login overlay – vises hvis ikke logget ind -->
+<div id="login-overlay" style="display:none;position:fixed;inset:0;background:#317423 url('/static/img/schou_logo.png') center/cover no-repeat;z-index:9999;align-items:center;justify-content:center">
+  <div id="login-card" style="background:#fff;border-radius:12px;padding:40px 36px;width:360px;box-shadow:0 8px 40px rgba(0,0,0,.25)">
+    <div style="text-align:center;margin-bottom:24px">
+      <h2 style="margin:0;font-size:22px;color:#317423">PS Løn</h2>
+      <p style="margin:4px 0 0;font-size:13px;color:#666">Poul Schou A/S</p>
+    </div>
+    {% if entra_client_id %}
+    <button id="btn-sso-login" onclick="doSSOLogin()"
+            style="width:100%;box-sizing:border-box;background:#fff;color:#2d2d2d;border:1.5px solid #ddd;border-radius:6px;padding:10px;font-size:14px;font-weight:600;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;margin-bottom:16px"
+            onmouseover="this.style.background='#f5f5f5'" onmouseout="this.style.background='#fff'">
+      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 21 21" style="flex-shrink:0">
+        <rect x="1" y="1" width="9" height="9" fill="#f25022"/>
+        <rect x="11" y="1" width="9" height="9" fill="#7fba00"/>
+        <rect x="1" y="11" width="9" height="9" fill="#00a4ef"/>
+        <rect x="11" y="11" width="9" height="9" fill="#ffb900"/>
+      </svg>
+      Log ind med Microsoft
+    </button>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+      <div style="flex:1;height:1px;background:#e0e0e0"></div>
+      <span style="font-size:12px;color:#aaa;user-select:none">eller</span>
+      <div style="flex:1;height:1px;background:#e0e0e0"></div>
+    </div>
+    {% endif %}
+    <div style="margin-bottom:14px">
+      <label style="display:block;font-size:13px;font-weight:600;margin-bottom:5px">Initialer</label>
+      <input id="login-initials" type="text" placeholder="Dine initialer" maxlength="10"
+             style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #ccc;border-radius:6px;font-size:14px"
+             onkeydown="if(event.key==='Enter')document.getElementById('login-password').focus()">
+    </div>
+    <div style="margin-bottom:18px">
+      <label style="display:block;font-size:13px;font-weight:600;margin-bottom:5px">Adgangskode</label>
+      <input id="login-password" type="password"
+             style="width:100%;box-sizing:border-box;padding:9px 12px;border:1px solid #ccc;border-radius:6px;font-size:14px"
+             onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <div id="login-error" style="display:none;background:#fee;border:1px solid #fcc;border-radius:6px;padding:8px 12px;font-size:13px;color:#c00;margin-bottom:14px"></div>
+    <button onclick="doLogin()"
+            style="width:100%;background:#317423;color:#fff;border:none;border-radius:6px;padding:11px;font-size:15px;font-weight:600;cursor:pointer">
+      Log ind
+    </button>
+  </div>
+</div>
+
+<div id="loading-overlay" class="loading-overlay">
+  <div class="spinner" style="width:36px;height:36px;border-width:3px"></div>
+</div>
+
+<div id="toast-container"></div>
+
+<header class="app-header">
+  <h1 style="display:flex;align-items:center;gap:10px">
+    <img src="/static/img/schou_logo.png" alt="Poul Schou" style="height:40px;border-radius:3px">
+    PS Løn
+  </h1>
+  <div class="header-right">
+    <span style="font-size:13px;opacity:.8">Poul Schou A/S · CVR 13246505</span>
+    <span id="header-user" style="font-size:13px;opacity:.9;margin-left:16px;display:none"></span>
+    <button id="btn-logout" onclick="doLogout()"
+            style="display:none;margin-left:10px;background:rgba(255,255,255,.2);border:1px solid rgba(255,255,255,.4);color:#fff;border-radius:5px;padding:4px 10px;font-size:12px;cursor:pointer">
+      Log ud
+    </button>
+  </div>
+</header>
+
+<div class="app-body">
+
+  <nav class="sidebar">
+    <div class="sidebar-section">
+      <div class="sidebar-label">Løn</div>
+      <div class="sidebar-item active" data-view="activities">
+        <span class="icon">📋</span> Aktiviteter
+      </div>
+      <div class="sidebar-item" data-view="payroll" data-perm-require="payroll">
+        <span class="icon">💰</span> Lønkørsel
+      </div>
+      <div class="sidebar-item" data-view="absence-overview" data-perm-require="absence_overview">
+        <span class="icon">📅</span> Fraværsoversigt
+      </div>
+    </div>
+    <div class="sidebar-section">
+      <div class="sidebar-label">Data</div>
+      <div class="sidebar-item" data-view="import" data-perm-require="import_ddd">
+        <span class="icon">📥</span> Importer .ddd
+      </div>
+      <div class="sidebar-item" data-view="employees" data-perm-require="view_employees">
+        <span class="icon">👤</span> Medarbejdere
+      </div>
+      <div class="sidebar-item" data-view="vehicles" data-perm-require="view_vehicles">
+        <span class="icon">🚛</span> Vognpark
+      </div>
+    </div>
+    <div class="sidebar-section" data-perm-require="user_management">
+      <div class="sidebar-label">System</div>
+      <div class="sidebar-item" data-view="users-admin">
+        <span class="icon">🔑</span> Brugere
+      </div>
+      <div class="sidebar-item" data-view="stamdata" data-perm-require="stamdata">
+        <span class="icon">⚙️</span> Stamdata
+      </div>
+    </div>
+  </nav>
+
+  <main class="main-content">
+
+    <!-- ══════════════ ACTIVITIES VIEW ══════════════ -->
+    <div class="view" data-view="activities">
+
+      <div class="period-bar">
+        <button id="btn-prev-period" class="period-nav-btn" title="Forrige periode">&#8249;</button>
+        <span id="period-label" class="period-label">Indlæser...</span>
+        <div class="period-stats">
+          <span id="stat-pending"  class="stat-chip pending">0 afventer</span>
+          <span id="stat-approved" class="stat-chip approved">0 godkendt</span>
+          <span id="stat-deact"    class="stat-chip deact">0 deaktiveret</span>
+        </div>
+        <div id="period-date-picker" title="Hop til dato"></div>
+        <button id="btn-next-period" class="period-nav-btn" title="Næste periode">&#8250;</button>
+      </div>
+
+      <div class="toolbar">
+        <label style="font-size:13px;font-weight:500">Vis:</label>
+        <select id="filter-status" style="width:150px">
+          <option value="all">Alle aktiviteter</option>
+          <option value="pending">Afventer</option>
+          <option value="approved">Godkendt</option>
+          <option value="deactivated">Deaktiveret</option>
+        </select>
+        <select id="filter-employee" style="width:200px">
+          <option value="">Alle medarbejdere</option>
+        </select>
+        <select id="filter-dispatcher-group" style="width:180px">
+          <option value="">Alle afdelinger</option>
+          <option value="2 - Kran">2 - Kran</option>
+          <option value="4 - Makulering">4 - Makulering</option>
+          <option value="5 - Milj&#248;">5 - Milj&#248;</option>
+          <option value="8 - THG">8 - THG</option>
+          <option value="9 - BN">9 - BN</option>
+          <option value="10 - ISOPLUS-CHJ">10 - ISOPLUS-CHJ</option>
+        </select>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="openManualActivityModal()">+ Tilføj aktivitet</button>
+      </div>
+
+      <div class="table-wrapper" style="overflow-x:auto">
+        <table class="grid-table">
+          <thead id="grid-head"></thead>
+          <tbody id="grid-body">
+            <tr><td style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ PAYROLL VIEW ══════════════ -->
+    <div class="view hidden" data-view="payroll">
+      <div class="toolbar" style="flex-wrap:nowrap">
+        <h2 style="font-size:16px;font-weight:600;white-space:nowrap">Lønkørsel –
+          <span id="payroll-period-label" style="font-weight:400;color:var(--text-light)">indlæser...</span>
+        </h2>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="openAdminModal()" data-perm-require="reopen_period">&#9881; Administration</button>
+        <button class="btn btn-secondary" onclick="loadPayrollPreview()">&#128260; Opdater</button>
+        <button class="btn btn-primary" onclick="proevekoersel()">&#128202; Prøvekørsel (Excel)</button>
+        <button class="btn btn-warning" onclick="openPdfModal()">&#128196; PDF-timesedler</button>
+        <button class="btn btn-success" onclick="exportCsv()">&#9654; Kør løn (Danløn CSV)</button>
+      </div>
+      <div id="payroll-preview-container"></div>
+    </div>
+
+    <!-- ══════════════ ABSENCE OVERVIEW VIEW ══════════════ -->
+    <div class="view hidden" data-view="absence-overview">
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+        <h2 style="font-size:16px;font-weight:600;white-space:nowrap">Fraværsoversigt</h2>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:5px">Fra:
+            <div id="absence-from-dp" style="width:150px"></div>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px">Til:
+            <div id="absence-to-dp" style="width:150px"></div>
+          </label>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="loadAbsenceOverview()">&#128260; Opdater</button>
+        <button class="btn btn-primary" onclick="exportAbsencePerEmployee()">&#128202; Eksporter per medarbejder</button>
+        <button class="btn btn-secondary" onclick="exportAbsencePerType()">&#128202; Eksporter per fraværstype</button>
+      </div>
+      <div id="absence-overview-container"></div>
+    </div>
+
+    <!-- ══════════════ IMPORT VIEW ══════════════ -->
+    <div class="view hidden" data-view="import">
+      <div style="max-width:560px">
+        <h2 style="font-size:18px;font-weight:600;margin-bottom:8px">Importer tachografdata</h2>
+        <p style="color:var(--text-light);margin-bottom:20px;font-size:14px">
+          Systemet scanner mappen <code style="background:var(--bg);padding:2px 6px;border-radius:4px">ddd_input/</code>
+          og importerer alle nye .ddd-filer.
+        </p>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px">
+          <h3 style="font-size:15px;font-weight:600;margin-bottom:12px">Kør import</h3>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button id="btn-import-files" class="btn btn-primary" onclick="importDddPickFiles()">
+              &#128229; Vælg filer
+            </button>
+            <button id="btn-import-folder" class="btn btn-secondary" onclick="importDddPickFolder()">
+              &#128193; Vælg mappe
+            </button>
+          </div>
+          <div id="import-result" style="margin-top:12px;font-size:13px;color:var(--text-light)"></div>
+        </div>
+        <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px">
+          <h3 style="font-size:15px;font-weight:600;margin-bottom:8px">Kobling</h3>
+          <p style="font-size:13px;color:var(--text-light)">
+            Filer kobles til medarbejdere via førerkortnummeret i filen
+            (fx <code>DK00000178901010</code>). Allerede importerede aktiviteter springes over.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════ EMPLOYEES VIEW ══════════════ -->
+    <div class="view hidden" data-view="employees">
+      <div class="toolbar">
+        <h2 style="font-size:16px;font-weight:600">Medarbejdere</h2>
+        <div class="spacer"></div>
+        <input type="text" id="employee-search" placeholder="Søg navn eller lønnr…"
+               style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:220px">
+        <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="show-inactive"> Vis inaktive
+        </label>
+        <button class="btn btn-primary" data-perm-require="manage_employees" onclick="openNewEmployeeModal()">+ Opret medarbejder</button>
+      </div>
+      <div id="employee-list"></div>
+    </div>
+
+    <!-- ══════════════ VEHICLES VIEW ══════════════ -->
+    <div class="view hidden" data-view="vehicles">
+      <div class="toolbar">
+        <h2 style="font-size:16px;font-weight:600">Vognpark</h2>
+        <div class="spacer"></div>
+        <input type="text" id="vehicle-search" placeholder="Søg reg.nr. eller vognnr…"
+               style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:220px">
+        <button class="btn btn-primary" data-perm-require="manage_vehicles" onclick="openNewVehicleModal()">+ Opret vogn</button>
+      </div>
+      <div id="vehicle-list"></div>
+    </div>
+
+    <!-- ══════════════ USERS ADMIN VIEW ══════════════ -->
+    <div class="view hidden" data-view="users-admin">
+      <div class="toolbar">
+        <h2 style="font-size:16px;font-weight:600">Brugerstyring</h2>
+        <div class="spacer"></div>
+        <button id="btn-admin-users-create" class="btn btn-primary" onclick="openCreateUserModal()">+ Opret bruger</button>
+        <button id="btn-admin-roles-create" class="btn btn-primary" style="display:none" onclick="openCreateRoleModal()">+ Opret rolle</button>
+      </div>
+
+      <!-- Tab-switcher -->
+      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border)">
+        <button id="ua-tab-users" onclick="switchUsersAdminTab('users')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid var(--primary);margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--primary);cursor:pointer">
+          Brugere
+        </button>
+        <button id="ua-tab-roles" onclick="switchUsersAdminTab('roles')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Roller
+        </button>
+        <button id="ua-tab-log" onclick="switchUsersAdminTab('log')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Hændelseslog
+        </button>
+      </div>
+
+      <!-- Brugere-panel -->
+      <div id="ua-pane-users" style="max-width:900px">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+          <thead>
+            <tr style="background:var(--primary);color:#fff">
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Navn</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Initialer / brugernavn</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Mail</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Rolle</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Status</th>
+              <th style="padding:11px 14px;text-align:center;font-weight:600">Handlinger</th>
+            </tr>
+          </thead>
+          <tbody id="users-admin-tbody">
+            <tr><td colspan="6" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Hændelseslog-panel -->
+      <div id="ua-pane-log" style="display:none;max-width:1100px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <span style="font-size:13px;color:var(--text-light)">De seneste 500 hændelser – nyeste øverst</span>
+          <div style="display:flex;gap:8px;align-items:center">
+            <input id="log-filter-input" type="text" placeholder="Søg bruger, handling eller detaljer..."
+                   oninput="filterAuditLog()"
+                   style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:260px">
+            <button class="btn btn-secondary" style="font-size:12px;padding:5px 10px" onclick="loadAuditLogView()">&#8635; Opdater</button>
+          </div>
+        </div>
+        <div style="overflow-x:auto">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 12px;text-align:left;font-weight:600;white-space:nowrap">Tidspunkt</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600">Bruger</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600">Handling</th>
+                <th style="padding:10px 12px;text-align:left;font-weight:600">Detaljer</th>
+              </tr>
+            </thead>
+            <tbody id="audit-log-view-body">
+              <tr><td colspan="4" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Roller-panel -->
+      <div id="ua-pane-roles" style="display:none;max-width:900px">
+        <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+          <thead>
+            <tr style="background:var(--primary);color:#fff">
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Rollenavn</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Visningsnavn</th>
+              <th style="padding:11px 14px;text-align:left;font-weight:600">Rettigheder</th>
+              <th style="padding:11px 14px;text-align:center;font-weight:600">Handlinger</th>
+            </tr>
+          </thead>
+          <tbody id="roles-admin-tbody">
+            <tr><td colspan="4" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ STAMDATA VIEW ══════════════ -->
+    <div class="view hidden" data-view="stamdata">
+      <div class="toolbar">
+        <h2 style="font-size:16px;font-weight:600">Stamdata</h2>
+        <div class="spacer"></div>
+        <button id="btn-stamdata-add-agreement" class="btn btn-primary" onclick="openStamdataAgreementModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-overtime" class="btn btn-primary" style="display:none" onclick="openNewRateModal('overtime')">+ Tilføj</button>
+        <button id="btn-stamdata-add-supplement" class="btn btn-primary" style="display:none" onclick="openNewRateModal('supplement')">+ Tilføj</button>
+        <button id="btn-stamdata-add-paytype" class="btn btn-primary" style="display:none" onclick="openNewPayTypeModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-absence" class="btn btn-primary" style="display:none" onclick="openStamdataAbsenceModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-cvr" class="btn btn-primary" style="display:none" onclick="openNewCvrModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-holiday" class="btn btn-primary" style="display:none" onclick="openNewHolidayModal()">+ Tilføj</button>
+      </div>
+
+      <!-- Tab-switcher -->
+      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border)">
+        <button id="sd-tab-agreement" onclick="switchStamdataTab('agreement')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid var(--primary);margin-bottom:-2px;background:transparent;font-size:13px;font-weight:700;color:var(--primary);cursor:pointer">
+          Overenskomsttyper
+        </button>
+        <button id="sd-tab-overtime" onclick="switchStamdataTab('overtime')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Overtidssatser
+        </button>
+        <button id="sd-tab-supplement" onclick="switchStamdataTab('supplement')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Tillæg
+        </button>
+        <button id="sd-tab-paytype" onclick="switchStamdataTab('paytype')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Løntypekoder
+        </button>
+        <button id="sd-tab-absence" onclick="switchStamdataTab('absence')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Fraværstyper
+        </button>
+        <button id="sd-tab-cvr" onclick="switchStamdataTab('cvr')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          CVR nummer
+        </button>
+        <button id="sd-tab-holiday" onclick="switchStamdataTab('holiday')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer"
+                data-perm-require="manage_holidays">
+          Helligdage
+        </button>
+      </div>
+
+      <div style="max-width:1050px">
+
+        <!-- Overenskomsttyper -->
+        <div id="sd-pane-agreement">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Navn</th>
+                <th style="padding:10px 14px;text-align:right;font-weight:600">Timesats (kr)</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-agreement-tbody">
+              <tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Overtidssatser -->
+        <div id="sd-pane-overtime" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Beskrivelse</th>
+                <th style="padding:10px 14px;text-align:right;font-weight:600">Sats (kr)</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-overtime-tbody">
+              <tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Tillæg -->
+        <div id="sd-pane-supplement" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Beskrivelse</th>
+                <th style="padding:10px 14px;text-align:right;font-weight:600">Sats (kr)</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-supplement-tbody">
+              <tr><td colspan="3" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Fraværstyper -->
+        <div id="sd-pane-absence" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Betegnelse</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Nøgle</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Aktiv</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-absence-tbody">
+              <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- CVR nummer -->
+        <div id="sd-pane-cvr" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">CVR-nummer</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Firmanavn</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Standard</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-cvr-tbody">
+              <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Helligdage -->
+        <div id="sd-pane-holiday" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Dato</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Navn</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Halvdag fra</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Type</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-holiday-tbody">
+              <tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+          <div style="margin-top:12px;display:flex;gap:8px;align-items:center">
+            <span style="font-size:13px;color:var(--text-light)">Generer helligdage for år:</span>
+            <input type="number" id="holiday-gen-year" style="width:90px;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px" placeholder="2031" min="2020" max="2100">
+            <button class="btn btn-secondary" style="font-size:13px" onclick="generateHolidaysForYear()">Generer</button>
+          </div>
+        </div>
+
+        <!-- Løntypekoder -->
+        <div id="sd-pane-paytype" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Type</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Danløn-kode</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Med i CSV</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Antal-type</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Sats-kilde</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Sats i CSV</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Med total</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-paytype-tbody">
+              <tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+      </div>
+    </div>
+
+  </main>
+</div>
+
+
+<!-- ══════════════ MODALS ══════════════ -->
+
+<!-- Anciennitet popup -->
+<!-- ── Stamdata: Opret helligdag ── -->
+<div id="modal-stamdata-holiday" class="modal-overlay">
+  <div class="modal" style="width:420px">
+    <div class="modal-header">
+      <h2>Opret helligdag</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-holiday')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Dato <span style="color:var(--danger)">*</span></label>
+        <div id="holiday-date-picker"></div>
+      </div>
+      <div class="form-group">
+        <label>Navn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="holiday-name" placeholder="fx Særlig fridag">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="holiday-halfday-check" style="width:16px;height:16px;cursor:pointer"
+               onchange="document.getElementById('holiday-halfday-group').style.display=this.checked?'':'none'">
+        <label for="holiday-halfday-check" style="margin:0;cursor:pointer">Halvdagshelligdag</label>
+      </div>
+      <div class="form-group" id="holiday-halfday-group" style="display:none">
+        <label>Fri fra kl.</label>
+        <input type="text" id="holiday-halfday-from" value="12:00" placeholder="12:00" maxlength="5"
+               style="width:80px">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-holiday')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmNewHoliday()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-anciennitet" class="modal-overlay">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h2>&#128197; Ny anciennitetsstatus</h2>
+      <button class="modal-close" onclick="closeModal('modal-anciennitet')">&#215;</button>
+    </div>
+    <div class="modal-body" id="anciennitet-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-anciennitet')">Luk</button>
+      <button class="btn btn-warning" id="btn-anciennitet-done">Ændring foretaget</button>
+      <button class="btn btn-primary" id="btn-goto-employee">Gå til medarbejder</button>
+    </div>
+  </div>
+</div>
+
+<!-- Activity detail modal -->
+<div id="modal-activity" class="modal-overlay">
+  <div class="modal" style="width:680px;max-width:95vw">
+    <div class="modal-header">
+      <h2 id="modal-activity-title">Aktivitet</h2>
+      <button class="modal-close" onclick="closeModal('modal-activity')">&#215;</button>
+    </div>
+    <div class="modal-body" id="modal-activity-body"></div>
+    <div class="modal-footer" id="modal-activity-footer"></div>
+  </div>
+</div>
+
+<!-- Approve modal -->
+<div id="modal-approve" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>Godkend aktivitet</h2>
+      <button class="modal-close" onclick="closeModal('modal-approve')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="approve-user-label" style="font-size:13px;color:var(--text-light);margin-bottom:12px"></p>
+      <div class="form-group">
+        <label>
+          Kommentar
+          <span id="approve-comment-required" class="hidden" style="color:var(--danger)"> * (påkrævet – under 4 timer)</span>
+        </label>
+        <textarea id="approve-comment" rows="3" placeholder="Evt. bemærkning..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-approve')">Annuller</button>
+      <button class="btn btn-success" onclick="confirmApprove()">&#10003; Godkend</button>
+    </div>
+  </div>
+</div>
+
+<!-- Deactivate modal -->
+<div id="modal-deactivate" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>Deaktiver aktivitet</h2>
+      <button class="modal-close" onclick="closeModal('modal-deactivate')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="deactivate-user-label" style="font-size:13px;color:var(--text-light);margin-bottom:12px"></p>
+      <div class="form-group">
+        <label>Kommentar</label>
+        <textarea id="deactivate-comment" rows="3" placeholder="Evt. begrundelse..."></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-deactivate')">Annuller</button>
+      <button class="btn btn-danger" onclick="confirmDeactivate()">&#10007; Deaktiver</button>
+    </div>
+  </div>
+</div>
+
+<!-- Split modal -->
+<div id="modal-split" class="modal-overlay">
+  <div class="modal" style="width:520px;max-width:95vw">
+    <div class="modal-header">
+      <h2>Split aktivitet</h2>
+      <button class="modal-close" onclick="closeModal('modal-split')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="split-activity-info" style="font-size:13px;color:var(--text-light);margin-bottom:16px"></p>
+      <div class="form-group">
+        <label>Splitpunkt <span style="color:var(--danger)">*</span></label>
+        <div class="dt-picker" id="split-at"></div>
+        <div class="form-hint">Del 1 (før splitpunkt) deaktiveres. Del 2 (efter) sættes til afventende.</div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-split')">Annuller</button>
+      <button class="btn btn-warning" onclick="confirmSplit()">&#9986; Udfør split</button>
+    </div>
+  </div>
+</div>
+
+<!-- Manual activity modal -->
+<div id="modal-manual-activity" class="modal-overlay">
+  <div class="modal" style="width:640px;max-width:95vw">
+    <div class="modal-header">
+      <h2>Tilføj aktivitet</h2>
+      <button class="modal-close" onclick="closeModal('modal-manual-activity')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Medarbejder <span style="color:var(--danger)">*</span></label>
+          <select id="manual-employee"></select>
+        </div>
+        <div class="form-group">
+          <label>Type <span style="color:var(--danger)">*</span></label>
+          <select id="manual-type">
+            <option value="normal">Normal tid</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-group" id="manual-barsel-group" style="display:none">
+        <label>Terminsdato <span style="color:var(--danger)">*</span></label>
+        <input type="date" id="manual-terminsdato" style="width:100%;max-width:220px">
+      </div>
+      <div class="form-group" id="manual-start-group">
+        <label>Starttid <span style="color:var(--danger)">*</span></label>
+        <div class="dt-picker" id="manual-start"></div>
+      </div>
+      <div class="form-group" id="manual-til-dato-group" style="display:none">
+        <label>Til dato <span style="color:var(--text-light);font-size:12px;font-weight:normal">(valgfri – udfyldes ved periode)</span></label>
+        <input type="date" id="manual-til-dato" style="width:100%;max-width:220px">
+      </div>
+      <div class="form-group" id="manual-end-group">
+        <label>Sluttid <span style="color:var(--danger)">*</span></label>
+        <div class="dt-picker" id="manual-end"></div>
+      </div>
+      <div id="manual-normal-fields">
+        <div class="form-group">
+          <label>Tur-nummer</label>
+          <input type="text" id="manual-trip" placeholder="6 cifre" maxlength="6">
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>Pålæsning (minutter)</label>
+            <input type="number" id="manual-loading" min="0">
+          </div>
+          <div class="form-group">
+            <label>Aflæsning (minutter)</label>
+            <input type="number" id="manual-unloading" min="0">
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label>KM start</label>
+            <input type="number" id="manual-km-start" min="0">
+          </div>
+          <div class="form-group">
+            <label>KM slut</label>
+            <input type="number" id="manual-km-end" min="0">
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Registreringsnummer</label>
+          <input type="text" id="manual-reg" placeholder="Fx DF67671" autocomplete="off" style="text-transform:uppercase">
+          <div class="form-hint" id="manual-reg-hint" style="margin-top:4px;font-size:12px"></div>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+            <input type="checkbox" id="manual-salt" style="width:16px;height:16px;cursor:pointer">
+            Salttillæg
+          </label>
+        </div>
+      </div>
+      <div class="form-group" id="manual-pause-section">
+        <label style="font-weight:500">Pauser</label>
+        <div id="manual-pauses-list"></div>
+        <button type="button" class="btn btn-secondary" style="margin-top:6px;font-size:13px;padding:5px 14px" onclick="addManualPause()">+ Tilføj pause</button>
+      </div>
+      <div class="form-group">
+        <label>Kommentar</label>
+        <textarea id="manual-comment" rows="2"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-manual-activity')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmManualActivity()">Opret aktivitet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Pause modal -->
+<div id="modal-pause" class="modal-overlay">
+  <div class="modal" style="width:380px;max-width:95vw">
+    <div class="modal-header">
+      <h2 id="pause-modal-title">Pause 1</h2>
+      <button class="modal-close" onclick="closeModal('modal-pause')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Starttid <span style="color:var(--danger)">*</span></label>
+          <div class="dt-picker" id="pause-start"></div>
+        </div>
+        <div class="form-group">
+          <label>Sluttid <span style="color:var(--danger)">*</span></label>
+          <div class="dt-picker" id="pause-end"></div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-pause')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmPause()">Tilføj</button>
+    </div>
+  </div>
+</div>
+
+<!-- Prøvekørsel gem modal -->
+<div id="modal-proevekoersel" class="modal-overlay">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h2>Prøvekørsel</h2>
+      <button class="modal-close" onclick="closeModal('modal-proevekoersel')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Gem i mappe <span style="color:var(--danger)">*</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="proeve-folder" placeholder="Sti til mappe..." style="flex:1">
+          <button type="button" class="btn btn-secondary" onclick="browseProeveFolder()" id="proeve-browse-btn">Gennemse</button>
+        </div>
+      </div>
+      <div id="proeve-result" style="font-size:13px;color:var(--text-light)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-proevekoersel')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmProevekoersel()">Dan Excel</button>
+    </div>
+  </div>
+</div>
+
+<!-- PDF timesedler modal -->
+<div id="modal-pdf" class="modal-overlay">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h2>PDF-timesedler</h2>
+      <button class="modal-close" onclick="closeModal('modal-pdf')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fra dato <span style="color:var(--danger)">*</span></label>
+          <input type="date" id="pdf-from">
+        </div>
+        <div class="form-group">
+          <label>Til dato <span style="color:var(--danger)">*</span></label>
+          <input type="date" id="pdf-to">
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Medarbejder</label>
+        <select id="pdf-employee">
+          <option value="">Alle medarbejdere</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Gem i mappe <span style="color:var(--danger)">*</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="pdf-folder" placeholder="Sti til mappe..." style="flex:1">
+          <button type="button" class="btn btn-secondary" onclick="browsePdfFolder()" id="pdf-browse-btn">Gennemse</button>
+        </div>
+      </div>
+      <div id="pdf-result" style="font-size:13px;color:var(--text-light)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-pdf')">Annuller</button>
+      <button class="btn btn-secondary" onclick="sendAllTimesedler()" style="background:#317423;border-color:#317423;color:#fff">&#9993; Send timesedler</button>
+      <button class="btn btn-primary" onclick="generatePdfs()">Dan PDF'er</button>
+    </div>
+  </div>
+</div>
+
+<!-- Administration modal -->
+<div id="modal-admin" class="modal-overlay">
+  <div class="modal" style="width:720px;max-height:90vh;display:flex;flex-direction:column">
+    <div class="modal-header">
+      <h2>Administration</h2>
+      <button class="modal-close" onclick="closeModal('modal-admin')">&#215;</button>
+    </div>
+
+    <!-- Tab-knapper -->
+    <div style="display:flex;gap:4px;padding:12px 20px 0;border-bottom:1px solid var(--border)">
+      <button class="admin-tab-btn active" onclick="switchAdminTab('users')" id="admin-tab-users"
+              style="padding:7px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;cursor:pointer;background:var(--primary);color:#fff">
+        👤 Brugere
+      </button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('period')" id="admin-tab-period"
+              style="padding:7px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text)">
+        📅 Lønperiode
+      </button>
+      <button class="admin-tab-btn" onclick="switchAdminTab('log')" id="admin-tab-log"
+              style="padding:7px 16px;border:none;border-radius:6px 6px 0 0;font-size:13px;font-weight:600;cursor:pointer;background:var(--bg);color:var(--text)">
+        📋 Hændelseslog
+      </button>
+    </div>
+
+    <div class="modal-body" style="overflow-y:auto;flex:1">
+
+      <!-- Brugere-fane -->
+      <div id="admin-pane-users">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span style="font-size:13px;color:var(--text-light)">Aktive og inaktive brugere i systemet</span>
+          <button class="btn btn-primary" onclick="openCreateUserModal()" style="font-size:13px">+ Opret bruger</button>
+        </div>
+        <div id="users-table-wrap">
+          <table style="width:100%;border-collapse:collapse;font-size:13px">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:8px 10px;text-align:left">Navn</th>
+                <th style="padding:8px 10px;text-align:left">Initialer</th>
+                <th style="padding:8px 10px;text-align:left">Mail</th>
+                <th style="padding:8px 10px;text-align:left">Rolle</th>
+                <th style="padding:8px 10px;text-align:left">Status</th>
+                <th style="padding:8px 10px;text-align:center">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="users-table-body">
+              <tr><td colspan="6" style="text-align:center;padding:20px;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Lønperiode-fane -->
+      <div id="admin-pane-period" style="display:none">
+        <p id="admin-period-text" style="font-size:14px;line-height:1.5;margin-bottom:12px"></p>
+        <div id="admin-result" style="font-size:13px;color:var(--text-light);margin-bottom:12px"></div>
+        <button id="admin-confirm-btn" class="btn btn-primary" onclick="confirmReopenPeriod()">📅 Ja, åbn lønperioden igen</button>
+      </div>
+
+      <!-- Hændelseslog-fane -->
+      <div id="admin-pane-log" style="display:none">
+        <div style="margin-bottom:10px;font-size:13px;color:var(--text-light)">De seneste 200 hændelser</div>
+        <table style="width:100%;border-collapse:collapse;font-size:12px">
+          <thead>
+            <tr style="background:var(--primary);color:#fff">
+              <th style="padding:7px 10px;text-align:left">Tidspunkt</th>
+              <th style="padding:7px 10px;text-align:left">Bruger</th>
+              <th style="padding:7px 10px;text-align:left">Hændelse</th>
+              <th style="padding:7px 10px;text-align:left">Detaljer</th>
+            </tr>
+          </thead>
+          <tbody id="audit-log-body">
+            <tr><td colspan="4" style="text-align:center;padding:20px;color:var(--text-light)">Indlæser...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-admin')">Luk</button>
+    </div>
+  </div>
+</div>
+
+<!-- Opret/rediger bruger modal -->
+<div id="modal-user-form" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2 id="user-form-title">Opret bruger</h2>
+      <button class="modal-close" onclick="closeModal('modal-user-form')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="user-form-id">
+      <div class="form-group">
+        <label>Navn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="user-form-name" placeholder="Fuldt navn">
+      </div>
+      <div class="form-group">
+        <label>Initialer <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="user-form-initials" placeholder="Fx STS" maxlength="10" style="text-transform:uppercase">
+      </div>
+      <div class="form-group">
+        <label>Mail</label>
+        <input type="email" id="user-form-email" placeholder="Fx sts@poulschou.dk">
+      </div>
+      <div class="form-group">
+        <label>Rolle <span style="color:var(--danger)">*</span></label>
+        <select id="user-form-role" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option value="">Indlæser roller...</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label id="user-form-password-label">Adgangskode <span style="color:var(--danger)">*</span></label>
+        <input type="password" id="user-form-password" placeholder="Ny adgangskode">
+        <span id="user-form-password-hint" style="display:none;font-size:12px;color:var(--text-light)">Lad være tom for at beholde eksisterende</span>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-user-form')">Annuller</button>
+      <button class="btn btn-primary" onclick="submitUserForm()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- Opret/rediger rolle modal -->
+<div id="modal-role-form" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2 id="role-form-title">Opret rolle</h2>
+      <button class="modal-close" onclick="closeModal('modal-role-form')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="role-form-id">
+      <div class="form-group">
+        <label>Rollenavn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="role-form-name" placeholder="fx chef" maxlength="30">
+        <div class="form-hint" id="role-form-name-hint" style="margin-top:4px;font-size:12px;color:var(--text-light)">Bruges internt – kun bogstaver, tal og underscore</div>
+      </div>
+      <div class="form-group">
+        <label>Visningsnavn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="role-form-display" placeholder="fx Chef">
+      </div>
+      <div class="form-group">
+        <label style="font-weight:600;margin-bottom:8px;display:block">Rettigheder</label>
+        <div id="role-form-permissions" style="display:flex;flex-direction:column;gap:8px"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-role-form')">Annuller</button>
+      <button class="btn btn-primary" onclick="submitRoleForm()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- Kør løn (CSV) bekræftelsesmodal -->
+<div id="modal-csv" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2>Kør løn (Danløn CSV)</h2>
+      <button class="modal-close" onclick="closeModal('modal-csv')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="csv-confirm-text" style="margin-bottom:16px;font-size:14px;line-height:1.5"></p>
+      <div class="form-group">
+        <label>Gem CSV-fil i mappe <span style="color:var(--danger)">*</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="csv-folder" placeholder="Sti til mappe..." style="flex:1">
+          <button type="button" class="btn btn-secondary" onclick="browseCsvFolder()" id="csv-browse-btn">Gennemse</button>
+        </div>
+      </div>
+      <div id="csv-result" style="font-size:13px;color:var(--text-light)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-csv')">Nej</button>
+      <button class="btn btn-success" onclick="confirmExportCsv()">Ja, lås periode og eksportér</button>
+    </div>
+  </div>
+</div>
+
+<!-- Employee modal -->
+<div id="modal-employee" class="modal-overlay">
+  <div class="modal" style="width:640px">
+    <div class="modal-header">
+      <h2 id="emp-modal-title">Opret medarbejder</h2>
+      <button class="modal-close" onclick="closeModal('modal-employee')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="emp-id">
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Aftale <span style="color:var(--danger)">*</span></label>
+          <select id="emp-agreement-kind">
+            <option value="">[Vælg aftale]</option>
+            <option value="hourly_fixed">Timelønnet, fast arbejdstid</option>
+            <option value="hourly_flexible">Timelønnet, ikke fastlagt arbejdstid</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Overenskomsttype <span style="color:var(--danger)">*</span></label>
+          <select id="emp-agreement-type"></select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Disponentgruppe</label>
+        <select id="emp-dispatcher-group">
+          <option value="">[Ingen afdeling]</option>
+          <option value="2 - Kran">2 - Kran</option>
+          <option value="4 - Makulering">4 - Makulering</option>
+          <option value="5 - Milj&#248;">5 - Milj&#248;</option>
+          <option value="8 - THG">8 - THG</option>
+          <option value="9 - BN">9 - BN</option>
+          <option value="10 - ISOPLUS-CHJ">10 - ISOPLUS-CHJ</option>
+        </select>
+      </div>
+
+      <div class="form-group" id="emp-cvr-group" style="display:none">
+        <label>CVR-nummer</label>
+        <select id="emp-cvr"></select>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Lønnummer <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="emp-number" placeholder="Fx 001" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>Førerkortnummer</label>
+          <input type="text" id="emp-card" placeholder="DK00000000000000">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fornavn <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="emp-firstname">
+        </div>
+        <div class="form-group">
+          <label>Efternavn <span style="color:var(--danger)">*</span></label>
+          <input type="text" id="emp-lastname">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Adresse</label>
+          <input type="text" id="emp-address">
+        </div>
+        <div class="form-group">
+          <label>Postnummer</label>
+          <input type="text" id="emp-postal" inputmode="numeric" maxlength="4">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>E-mail</label>
+        <input type="text" id="emp-email" placeholder="navn@firma.dk">
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Telefonnummer</label>
+          <input type="text" id="emp-phone" inputmode="numeric">
+        </div>
+        <div class="form-group">
+          <label>Mobilnummer</label>
+          <input type="text" id="emp-mobile" inputmode="numeric">
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ansættelsesdato <span style="color:var(--danger)">*</span></label>
+          <div id="emp-hire"></div>
+        </div>
+        <div class="form-group">
+          <label>Fratrædelsesdato</label>
+          <div id="emp-termination"></div>
+          <div class="form-hint">Udfyldes først ved fratrædelse (default 31-12-9999)</div>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="emp-active" checked> Aktiv
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="emp-fuldloennet" checked> Fuldlønnet
+          </label>
+        </div>
+      </div>
+
+      <hr>
+      <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">Timefordeling (14-dages periode)</h3>
+      <table style="font-size:13px" id="schedule-table">
+        <thead>
+          <tr><th>Dag</th><th>Lige uger</th><th>Ulige uger</th></tr>
+        </thead>
+        <tbody><!-- rows built by JS --></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-employee')">Annuller</button>
+      <button class="btn btn-primary" id="emp-save-btn" onclick="confirmEmployee()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vehicle create/edit modal -->
+<div id="modal-vehicle" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2 id="vehicle-modal-title">Opret vogn</h2>
+      <button class="modal-close" onclick="closeModal('modal-vehicle')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Registreringsnummer <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="vehicle-reg" placeholder="Fx BN47449">
+      </div>
+      <div class="form-group">
+        <label>Vognnummer <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="vehicle-num" placeholder="Fx 52">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-vehicle')">Annuller</button>
+      <button class="btn btn-danger hidden" id="vehicle-delete-btn" onclick="deleteVehicle()">Slet</button>
+      <button class="btn btn-primary" onclick="saveVehicle()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-reg-error" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>Ukendt registreringsnummer</h2>
+      <button class="modal-close" onclick="closeModal('modal-reg-error')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin:0;line-height:1.6">Registreringsnummeret er ikke genkendt fra Vognparken. Opret køretøjet før du opretter aktiviteten.</p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-primary" onclick="closeModal('modal-reg-error')">Luk</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Opret/rediger overenskomsttype ── -->
+<div id="modal-stamdata-agreement" class="modal-overlay">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2 id="stamdata-agreement-title">Overenskomsttype</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-agreement')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-agreement-id">
+      <div class="form-group">
+        <label>Navn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="stamdata-agreement-name" placeholder="fx Chauffør 1. år">
+      </div>
+      <div class="form-group">
+        <label>Timesats (kr) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="stamdata-agreement-rate" placeholder="0.00" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-agreement')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataAgreement()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Opret ny sats (overtid / tillæg) ── -->
+<div id="modal-stamdata-new-rate" class="modal-overlay">
+  <div class="modal" style="width:360px">
+    <div class="modal-header">
+      <h2 id="new-rate-title">Opret ny sats</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-new-rate')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="new-rate-type">
+      <div style="padding:10px 14px;background:#fffbe6;border:1px solid #f6d860;border-radius:6px;font-size:13px;margin-bottom:14px">
+        <strong>Husk:</strong> Den nye sats gemmes i databasen, men beregningsmotoren kender ikke reglen for hvornår den anvendes endnu. Kontakt systemudvikler for at tilføje beregningslogikken.
+      </div>
+      <div class="form-group">
+        <label>Betegnelse <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="new-rate-label" placeholder="fx Aften-overtid">
+      </div>
+      <div class="form-group">
+        <label>Sats (kr) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="new-rate-value" placeholder="0.00" step="0.01" min="0.01">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-new-rate')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmNewRate()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Opret ny løntypekode ── -->
+<div id="modal-stamdata-new-paytype" class="modal-overlay">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2>Opret ny løntypekode</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-new-paytype')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Betegnelse <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="new-paytype-label" placeholder="fx Konference">
+      </div>
+      <div class="form-group">
+        <label>Danløn-kode</label>
+        <input type="text" id="new-paytype-code" placeholder="fx 1234">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="new-paytype-incsv" style="width:16px;height:16px;cursor:pointer" checked>
+        <label for="new-paytype-incsv" style="margin:0;cursor:pointer">Medtag i CSV-eksport</label>
+      </div>
+      <div class="form-group">
+        <label>Antal-type i CSV</label>
+        <select id="new-paytype-qtytype" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option value="hours">Timer (decimal)</option>
+          <option value="count">Antal (heltal)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Sats-kilde i CSV</label>
+        <select id="new-paytype-ratesrc" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option value="hourly">Timesats (overenskomst)</option>
+          <option value="ot_before">Overtid 1 time før</option>
+          <option value="ot_13">Overtid 1-3 timer</option>
+          <option value="ot_extra">Øvrig overtid</option>
+          <option value="salt">Salttillæg</option>
+          <option value="overnight">Overnatning</option>
+          <option value="dagpenge">Dagpenge §56</option>
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="new-paytype-incrate" style="width:16px;height:16px;cursor:pointer" checked>
+        <label for="new-paytype-incrate" style="margin:0;cursor:pointer">Inkluder sats i CSV</label>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="new-paytype-inctotal" style="width:16px;height:16px;cursor:pointer">
+        <label for="new-paytype-inctotal" style="margin:0;cursor:pointer">Medtag total (antal × sats) som ekstra kolonne</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-new-paytype')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmNewPayType()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Rediger sats (overtid / tillæg) ── -->
+<div id="modal-stamdata-rate" class="modal-overlay">
+  <div class="modal" style="width:360px">
+    <div class="modal-header">
+      <h2 id="stamdata-rate-title">Rediger sats</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-rate')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-rate-id">
+      <input type="hidden" id="stamdata-rate-type">
+      <div class="form-group">
+        <label id="stamdata-rate-label-display" style="font-weight:600;color:var(--text)"></label>
+      </div>
+      <div class="form-group">
+        <label>Sats (kr) <span style="color:var(--danger)">*</span></label>
+        <input type="number" id="stamdata-rate-value" placeholder="0.00" step="0.01" min="0">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-rate')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataRate()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Rediger løntypekode ── -->
+<div id="modal-stamdata-paytype" class="modal-overlay">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2>Rediger løntypekode</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-paytype')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-paytype-id">
+      <div class="form-group">
+        <label>Type</label>
+        <input type="text" id="stamdata-paytype-label" placeholder="fx Normal løn">
+      </div>
+      <div class="form-group">
+        <label>Danløn-kode</label>
+        <input type="text" id="stamdata-paytype-code" placeholder="fx 1000">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:10px">
+        <input type="checkbox" id="stamdata-paytype-incsv" style="width:16px;height:16px;cursor:pointer">
+        <label for="stamdata-paytype-incsv" style="margin:0;cursor:pointer">Medtag i CSV-eksport</label>
+      </div>
+      <div class="form-group">
+        <label>Antal-type i CSV</label>
+        <select id="stamdata-paytype-qtytype" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option value="hours">Timer (decimal)</option>
+          <option value="count">Antal (heltal)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Sats-kilde i CSV</label>
+        <select id="stamdata-paytype-ratesrc" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:6px;font-size:14px">
+          <option value="hourly">Timesats (overenskomst)</option>
+          <option value="ot_before">Overtid 1 time før</option>
+          <option value="ot_13">Overtid 1-3 timer</option>
+          <option value="ot_extra">Øvrig overtid</option>
+          <option value="salt">Salttillæg</option>
+          <option value="overnight">Overnatning</option>
+          <option value="dagpenge">Dagpenge §56</option>
+        </select>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="stamdata-paytype-incrate" style="width:16px;height:16px;cursor:pointer" checked>
+        <label for="stamdata-paytype-incrate" style="margin:0;cursor:pointer">Inkluder sats i CSV</label>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="stamdata-paytype-inctotal" style="width:16px;height:16px;cursor:pointer">
+        <label for="stamdata-paytype-inctotal" style="margin:0;cursor:pointer">Medtag total (antal × sats) som ekstra kolonne</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-paytype')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataPayType()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Opret/rediger CVR nummer ── -->
+<div id="modal-stamdata-cvr" class="modal-overlay">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2 id="stamdata-cvr-title">CVR nummer</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-cvr')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-cvr-id">
+      <div class="form-group">
+        <label>CVR-nummer <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="stamdata-cvr-number" placeholder="fx 13246505" maxlength="20">
+      </div>
+      <div class="form-group">
+        <label>Firmanavn</label>
+        <input type="text" id="stamdata-cvr-company" placeholder="fx Poul Schou A/S">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-cvr')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataCvr()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-export-per-employee" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>Eksporter per medarbejder</h2>
+      <button class="modal-close" onclick="closeModal('modal-export-per-employee')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Eksporter for</label>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="emp-export-scope" value="all" checked onchange="empExportScopeChanged()"> Alle medarbejdere
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="emp-export-scope" value="group" onchange="empExportScopeChanged()"> Disponentgruppe
+          </label>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="radio" name="emp-export-scope" value="employee" onchange="empExportScopeChanged()"> Enkelt medarbejder
+          </label>
+        </div>
+      </div>
+      <div id="emp-export-group-row" class="form-group" style="display:none">
+        <label>Disponentgruppe</label>
+        <select id="emp-export-group-select" style="width:100%"></select>
+      </div>
+      <div id="emp-export-employee-row" class="form-group" style="display:none">
+        <label>Medarbejder</label>
+        <select id="emp-export-employee-select" style="width:100%"></select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-export-per-employee')">Annuller</button>
+      <button class="btn btn-primary" onclick="doExportPerEmployee()">&#128202; Eksporter</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-export-per-type" class="modal-overlay">
+  <div class="modal" style="width:400px">
+    <div class="modal-header">
+      <h2>Eksporter per fraværstype</h2>
+      <button class="modal-close" onclick="closeModal('modal-export-per-type')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label>Fraværstype</label>
+        <select id="export-per-type-select" style="width:100%">
+          <option value="">Al fravær</option>
+        </select>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-export-per-type')">Annuller</button>
+      <button class="btn btn-primary" onclick="doExportPerType()">&#128202; Eksporter</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-stamdata-absence" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2 id="stamdata-absence-title">Fraværstype</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-absence')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-absence-id">
+      <div class="form-group">
+        <label>Betegnelse</label>
+        <input type="text" id="stamdata-absence-label" placeholder="fx Omsorgsdage">
+      </div>
+      <div class="form-group" id="stamdata-absence-key-group" style="display:none">
+        <label style="color:var(--text-light);font-size:12px">Nøgle (genereres automatisk)</label>
+        <input type="text" id="stamdata-absence-key-display" disabled
+               style="background:var(--bg);color:var(--text-light);font-family:monospace;font-size:13px">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="stamdata-absence-active" style="width:16px;height:16px;cursor:pointer">
+        <label for="stamdata-absence-active" style="margin:0;cursor:pointer">Vis i fraværsvælger (aktiv)</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-absence')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataAbsence()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/js/app.js?v={{ app_js_mtime }}"></script>
+</body>
+</html>
