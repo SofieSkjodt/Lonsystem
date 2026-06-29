@@ -444,7 +444,7 @@ def bulk_auto_approve(
             flagged_count += 1
 
     log_action(db, current_user, "auto_approve_bulk", details=f"periode={period.start_date}, godkendt={approved_count}, flagget={flagged_count}")
-
+    db.commit()
     return {"approved": approved_count, "flagged": flagged_count}
 
 

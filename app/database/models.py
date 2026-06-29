@@ -149,7 +149,7 @@ class Activity(Base):
     salt_supplement = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     auto_approved = Column(Boolean, default=False, nullable=False, server_default="0")
-    auto_approval_flags = Column(JSON, nullable=False, default=list)
+    auto_approval_flags = Column(JSON, nullable=False, default=list, server_default='[]')
 
     employee = relationship("Employee", back_populates="activities")
     pay_period = relationship("PayPeriod", back_populates="activities")

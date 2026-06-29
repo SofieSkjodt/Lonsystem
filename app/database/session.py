@@ -100,6 +100,12 @@ def _migrate():
         if "deactivated_by" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN deactivated_by VARCHAR")
             conn.commit()
+        if "auto_approved" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN auto_approved BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+        if "auto_approval_flags" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN auto_approval_flags TEXT NOT NULL DEFAULT '[]'")
+            conn.commit()
 
 
 def _seed_roles():
