@@ -357,6 +357,8 @@ async function bulkAutoApprove() {
   const res = await POST(`/api/activities/auto-approve-pending${params}`, {});
   if (res) {
     toast(`Auto-godkendt: ${res.approved} aktiviteter. Flagget til gennemgang: ${res.flagged}.`);
+    const btn = document.getElementById("btn-auto-approve");
+    if (btn) btn.innerHTML = '<span class="auto-dot"></span>Autogodkendte';
     await refreshActivities();
   }
 }
