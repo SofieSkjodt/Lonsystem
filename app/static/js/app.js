@@ -1167,12 +1167,15 @@ function openManualActivityModal(empId = null, dateIso = null) {
     this.value = reg;
     const hint = document.getElementById("manual-reg-hint");
     if (!reg) { hint.textContent = ""; return; }
-    const v = state.vehicles.find(x => x.registration_number.toUpperCase() === reg);
+    const v = state.vehicles.find(x =>
+      x.registration_number.toUpperCase() === reg ||
+      x.vehicle_number.toUpperCase() === reg
+    );
     if (v) {
-      hint.textContent = `Vogn nr. ${v.vehicle_number} fundet`;
+      hint.textContent = `Vogn nr. ${v.vehicle_number} – reg. ${v.registration_number} fundet`;
       hint.style.color = "var(--success, #059669)";
     } else {
-      hint.textContent = "Registreringsnummer ikke fundet i Vognpark";
+      hint.textContent = "Registreringsnummer/vognnummer ikke fundet i Vognpark";
       hint.style.color = "var(--danger, #dc2626)";
     }
   };
@@ -1268,7 +1271,10 @@ async function confirmManualActivity() {
   }
 
   const regInput = document.getElementById("manual-reg").value.trim().toUpperCase();
-  const foundVehicle = regInput ? state.vehicles.find(x => x.registration_number.toUpperCase() === regInput) : null;
+  const foundVehicle = regInput ? state.vehicles.find(x =>
+    x.registration_number.toUpperCase() === regInput ||
+    x.vehicle_number.toUpperCase() === regInput
+  ) : null;
   if (regInput && !foundVehicle) {
     openModal("modal-reg-error");
     return;
