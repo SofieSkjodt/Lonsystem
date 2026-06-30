@@ -213,7 +213,8 @@ body {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   box-shadow: var(--shadow);
-  overflow: hidden;
+  overflow: auto;
+  max-height: calc(100vh - 210px);
 }
 
 table {
@@ -250,7 +251,7 @@ tbody tr.status-approved    { border-left: 3px solid var(--approved); }
 tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity: .65; }
 
 /* ── Aktivitetsgitter (chauffør × dag) ── */
-.grid-table { table-layout: fixed; min-width: 1100px; }
+.grid-table { table-layout: fixed; min-width: 1100px; border-collapse: separate; border-spacing: 0; }
 .grid-table thead th {
   background: #44546a;
   color: #fff;
@@ -259,6 +260,10 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
   font-size: 12px;
   text-transform: none;
   letter-spacing: 0;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  border-bottom: 2px solid #2e3d51;
 }
 .grid-table thead th:first-child {
   text-align: left;
@@ -270,14 +275,16 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 .grid-table thead th.today { background: var(--accent); }
 
 .grid-table tbody tr { cursor: default; }
-.grid-table tbody tr:nth-child(even) { background: #f6f7f9; }
-.grid-table tbody tr:hover { background: #f0f7ee; }
+.grid-table tbody tr:nth-child(even) td { background: #f6f7f9; }
+.grid-table tbody tr:hover td { background: #f0f7ee; }
 .grid-table tbody td {
   vertical-align: top;
   padding: 6px 4px;
   border-right: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
   min-height: 40px;
 }
+.grid-table tbody tr:last-child td { border-bottom: none; }
 .grid-table tbody td.emp-cell {
   font-weight: 600;
   font-size: 13px;
