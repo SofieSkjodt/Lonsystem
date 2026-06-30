@@ -307,7 +307,7 @@ function renderCellActivity(a) {
   }
   const title = `${a.employee_name}: ${formatTime(a.start_time)}–${formatTime(a.end_time)} (${formatDuration(a.duration_minutes)}) – ${statusLabel(a.status)}${a.is_manual ? " – manuel" : ""}`;
   const autoCls = (a.status === "approved" && a.auto_approved) ? " auto-approved" : "";
-  const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<sup title="Auto-godkendt">A</sup>` : "";
+  const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<span class="auto-dot" title="Auto-godkendt"></span>` : "";
   return `<div class="badge-group">
     <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
     <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>

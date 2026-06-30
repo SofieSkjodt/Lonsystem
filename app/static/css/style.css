@@ -305,6 +305,16 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 .time-badge.pending     { background: #44546a; }
 .time-badge.approved    { background: #27ae60; }
 .time-badge.auto-approved { background: var(--accent); }
+.auto-dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #f9a825;
+  margin-right: 4px;
+  vertical-align: middle;
+  flex-shrink: 0;
+}
 .time-badge.deactivated { background: #d93025; }
 .time-badge.absence     { font-size: 11px; letter-spacing: .3px; }
 .auto-approval-flags {
