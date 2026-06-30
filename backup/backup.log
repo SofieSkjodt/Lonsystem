@@ -57,3 +57,10 @@
 2026-06-29 08:00:02  INFO        Slettet gammel backup: lonsystem_2026-06-24_08-00.zip
 2026-06-29 08:00:02  INFO      Ryddede 1 backup(s) ældre end 5 dage.
 2026-06-29 08:00:02  INFO      === Backup færdig. 2 backup(s) i arkivet. ===
+2026-06-30 08:00:02  INFO      === Backup starter -> lonsystem_2026-06-30_08-00.zip ===
+2026-06-30 08:00:02  INFO        + lonsystem.db (688.0 KB)
+2026-06-30 08:00:02  INFO        + Overtid satser.xlsx
+2026-06-30 08:00:02  INFO        + Overenskomsttyper og timesatser.xlsx
+2026-06-30 08:00:02  INFO        + Afdelinger.xlsx
+2026-06-30 08:00:02  INFO      Backup gemt: lonsystem_2026-06-30_08-00.zip (97.6 KB)
+2026-06-30 08:00:02  INFO      === Backup færdig. 3 backup(s) i arkivet. ===
