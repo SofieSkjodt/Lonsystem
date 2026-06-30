@@ -288,9 +288,9 @@ function renderActivitiesTable() {
     el.addEventListener("click", () => openActivityDetail(parseInt(el.dataset.id)));
   });
 
-  // Dobbeltklik på tom celle -> opret aktivitet for medarbejder + dag
+  // Enkelt klik på celle -> opret aktivitet for medarbejder + dag
   body.querySelectorAll("td[data-emp-id]").forEach(td => {
-    td.addEventListener("dblclick", e => {
+    td.addEventListener("click", e => {
       if (e.target.closest(".time-badge")) return;
       openManualActivityModal(parseInt(td.dataset.empId), td.dataset.date);
     });
