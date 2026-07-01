@@ -95,7 +95,6 @@ class ActivityResponse(BaseModel):
     employee_name: str
     employee_number: str
     pay_period_id: int
-    trip_number: Optional[str]
     source: ActivitySource
     activity_type: str
     start_time: datetime
@@ -135,7 +134,6 @@ class ActivityCreate(BaseModel):
     activity_type: str = "normal"
     start_time: datetime
     end_time: datetime
-    trip_number: Optional[str] = Field(default=None, max_length=6)
     loading_minutes: Optional[int] = Field(default=None, ge=0)
     unloading_minutes: Optional[int] = Field(default=None, ge=0)
     comment: Optional[str] = Field(default=None, max_length=1000)
@@ -162,7 +160,6 @@ class ActivityCreate(BaseModel):
 
 
 class ActivityUpdate(BaseModel):
-    trip_number: Optional[str] = Field(default=None, max_length=6)
     activity_type: Optional[str] = None
     start_time: Optional[datetime] = None
     end_time: Optional[datetime] = None

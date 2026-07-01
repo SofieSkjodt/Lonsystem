@@ -398,7 +398,6 @@ function openActivityDetail(id) {
 
   document.getElementById("modal-activity-body").innerHTML = `
     <div class="detail-grid">
-      <div class="detail-item"><label>TurNR</label><span>${a.trip_number || "–"}</span></div>
       <div class="detail-item"><label>Vogn nr.</label><span>${a.vehicle_number || "–"}</span></div>
       <div class="detail-item"><label>KM start</label><span>${a.km_start != null ? a.km_start + " km" : "–"}</span></div>
       <div class="detail-item"><label>KM slut</label><span>${a.km_end != null ? a.km_end + " km" : "–"}</span></div>
@@ -707,6 +706,22 @@ function _dtOptions(max) {
   }).join("");
 }
 
+function _stackDatetimePicker(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const dateEl = el.querySelector(".dt-date");
+  const hourEl = el.querySelector(".dt-hour");
+  const sepEl  = el.querySelector(".dt-sep");
+  const minEl  = el.querySelector(".dt-min");
+  if (!dateEl || !hourEl || !sepEl || !minEl) return;
+  el.style.cssText = "display:flex;flex-direction:column;gap:6px;";
+  dateEl.style.width = "100%";
+  const timeRow = document.createElement("div");
+  timeRow.style.cssText = "display:flex;align-items:center;gap:6px;";
+  timeRow.append(hourEl, sepEl, minEl);
+  el.append(timeRow);
+}
+
 function buildDatetimePicker(id, isoValue) {
   const el = document.getElementById(id);
   if (!el) return;
@@ -985,7 +1000,7 @@ function updateManualTypeVisibility() {
       : `Starttid <span style="color:var(--danger)">*</span>`;
 
   if (isAbsence) {
-    ["manual-trip", "manual-loading", "manual-unloading", "manual-km-start", "manual-km-end", "manual-reg"].forEach(id => {
+    ["manual-loading", "manual-unloading", "manual-km-start", "manual-km-end", "manual-reg"].forEach(id => {
       document.getElementById(id).value = "";
     });
     document.getElementById("manual-reg-hint").textContent = "";
@@ -1095,7 +1110,7 @@ function renderManualPauses() {
   list.innerHTML = manualPauses.map((p, i) => `
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:4px;margin-bottom:4px;font-size:13px">
       <span style="font-weight:600;min-width:56px;color:var(--primary)">Pause ${i + 1}</span>
-      <span>${p[0].slice(11, 16)} – ${p[1].slice(11, 16)}</span>
+      <span>${p[0].slice(8,10)}.${p[0].slice(5,7)} ${p[0].slice(11,16)} – ${p[1].slice(8,10)}.${p[1].slice(5,7)} ${p[1].slice(11,16)}</span>
       <button type="button" onclick="deleteManualPause(${i})" style="margin-left:auto;background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;padding:0">&times;</button>
     </div>
   `).join("");
@@ -1109,40 +1124,17 @@ function addManualPause() {
   const dateStr = startIso.slice(0, 10);
   buildDatetimePicker("pause-start", dateStr + "T00:00");
   buildDatetimePicker("pause-end",   dateStr + "T00:00");
-  ["pause-start", "pause-end"].forEach(id => {
-    const dateEl = document.getElementById(id)?.querySelector(".dt-date");
-    if (dateEl) dateEl.style.display = "none";
-  });
+  _stackDatetimePicker("pause-start");
+  _stackDatetimePicker("pause-end");
   openModal("modal-pause");
-}
-
-function _adjustPauseDateIfNeeded(pauseIso, actStartIso, actEndIso) {
-  // Hvis aktiviteten krydser midnat og pausetidspunktet er i den tidlige del
-  // (HH:MM < aktivitetens starttid HH:MM), er pausen på næste dag.
-  if (!actStartIso || !actEndIso) return pauseIso;
-  const actStartDate = actStartIso.slice(0, 10);
-  const actEndDate   = actEndIso.slice(0, 10);
-  if (actEndDate <= actStartDate) return pauseIso; // ingen midnatskrydsning
-  const pauseTime    = pauseIso.slice(11, 16);
-  const actStartTime = actStartIso.slice(11, 16);
-  return pauseTime < actStartTime
-    ? actEndDate + pauseIso.slice(10)   // pausen er på næste dag
-    : actStartDate + pauseIso.slice(10);
 }
 
 function confirmPause() {
   const startIso = readDatetimePicker("pause-start");
   const endIso   = readDatetimePicker("pause-end");
   if (!startIso || !endIso) { toast("Angiv både start- og sluttidspunkt for pausen", "error"); return; }
-
-  // Ret pausedato hvis aktiviteten krydser midnat
-  const actStart = readDatetimePicker("manual-start");
-  const actEnd   = readDatetimePicker("manual-end");
-  const adjStart = _adjustPauseDateIfNeeded(startIso, actStart, actEnd);
-  const adjEnd   = _adjustPauseDateIfNeeded(endIso,   actStart, actEnd);
-
-  if (adjEnd <= adjStart) { toast("Sluttidspunkt skal være efter starttidspunkt", "error"); return; }
-  manualPauses.push([adjStart + ":00", adjEnd + ":00"]);
+  if (endIso <= startIso) { toast("Sluttidspunkt skal være efter starttidspunkt", "error"); return; }
+  manualPauses.push([startIso + ":00", endIso + ":00"]);
   renderManualPauses();
   closeModal("modal-pause");
 }
@@ -1159,7 +1151,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
       .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
   buildDatetimePicker("manual-start", null);
   buildDatetimePicker("manual-end",   null);
-  ["manual-trip", "manual-loading", "manual-unloading", "manual-comment", "manual-km-start", "manual-km-end"]
+  ["manual-loading", "manual-unloading", "manual-comment", "manual-km-start", "manual-km-end"]
     .forEach(id => document.getElementById(id).value = "");
   document.getElementById("manual-reg").value = "";
   document.getElementById("manual-reg-hint").textContent = "";
@@ -1394,7 +1386,6 @@ async function confirmManualActivity() {
       start_time: start + ":00",
       end_time: end + ":00",
       terminsdato: terminsdato,
-      trip_number: document.getElementById("manual-trip").value || null,
       loading_minutes: parseInt(document.getElementById("manual-loading").value) || null,
       unloading_minutes: parseInt(document.getElementById("manual-unloading").value) || null,
       comment: document.getElementById("manual-comment").value || null,
