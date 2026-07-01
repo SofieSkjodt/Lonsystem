@@ -604,12 +604,11 @@ def export_csv(period_start: Optional[str] = None,
     writer = csv.writer(output, delimiter=";")
 
     def fmt(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
+        return str(round(v * 100))
 
     pt = _get_pay_type_data(db)
     _code     = lambda k: pt.get(k, {}).get("code", "1")
     _in_csv   = lambda k: pt.get(k, {}).get("in_csv", True)
-    _qty_type = lambda k: pt.get(k, {}).get("qty_type", "hours")
     _inc_rate = lambda k: pt.get(k, {}).get("inc_rate", True)
     _inc_tot  = lambda k: pt.get(k, {}).get("inc_total", False)
 
@@ -647,7 +646,7 @@ def export_csv(period_start: Optional[str] = None,
         for key, qty, rate in raw_rows:
             if not _in_csv(key) or qty == 0:
                 continue
-            qty_fmt = str(int(qty)) if _qty_type(key) == "count" else fmt(qty)
+            qty_fmt = fmt(qty)
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
             if _inc_rate(key):
                 row.append(fmt(rate))
@@ -710,12 +709,11 @@ def export_csv_post(body: ExportCsvRequest,
     writer = csv.writer(output, delimiter=";")
 
     def fmt(v: float) -> str:
-        return f"{v:.2f}".replace(".", ",")
+        return str(round(v * 100))
 
     pt = _get_pay_type_data(db)
     _code     = lambda k: pt.get(k, {}).get("code", "1")
     _in_csv   = lambda k: pt.get(k, {}).get("in_csv", True)
-    _qty_type = lambda k: pt.get(k, {}).get("qty_type", "hours")
     _inc_rate = lambda k: pt.get(k, {}).get("inc_rate", True)
     _inc_tot  = lambda k: pt.get(k, {}).get("inc_total", False)
 
@@ -752,7 +750,7 @@ def export_csv_post(body: ExportCsvRequest,
         for key, qty, rate in raw_rows:
             if not _in_csv(key) or qty == 0:
                 continue
-            qty_fmt = str(int(qty)) if _qty_type(key) == "count" else fmt(qty)
+            qty_fmt = fmt(qty)
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
             if _inc_rate(key):
                 row.append(fmt(rate))
