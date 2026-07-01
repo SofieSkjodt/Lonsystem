@@ -248,12 +248,19 @@ function renderActivitiesTable() {
     }).join("")}
   </tr>`;
 
-  // Gruppér aktiviteter: employee_id -> dato-ISO -> [aktiviteter]
+  // Gruppér aktiviteter: employee_id -> dato-ISO -> [{a, role}]
+  // Midnatskrydsende aktiviteter optræder i to kolonner: "start" og "end"
   const byEmpDay = {};
   for (const a of activities) {
-    const dayIso = a.start_time.slice(0, 10);
-    (byEmpDay[a.employee_id] ??= {})[dayIso] ??= [];
-    byEmpDay[a.employee_id][dayIso].push(a);
+    const startDate = a.start_time.slice(0, 10);
+    const endDate   = a.end_time.slice(0, 10);
+    (byEmpDay[a.employee_id] ??= {})[startDate] ??= [];
+    if (endDate !== startDate) {
+      byEmpDay[a.employee_id][startDate].push({a, role: "start"});
+      (byEmpDay[a.employee_id][endDate] ??= []).push({a, role: "end"});
+    } else {
+      byEmpDay[a.employee_id][startDate].push({a, role: "full"});
+    }
   }
 
   // Rækker: medarbejdere (filtreret hvis valgt), sorteret efter navn
@@ -276,9 +283,13 @@ function renderActivitiesTable() {
     for (const d of days) {
       const iso = isoOf(d);
       const acts = (byEmpDay[emp.id]?.[iso] || [])
-        .sort((a, b) => a.start_time.localeCompare(b.start_time));
+        .sort((x, y) => {
+          const tx = x.role === "end" ? x.a.end_time : x.a.start_time;
+          const ty = y.role === "end" ? y.a.end_time : y.a.start_time;
+          return tx.localeCompare(ty);
+        });
       const weekend = d.getDay() === 0 || d.getDay() === 6;
-      cells += `<td class="${weekend ? "weekend" : ""}" data-emp-id="${emp.id}" data-date="${iso}">${acts.map(a => renderCellActivity(a)).join("")}</td>`;
+      cells += `<td class="${weekend ? "weekend" : ""}" data-emp-id="${emp.id}" data-date="${iso}">${acts.map(({a, role}) => renderCellActivity(a, role)).join("")}</td>`;
     }
     tr.innerHTML = cells;
     body.appendChild(tr);
@@ -298,7 +309,7 @@ function renderActivitiesTable() {
   });
 }
 
-function renderCellActivity(a) {
+function renderCellActivity(a, role = "full") {
   const k = a.is_manual ? "(K) " : "";
   const warn = a.status === "approved" ? "" : (a.is_under_4h ? " ❗" : (a.is_over_12h ? " ⚠️" : ""));
   if (a.activity_type !== "normal") {
@@ -309,6 +320,16 @@ function renderCellActivity(a) {
   const title = `${a.employee_name}: ${formatTime(a.start_time)}–${formatTime(a.end_time)} (${formatDuration(a.duration_minutes)}) – ${statusLabel(a.status)}${a.is_manual ? " – manuel" : ""}`;
   const autoCls = (a.status === "approved" && a.auto_approved) ? " auto-approved" : "";
   const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<span class="auto-dot" title="Auto-godkendt"></span>` : "";
+  if (role === "start") {
+    return `<div class="badge-group">
+      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
+    </div>`;
+  }
+  if (role === "end") {
+    return `<div class="badge-group">
+      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
+    </div>`;
+  }
   return `<div class="badge-group">
     <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
     <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
