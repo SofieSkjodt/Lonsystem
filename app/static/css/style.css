@@ -397,7 +397,8 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
   width: 560px;
   max-width: 96vw;
   max-height: 90vh;
-  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
   animation: modal-in .15s ease;
 }
 
@@ -412,6 +413,7 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
   display: flex;
   align-items: center;
   justify-content: space-between;
+  flex-shrink: 0;
 }
 .modal-header h2 { font-size: 16px; font-weight: 600; }
 .modal-close {
@@ -426,13 +428,14 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 }
 .modal-close:hover { background: var(--bg); }
 
-.modal-body { padding: 20px; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; min-height: 0; max-height: calc(90vh - 140px); }
 .modal-footer {
   padding: 14px 20px;
   border-top: 1px solid var(--border);
   display: flex;
   gap: 8px;
   justify-content: flex-end;
+  flex-shrink: 0;
 }
 
 /* ── Forms ── */
