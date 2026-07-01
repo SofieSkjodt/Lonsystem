@@ -52,7 +52,21 @@
       "PowerShell(cd \"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\\\\app\\\\static\\\\js\"; Get-Content app.js | Select-Object -Index \\(395..415\\) | ForEach-Object -Begin {$i=396} -Process { \"${i}: $_\"; $i++ })",
       "Skill(run)",
       "Skill(run:*)",
-      "PowerShell(d=\"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\"; Get-ChildItem \"$d\\\\.claude\\\\skills\" -Recurse -Filter \"SKILL.md\" 2>$null | Select-String \"description:\" | Select-Object -First 5)"
+      "PowerShell(d=\"C:\\\\Users\\\\SofieThraneSkjødt\\\\OneDrive - Poul Schou A S\\\\Skrivebord\\\\Lønsystem\"; Get-ChildItem \"$d\\\\.claude\\\\skills\" -Recurse -Filter \"SKILL.md\" 2>$null | Select-String \"description:\" | Select-Object -First 5)",
+      "PowerShell(Stop-Process -Id 26052 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 26052 -ErrorAction SilentlyContinue)",
+      "PowerShell(git add app/routers/payroll_router.py app/static/js/app.js app/templates/index.html)",
+      "PowerShell(git add app/routers/payroll_router.py)",
+      "PowerShell(git commit -m \"fix: Danl�n CSV uden decimaltal - gang antal/sats/total med 100\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\check_emp.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_ddd.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_card.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_card2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_full.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_dst.py\")",
+      "PowerShell(pip show tzdata 2>&1)",
+      "PowerShell(python -c \"import tzdata; print\\(tzdata.__file__\\)\")",
+      "PowerShell(git add -u)"
     ]
   }
 }

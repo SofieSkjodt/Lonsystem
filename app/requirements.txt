@@ -8,3 +8,4 @@ reportlab==4.2.2
 bcrypt==5.0.0
 itsdangerous==2.2.0
 PyJWT[crypto]>=2.8.0
+tzdata==2026.2

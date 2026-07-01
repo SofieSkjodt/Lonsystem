@@ -7,7 +7,7 @@ Format: EU Regulation 165/2014 / Commission Regulation 2016/799 Annex II.
 Daily record structure (consecutive, variable length):
   2 bytes: previousRecordLength
   2 bytes: recordLength (total bytes incl. this 4-byte header)
-  4 bytes: date (Unix timestamp, midnight UTC+1)
+  4 bytes: date (Unix timestamp, midnight UTC)
   2 bytes: dailyPresenceCounter
   2 bytes: activityDayDistance (km)
   N*2 bytes: ActivityChangeInfo records
@@ -17,7 +17,10 @@ ActivityChangeInfo (2 bytes, big-endian):
   bit 14:     driverStatus (0=single, 1=crew)
   bit 13:     cardPresent
   bits 12-11: activity (00=rest, 01=availability, 10=work, 11=driving)
-  bits 10-0:  minutes from midnight (0-1439)
+  bits 10-0:  minutes from midnight (0-1439), also relative to UTC midnight
+
+Alle klokkeslæt i filen (dato og minutter) er UTC. Outputtet fra denne parser
+konverteres til dansk lokal tid (Europe/Copenhagen, DST-korrekt) i _build_activities.
 """
 
 import re
@@ -26,6 +29,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 ACTIVITY_REST = 0
 ACTIVITY_AVAILABILITY = 1
@@ -37,6 +41,14 @@ MIN_RECORD_SIZE = 12
 # Plausible timestamp range: 2020-01-01 to 2035-01-01
 TS_MIN = 1577836800
 TS_MAX = 2051222400
+
+_UTC = ZoneInfo("UTC")
+_COPENHAGEN = ZoneInfo("Europe/Copenhagen")
+
+
+def _utc_to_local(dt: datetime) -> datetime:
+    """Konverter en naiv UTC-datetime (fra filens rå tidsstempler) til naiv dansk lokal tid."""
+    return dt.replace(tzinfo=_UTC).astimezone(_COPENHAGEN).replace(tzinfo=None)
 
 
 @dataclass
@@ -118,10 +130,18 @@ def _extract_vehicle_registration(data: bytes) -> str | None:
 
 
 def _extract_card_number(data: bytes) -> str:
-    """Find the tachograph card number (e.g. DK00000178901010) in the file."""
+    """
+    Find the tachograph card number in the file.
+
+    Kortnummerfeltet (CardNumber) er ifølge EU-tachografspecifikationen 16 tegn:
+    14 tegn driverIdentification + 1 ciffer udskiftningsindeks + 1 ciffer
+    fornyelsesindeks. De sidste 2 cifre hører ikke til det stabile kortnummer
+    (de ændrer sig når kortet fornys/udskiftes), så vi matcher det fulde
+    16-tegns felt for sikker lokalisering, men returnerer kun de første 14 tegn.
+    """
     match = re.search(rb'[A-Z]{2}\d{14}', data)
     if match:
-        return match.group(0).decode("ascii")
+        return match.group(0)[:14].decode("ascii")
     return "UNKNOWN"
 
 
@@ -348,14 +368,14 @@ def _build_activities(
         if last_minute <= first_work_minute:
             continue
 
-        start_time = day_dt + timedelta(
+        start_time = _utc_to_local(day_dt + timedelta(
             hours=first_work_minute // 60,
             minutes=first_work_minute % 60,
-        )
-        end_time = day_dt + timedelta(
+        ))
+        end_time = _utc_to_local(day_dt + timedelta(
             hours=last_minute // 60,
             minutes=last_minute % 60,
-        )
+        ))
 
         # Calculate time in each activity between work start and end
         total_minutes = last_minute - first_work_minute
@@ -382,8 +402,8 @@ def _build_activities(
                 mins[activity] += duration
             if duration > 0:
                 seg = (
-                    day_dt + timedelta(minutes=seg_start),
-                    day_dt + timedelta(minutes=seg_end),
+                    _utc_to_local(day_dt + timedelta(minutes=seg_start)),
+                    _utc_to_local(day_dt + timedelta(minutes=seg_end)),
                 )
                 segments.append((seg[0], seg[1], ACTIVITY_NAMES.get(activity, "work")))
                 if activity == ACTIVITY_REST:
