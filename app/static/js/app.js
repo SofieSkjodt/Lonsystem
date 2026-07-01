@@ -507,6 +507,7 @@ function openActivityDetail(id) {
   });
 
   openModal("modal-activity");
+  document.getElementById("modal-activity-body").scrollTop = 0;
 }
 
 const SEGMENT_LABELS = {
