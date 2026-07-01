@@ -1182,6 +1182,22 @@
   </div>
 </div>
 
+<div id="modal-absence-conflict" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2>Advarsel: kørsel på samme dag</h2>
+      <button class="modal-close" onclick="closeModal('modal-absence-conflict')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p id="absence-conflict-msg" style="margin:0;line-height:1.6"></p>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-absence-conflict')">Annuller</button>
+      <button class="btn btn-warning" onclick="confirmAbsenceConflict()">Fortsæt alligevel</button>
+    </div>
+  </div>
+</div>
+
 <div id="modal-reg-error" class="modal-overlay">
   <div class="modal" style="width:440px">
     <div class="modal-header">

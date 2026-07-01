@@ -44,6 +44,7 @@ const PERMISSION_LABELS = {
 };
 
 let manualPauses = [];
+let _absenceConflictConfirmed = false;
 
 const WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const TYPE_LABELS = { normal: "Normal tid" };
@@ -1217,6 +1218,12 @@ function openManualActivityModal(empId = null, dateIso = null) {
   openModal("modal-manual-activity");
 }
 
+function confirmAbsenceConflict() {
+  _absenceConflictConfirmed = true;
+  closeModal("modal-absence-conflict");
+  confirmManualActivity();
+}
+
 function getWeekdayDates(from, to) {
   const dates = [];
   const d = new Date(from + "T12:00:00");
@@ -1280,6 +1287,32 @@ async function confirmManualActivity() {
     openModal("modal-reg-error");
     return;
   }
+
+  // ── Advarsel: fravær på dag med kørsel ───────────────────────────────────
+  if (ABSENCE_TYPES.has(actType) && !_absenceConflictConfirmed) {
+    const datesToCheck = isRange
+      ? getWeekdayDates(start.slice(0, 10), tilDato)
+      : [start.slice(0, 10)];
+    const conflicts = datesToCheck.filter(date =>
+      state.activities.some(a =>
+        a.employee_id === empId &&
+        a.activity_type === "normal" &&
+        a.start_time.slice(0, 10) === date &&
+        a.status !== "deactivated"
+      )
+    );
+    if (conflicts.length > 0) {
+      const dateList = conflicts.map(d => {
+        const [y, m, day] = d.split("-");
+        return `${day}-${m}-${y}`;
+      }).join(", ");
+      document.getElementById("absence-conflict-msg").innerHTML =
+        `Der er allerede registreret kørsel på følgende dag${conflicts.length > 1 ? "e" : ""}:<br><strong>${dateList}</strong><br><br>Vil du alligevel registrere fraværet?`;
+      openModal("modal-absence-conflict");
+      return;
+    }
+  }
+  _absenceConflictConfirmed = false;
 
   // ── Periodetilstand: opret én aktivitet per hverdag ──────────────────────
   if (isRange) {
