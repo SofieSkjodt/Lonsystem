@@ -415,14 +415,21 @@ def build_teknisk():
 
     heading(doc, "Parsingsflow", 2, "4.1")
     for i, step in enumerate([
-        ("Filidentifikation", "Kortnummer udtrækkes med regex: DK/DE/SE/PL + 14 cifre + 2 kontrolcifre."),
+        ("Filidentifikation", "Kortnummeret matches som landekode (2 bogstaver) + 14 cifre (fx DK00000012666013), men kun de første 14 tegn (landekode + 12 cifre = driverIdentification) er det stabile kortnummer der bruges til medarbejder-matching. De sidste 2 cifre er cardReplacementIndex + cardRenewalIndex og ændrer sig når kortet udskiftes/fornys."),
         ("Lokalisering af poster", "Heuristisk søgning efter timestamp-mønstre identificerer starten på daglige poster."),
-        ("Afkodning af ActivityChangeInfo", "2-byte records afkodes bit-for-bit: slot (bit 15-14), aktivitetstype (bit 13-11), minutter fra midnat (bit 10-0)."),
+        ("Afkodning af ActivityChangeInfo", "2-byte records afkodes bit-for-bit: slot (bit 15-14), aktivitetstype (bit 13-11), minutter fra midnat (bit 10-0). Dato og minutter er UTC."),
         ("Aktivitetstyper", "Rest (hvil), Availability (rådighedstid), Work (andet arbejde), Driving (kørsel)."),
+        ("Tidszonekonvertering", "Start/sluttid, segmenter og pauseintervaller konverteres fra UTC til dansk lokal tid (Europe/Copenhagen, DST-korrekt via Python-modulet zoneinfo) inden de gemmes."),
         ("Bygning af ParsedActivity", "Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt."),
         ("Duplikat-tjek", "Eksisterende aktiviteter med samme medarbejder + starttid springes over."),
     ], 1):
         bullet(doc, f"{step[1]}", f"{i}. {step[0]}: ")
+
+    note_box(doc,
+        "zoneinfo kræver på Windows Python-pakken tzdata (installeret via requirements.txt), "
+        "da Windows ikke leverer sin egen IANA-tidszonedatabase.",
+        "TEKNISK NOTE"
+    )
 
     heading(doc, "Import-flow", 2, "4.2")
     body(doc, (
@@ -1089,20 +1096,33 @@ def build_bruger():
         "Klik på 'Importer .ddd' i den venstre menu.",
         "Vælg 'Vælg filer' for at importere enkeltfiler, eller 'Vælg mappe' for at importere alle .ddd-filer i en mappe.",
         "En Windows-filhåndterings-dialog åbner sig – naviger til filerne og bekræft valget.",
-        "Systemet importerer filerne og viser et resume: antal importerede, antal sprunget over (allerede importeret) og eventuelle fejl.",
+        "Systemet importerer filerne og viser et resume: antal importerede, antal opdaterede, antal sprunget over og eventuelle fejl.",
     ], 1):
         bullet(doc, step, f"Trin {i}: ")
 
     note_box(doc,
         "Systemet springer automatisk allerede importerede aktiviteter over "
         "(baseret på medarbejder + starttidspunkt). Det er sikkert at importere "
-        "samme mappe flere gange.",
+        "samme mappe flere gange. 'Sprunget over' kan dog OGSÅ betyde at ingen "
+        "medarbejder i systemet har det kortnummer der findes i filen – der vises "
+        "ingen fejlmelding i dette tilfælde, se Forudsætninger nedenfor.",
         "GODT AT VIDE"
     )
 
     heading(doc, "Forudsætninger", 2, "3.2")
     bullet(doc, "Chaufføren skal være oprettet i systemet med korrekt førerkortnummer.")
-    bullet(doc, "Førerkortnummeret i systemet skal matche kortnummeret i .ddd-filen (f.eks. DK00000178901010).")
+    bullet(doc, (
+        "Førerkortnummeret i systemet skal være de første 14 tegn af kortnummeret: "
+        "landekode (2 bogstaver) + 12 cifre (f.eks. DK000000178901) – IKKE de sidste "
+        "2 cifre. De sidste 2 cifre er kortets udskiftnings-/fornyelsesindeks og "
+        "ændrer sig hver gang kortet fornys, så de er ikke en del af det stabile "
+        "kortnummer."
+    ))
+    bullet(doc, (
+        "Stemmer kortnummeret ikke, importeres 0 aktiviteter uden fejlmelding – kun "
+        "'Sprunget over'-tallet stiger. Kontrollér og ret kortnummeret i Stamdata "
+        "hvis en import ikke giver de forventede aktiviteter."
+    ))
 
     # ── 4. Aktivitetstabellen ─────────────────────────────────────────────
     heading(doc, "Aktivitetstabellen", 1, "4")
@@ -1483,6 +1503,10 @@ def build_bruger():
              "Åbn aktiviteten og brug 'Ret starttid/sluttid'. Brug 'Fortryd rettelse' hvis du fortryder."],
             ["Chauffør er ikke i systemet (import fejler)",
              "Opret medarbejderen med korrekt førerkortnummer og importér .ddd-filen igen."],
+            ["Import viser 0 importerede og mange 'sprunget over', selvom filerne er nye",
+             "Kontrollér medarbejderens førerkortnummer i Stamdata: det skal være de "
+             "første 14 tegn (landekode + 12 cifre), uden de sidste 2 udskiftnings-/"
+             "fornyelsescifre. Ret nummeret og importér filen igen."],
             ["Aktivitet skal deles i to (f.eks. skift af tur)",
              "Brug 'Opdel aktivitet' og angiv tidspunktet for opdelingen."],
             ["Aktivitet skal ignoreres",
