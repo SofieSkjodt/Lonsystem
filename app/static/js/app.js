@@ -1837,6 +1837,8 @@ function renderPayrollPreview(data) {
   state.hasUnresolvedPending = !!data.has_unresolved_pending;
   document.getElementById("payroll-period-label").textContent =
     `${formatDateShort(data.period_start)} – ${formatDateShort(data.period_end)}`;
+  const koerLoenBtn = document.getElementById("btn-koer-loen");
+  if (koerLoenBtn) koerLoenBtn.disabled = state.hasUnresolvedPending;
 
   if (data.has_unresolved_pending) {
     const warn = document.createElement("div");

@@ -680,6 +680,23 @@ def export_csv_post(body: ExportCsvRequest,
     """
     period = _resolve_period(body.period_start, db)
 
+    pending_count = (
+        db.query(Activity)
+        .join(Employee, Activity.employee_id == Employee.id)
+        .filter(
+            Employee.active == True,
+            Activity.status == ActivityStatus.pending,
+            Activity.start_time >= period.start_date.isoformat(),
+            Activity.start_time < (period.end_date + timedelta(days=1)).isoformat(),
+        )
+        .count()
+    )
+    if pending_count > 0:
+        raise HTTPException(
+            400,
+            "Lønnen kan ikke køres – der er aktiviteter, der afventer godkendelse eller deaktivering.",
+        )
+
     period.status = PayPeriodStatus.closed
     period.closed_at = datetime.utcnow()
     period.closed_by = current_user.initials
