@@ -339,6 +339,12 @@ Manuel dismiss: "Ændring foretaget"-knap (id: `btn-anciennitet-done`) → `dism
 
 ---
 
+## DDD-import (parsers/ddd_parser.py)
+Filens dato/minutter er **UTC** – konverteres til Europe/Copenhagen (DST-korrekt via `zoneinfo`) i `_build_activities` for start_time/end_time/segments/pause_intervals. Kræver `tzdata`-pakken (i requirements.txt – Windows har ingen egen IANA-tidszonedatabase).
+**Kortnummer**: rå felt i filen er 16 tegn (`[A-Z]{2}\d{14}`), men kun de første 14 tegn (`driverIdentification`) er det stabile nummer til medarbejder-matching – sidste 2 cifre er udskiftnings-/fornyelsesindeks og ændrer sig ved kortfornyelse. `_extract_card_number()` matcher det fulde felt, returnerer kun de første 14 tegn.
+
+---
+
 ## Danløn CSV-struktur (payroll_router.py)
 
 Kolonner: `CVR ; medarbejdernr ; Danløn-kode ; timer ; sats`

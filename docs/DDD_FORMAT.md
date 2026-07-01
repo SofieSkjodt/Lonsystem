@@ -55,7 +55,7 @@ Ingen PyPI-biblioteker til .ddd-parsing eksisterer. Systemet bruger en **custom 
 ```
 prevRecordLength (2 bytes)
 recordLength     (2 bytes)  ← total record size incl. this header
-date             (4 bytes)  ← Unix timestamp, midnight UTC+1
+date             (4 bytes)  ← Unix timestamp, midnight UTC (bekræftet ved byte-analyse 2026-07-01)
 dailyPresenceCounter (2 bytes)
 activityDayDistance  (2 bytes) ← km kørt denne dag
 activityChangeInfo   (N × 2 bytes)
@@ -67,14 +67,26 @@ bit 15:     slot (0=chauffør, 1=medchauffør)
 bit 14:     driverStatus (0=enkelt, 1=besætning)
 bit 13:     kortStatus
 bits 12-11: aktivitet (00=hvil, 01=rådighed, 10=arbejde, 11=kørsel)
-bits 10-0:  minutter fra midnat (0–1439)
+bits 10-0:  minutter fra midnat (0–1439), også relativt til UTC-midnat
 ```
 
-**Kort-nummer:** Plaintext ASCII-streng, mønster `[A-Z]{2}\d{14}` (fx `DK00000178901010`).
+⚠️ Dato og minutter i filen er **UTC**, ikke dansk lokal tid. `ddd_parser.py` konverterer
+start/slut-tider, segmenter og pauseintervaller til Europe/Copenhagen (DST-korrekt via
+`zoneinfo`) i `_build_activities`. Kræver `tzdata`-pakken på Windows (tilføjet i
+`requirements.txt`), da Windows ikke har sin egen IANA-tidszonedatabase.
+
+**Kort-nummer (CardNumber):** Feltet er ifølge EU-tachografspecifikationen 16 tegn:
+`[A-Z]{2}\d{14}` i rå bytes (fx `DK00000012666013`), men kun de **første 14 tegn**
+(`driverIdentification`, fx `DK000000126660`) er det stabile kortnummer der bruges til
+medarbejder-matching. De sidste 2 cifre er `cardReplacementIndex` + `cardRenewalIndex`,
+som ændrer sig hver gang kortet udskiftes/fornys – de gemmes derfor ikke som del af
+`tachograph_card_number`. Bekræftet ved byte-analyse: en længde-markør (`0x0e` = 14)
+går umiddelbart forud for feltet i filen, og feltet efterfølges direkte af
+kortudstederens navn (`RIGSPOLITICHEFEN...`) uden separator.
 
 **Bekræftet output fra testfil:**
 - 81 arbejdsdage korrekt udtrukket
-- Start/sluttider minutpræcise
+- Start/sluttider minutpræcise (efter UTC→lokal-konvertering)
 - Aktivitetsprocenter beregnet korrekt
 
 ## Fejlhåndtering og split
@@ -92,7 +104,7 @@ I dette tilfælde markeres aktiviteten automatisk som 🔴 Rød (deaktiveret).
 
 ## Åbne punkter
 
-- [ ] Bekræft Python-bibliotek til .ddd-parsing
+- [x] Bekræft Python-bibliotek til .ddd-parsing – ingen PyPI-bibliotek findes; custom parser i `ddd_parser.py` er bekræftet korrekt (kortnummer + UTC→lokal tid rettet 2026-07-01)
 - [ ] Sti til inputmappe
 - [ ] Frekvens for automatisk scanning (fx hvert X minut, eller ved knap-tryk)
 - [ ] Hvad sker der med .ddd-filer der allerede er indlæst? (duplikat-håndtering)
