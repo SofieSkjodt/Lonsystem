@@ -42,11 +42,12 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 - Vagter under 4 timer → automatisk 🔴 Rød, kræver manuel godkendelse
 - Godkendelse kræver initialer og begrundelse
 
-### Overtime (se `OVERTIME_RULES.md`)
-- Tidlig overarbejde: kl. 05:00–06:00 → +44,54 kr./time
-- Normalt overarbejde (1.-3. time over 7:24): +44,54 kr./time
-- Ekstra overarbejde (over 3 timer): +109,40 kr./time
-- Søn-/helligdage: al tid = ekstra overarbejde
+### Overtime (se `OVERTIME_RULES.md` – opdateret 2026-07-02)
+- Tidlig overarbejde: kl. 05:00–06:00 → +44,54 kr./time (fortærer IKKE normaltids-loftet)
+- Normalt overarbejde (op til 3 t i kl. 06-18/18-21): +44,54 kr./time
+- Ekstra overarbejde (nat 21-05, samt over 3 t): +109,40 kr./time
+- Registreret normaltid (7/7,5/8 t) kan kun forbruges i tidsrummet 06-18; loftet deles pr. dag på tværs af flere aktiviteter, og hører til vagten (kan krydse midnat) medmindre vagten starter på en søndag/helligdag
+- Søndage/helligdage: al kørt tid → kode 1 + kode 9, uanset tidspunkt. Lørdag har INGEN særregel – regnes altid som en normal hverdag med lørdagens eget (typisk 0) loft
 
 ### Ubekvem tid
 - Kl. 18:00–23:00: +46,93 kr./time

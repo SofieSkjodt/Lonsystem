@@ -37,6 +37,26 @@ og genindlæses ved hvert kald:
 - Alle timer betales med medarbejderens timesats (fra "Overenskomsttyper og timesatser.xlsx");
   tillægget lægges **oveni** for overtidstimer.
 - Verificeret mod dokumentets 3 eksempler i `_test_overtime.py` (alle OK).
+- **Loftet deles pr. dag, ikke pr. aktivitet (2026-07-02):** har en dag flere godkendte
+  aktiviteter (fx efter en opdeling), deler de normaltids-/OT13-loftet i stedet for at hver
+  aktivitet får sit eget friske loft. `calculate_overtime()` tager imod og videresender det
+  resterende loft via `normal_remaining`/`ot13_remaining`.
+
+## Vagter der krydser midnat, lørdag/søndag/helligdag
+
+- **Loftet hører til vagten** (den dag den startede), ikke til kalenderdagen. En vagt der
+  starter fredag aften og fortsætter ind i lørdag bruger fredagens loft, indtil det er brugt
+  op – `calculate_overtime()`s kronologiske gennemløb håndterer det automatisk uden at vagten
+  splittes.
+- **Søndage/helligdage er undtagelsen:** de har en loft-uafhængig regel ("alle kørte timer →
+  kode 9, uanset tidspunkt"). En vagt der STARTER på en søndag/helligdag splittes derfor altid
+  ved midnat (`_split_into_day_pieces()` i `payroll_router.py`) – søndagsdelen får søndagens
+  regel, resten falder tilbage til den følgende dags egne regler.
+- **Lørdag har ingen særregel** (fjernet 2026-07-02): lørdag regnes altid som en normal
+  hverdag via `calculate_overtime()`, med lørdagens egne garanterede timer (typisk 0) som loft.
+  Er loftet 0, giver den almindelige tidsvindues-logik automatisk "første op til 3 dagtimer →
+  kode 8, resten → kode 9" uden særkode. Se `calculators/day_type.py` og
+  `memory/project_lonsystem_midnight_split.md` for den fulde baggrund og verifikation.
 
 ## Lønperioder
 

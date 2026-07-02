@@ -135,9 +135,11 @@ separat af `_process_import_results()`:
 | Returværdi | Årsag |
 |---|---|
 | `new` | Ny aktivitet oprettet |
-| `updated` | Aktivitet fandtes allerede, men manglede km-start/km-slut som blev udfyldt |
+| `updated` | Aktivitet fandtes allerede – km-start/km-slut blev udfyldt, og/eller aktiviteten blev UDVIDET fordi den nye udlæsning har et senere `end_time` (se nedenfor) |
 | `skipped_unknown_card` | Intet førerkortnummer i systemet matcher filens kortnummer |
-| `skipped_duplicate` | Aktiviteten er allerede importeret (samme medarbejder + starttid) |
+| `skipped_duplicate` | Aktiviteten er allerede importeret (samme medarbejder + starttid), og den nye udlæsning tilføjer intet nyt |
+
+**Udvidelse ved senere kortudlæsning (rettet 2026-07-02):** Matcher en ny parset aktivitet på `(employee_id, start_time, source=tachograph)`, men har et SENERE `end_time` end den eksisterende (fx fordi kortet først blev læst af midt på en vagt og senere igen efter vagtens afslutning), udvides `end_time`/`segments`/`pause_intervals`/procentfelterne til den nye, mere komplette version – i stedet for at blive sprunget over som duplikat. Var aktiviteten allerede `approved` eller `deactivated`, genåbnes den til `pending` (approved_by/approved_at/deactivated_by nulstilles), så den udvidede tid skal godkendes igen, før den tæller med i løn. Før denne rettelse blev kun km-felterne opdateret ved duplikat, og resten af den nye tid gik tabt for altid ved delvise kortudlæsninger.
 
 `scan_ddd_folder()` returnerer `(results, errors)` – filer der ikke kan parses
 (uanset om det sker via mappescanning eller enkeltfil-valg) havner i `errors` i
@@ -168,4 +170,4 @@ I dette tilfælde markeres aktiviteten automatisk som 🔴 Rød (deaktiveret).
 - [x] Bekræft Python-bibliotek til .ddd-parsing – ingen PyPI-bibliotek findes; custom parser i `ddd_parser.py` er bekræftet korrekt (kortnummer + UTC→lokal tid rettet 2026-07-01)
 - [ ] Sti til inputmappe
 - [ ] Frekvens for automatisk scanning (fx hvert X minut, eller ved knap-tryk)
-- [x] Hvad sker der med .ddd-filer der allerede er indlæst? (duplikat-håndtering) – springes over som `skipped_duplicate`, adskilt fra `skipped_unknown_card`; begge vises i pop-up og logges i hændelsesloggen (2026-07-02)
+- [x] Hvad sker der med .ddd-filer der allerede er indlæst? (duplikat-håndtering) – springes over som `skipped_duplicate` HVIS der intet nyt er; har den nye fil en senere sluttid, udvides aktiviteten i stedet (se ovenfor). Adskilt fra `skipped_unknown_card`; begge vises i pop-up og logges i hændelsesloggen (2026-07-02)

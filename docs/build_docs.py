@@ -422,8 +422,8 @@ def build_teknisk():
         ("Dagsstart", "Hver dags aktivitetsarray starter altid med en hvil-post ved minut 0 (videreført status fra dagen før, ikke en reel pause). Findes der en ekstra hvil-post lige derefter, er det chaufførens faktiske dagsstart – en kort pause inden arbejdet begynder – og den bruges som visningsstart for dagen."),
         ("Tidszonekonvertering", "Start/sluttid, segmenter og pauseintervaller konverteres fra UTC til dansk lokal tid (Europe/Copenhagen, DST-korrekt via Python-modulet zoneinfo) inden de gemmes."),
         ("Bygning af ParsedActivity", "Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt."),
-        ("Duplikat-tjek", "Eksisterende aktiviteter med samme medarbejder + starttid springes over."),
-        ("Import af aktivitet", "_import_activity() returnerer 'new', 'updated', 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret) – hver årsag tælles separat."),
+        ("Duplikat-tjek/udvidelse", "Findes der allerede en aktivitet med samme medarbejder + starttid, opdateres km-data hvis de mangler. Har den nye fil desuden et SENERE sluttidspunkt end den eksisterende aktivitet (fx fordi kortet først blev læst af midt på en vagt og senere igen efter vagtens afslutning), udvides aktiviteten (sluttid, segmenter, pauser, procentfordeling) i stedet for at blive sprunget over – ellers ville den ekstra tid gå tabt for altid. Var aktiviteten allerede godkendt/deaktiveret, genåbnes den til 'afventende', så den udvidede tid skal godkendes igen (rettet 2026-07-02)."),
+        ("Import af aktivitet", "_import_activity() returnerer 'new' (ny aktivitet), 'updated' (eksisterende aktivitet fik km-data udfyldt og/eller blev udvidet med en senere sluttid), 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret, intet nyt at tilføje) – hver årsag tælles separat."),
         ("Km-start/km-slut", "_extract_daily_odometer() finder et separat array af (km, tidsstempel)-par i filen ved kæde-validering (mindst 5 elementer med præcis 20 bytes' afstand, ingen fast offset). km_start = km-standen tættest på dagens beregnede startminut; km_end = km_start + dagens egen kørte distance."),
     ], 1):
         bullet(doc, f"{step[1]}", f"{i}. {step[0]}: ")
@@ -493,10 +493,9 @@ def build_teknisk():
     for step in [
         "Pauseintervaller fratrækkes i de tidsrum de afholdes (korrekt placering i tillægsvindue).",
         "Arbejdstimerne opdeles i 4 vinduer: before (05-06), day (06-18), evening (18-21), night (21-05).",
-        "Day-timer sammenlignes med normaltid for dagen: timer op til normaltid = normale timer, overskydende tæller mod OT_13.",
-        "OT_13-puljen er max 3 timer: day-overtid fylder først, derefter evening-timer. Resterende evening- og alle night-timer går til OT_EXTRA.",
-        "Night-timer (21-05) er altid OT_EXTRA.",
-        "Normaltimer = min(faktiske day-timer, normaltid for dagen fra medarbejderens timefordeling).",
+        "Alle arbejdstimer tæller med i normal_hours (kode 1) uanset vindue – men det REGISTREREDE normaltids-loft (fra medarbejderens timefordeling, fx 7/7,5/8 t) kan kun forbruges af timer i day-vinduet (06-18). Nat-, før- og aftentimer er altid rent tillæg og fortærer ikke loftet (rettet 2026-07-02, se OBS nedenfor).",
+        "Day-timer der overskrider det (uforbrugte) normaltids-loft går til OT_13, op til et loft på 3 timer – derefter evening-timer, i den rækkefølge de forekommer kronologisk.",
+        "Resterende evening-timer (når OT_13-puljen på 3 timer er brugt op) og alle night-timer går til OT_EXTRA.",
         "Resultat: OvertimeResult med normal_hours, ot_before_hours, ot_13_hours, ot_extra_hours samt beregnede tillæg i kr.",
     ]:
         bullet(doc, step)
@@ -505,6 +504,61 @@ def build_teknisk():
         "Pauser skal altid registreres korrekt, da de fratrækkes i det præcise tidsvindue de afholdes. "
         "En pause kl. 20:00 fratrækkes i OT_13-vinduet og reducerer dermed tillægget korrekt.",
         "VIGTIGT"
+    )
+    note_box(doc,
+        "Frem til 2026-07-02 fortærede nat-, før- og aftentimer også normaltids-loftet, hvilket "
+        "gjorde for mange senere dagtimer til overarbejde for medarbejdere med tidlig morgenstart. "
+        "Reglen er rettet, og calculate_overtime() kan nu tage imod og videresende det resterende "
+        "loft (normal_remaining/ot13_remaining) fra en tidligere aktivitet SAMME dag, så loftet "
+        "deles pr. dag og ikke nulstilles pr. aktivitet (relevant når en dag er delt i flere "
+        "godkendte aktiviteter, fx efter en opdeling).",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Vagter der krydser midnat", 2, "5.3")
+    body(doc, (
+        "Normaltids-/OT_13-loftet hører til vagten – den dag den startede – og fortsætter "
+        "uændret hen over midnat, så længe det ikke er brugt op. Et eksempel: en vagt fra "
+        "fredag kl. 20:30 til lørdag kl. 08:02 bruger fredagens loft for hele vagten; er "
+        "fredagens 7 timer slet ikke rørt endnu (fordi aften/nat/'1 time før' aldrig fortærer "
+        "det), fylder lørdagsmorgenens dagtimer bare videre op i det samme loft. Dette kræver "
+        "ingen særlig kode – calculate_overtime()s kronologiske gennemløb af tidssegmenter "
+        "håndterer det automatisk, når vagten IKKE splittes."
+    ))
+    body(doc, (
+        "Søndage og helligdage har derimod en loft-uafhængig regel (se afsnit 5.4): "
+        "\"alle kørte timer → kode 9, uanset tidspunkt\". Den regel kan ikke deles med en "
+        "efterfølgende hverdags tidsvindues-baserede beregning, så en vagt der STARTER på en "
+        "søndag/helligdag splittes altid i to ved midnat – søndagsdelen får søndagens regel, "
+        "resten falder tilbage til den følgende dags egne regler."
+    ))
+    note_box(doc,
+        "_split_into_day_pieces() i payroll_router.py udfører splittet. Om en aktivitet skal "
+        "splittes afgøres af classify_day(aktivitetens startdato) – kun søndag og helligdage "
+        "(inkl. halvdagshelligdage) udløser split. Lørdag og almindelige hverdage splittes ALDRIG, "
+        "uanset hvor mange kalenderdage vagten strækker sig over (bekræftet af bruger 2026-07-02).",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Lørdage, søndage og helligdage (SH-betaling)", 2, "5.4")
+    body(doc, (
+        "Ud over de tre almindelige tillægstyper gælder særlige regler for lørdage, søndage og "
+        "helligdage, implementeret i calculators/day_type.py. Dagtypen afgøres af classify_day() "
+        "ud fra ugedag og helligdagskalenderen – en helligdag trumfer altid lørdag/søndag."
+    ))
+    header_table(doc,
+        ["Dagtype", "Regel"],
+        [
+            ["Lørdag", "Regnes ALTID som en normal hverdag via calculate_overtime(), med lørdagens egne garanterede timer (typisk 0) som loft. Er loftet 0, giver den almindelige dagvindues-logik automatisk 'første op til 3 dagtimer → kode 8, resten → kode 9' – uden særkode (rettet 2026-07-02; den tidligere særregel for lørdag er fjernet)."],
+            ["Søndag / heldagshelligdag", "Alle garanterede timer → kode 4 (fuldlønnet) / kode 63 (timelønnet), additivt oveni kørselslønnen. Alle kørte timer → kode 1 + kode 9, UANSET tidspunkt (tids-tillæg tilsidesættes)."],
+            ["1. maj (halvdagshelligdag, fri fra 12:00)", "Garanti/2 → kode 4/63. Kørsel før 12:00 → kode 1. Kørsel efter 12:00: første 3 timer → kode 8, resten → kode 9."],
+            ["Grundlovsdag (halvdagshelligdag, fri fra 12:00)", "Garanti/2 → kode 4/63. Kørsel før 12:00 → kode 1. Kørsel efter 12:00: ALLE timer → kode 9 (intet kode 8-trin)."],
+        ]
+    )
+    note_box(doc,
+        "Reglerne er bekræftet af bruger 2026-06-23 (søndag/helligdag) og 2026-07-02 (lørdag). "
+        "Se afsnit 5.3 for hvordan vagter der krydser midnat ind i/ud af disse dage håndteres.",
+        "BEMÆRK"
     )
 
     # ── 6. Timesatser og overenskomst ─────────────────────────────────────
@@ -1141,6 +1195,15 @@ def build_bruger():
         "GODT AT VIDE"
     )
     note_box(doc,
+        "Bliver et førerkort læst af flere gange (fx først midt på en vagt og senere igen "
+        "efter vagtens afslutning), genkender systemet nu automatisk den mere komplette "
+        "udlæsning og UDVIDER den eksisterende aktivitet i stedet for at springe den over "
+        "(rettet 2026-07-02). Var aktiviteten allerede godkendt, bliver den automatisk sat "
+        "tilbage til 'Afventer', så den udvidede tid skal godkendes igen, før den tæller med "
+        "i lønkørslen.",
+        "GODT AT VIDE"
+    )
+    note_box(doc,
         "Alle importkørsler logges under Brugerstyring → Hændelseslog med samme "
         "opsummering, så du kan slå det op igen senere – også selvom pop-up'en er lukket.",
         "GODT AT VIDE"
@@ -1506,6 +1569,29 @@ def build_bruger():
             ["Salttillæg",         "Tillæg pr. time for kørsel med salt (registreret på aktiviteten). Sats fra Stamdata (Tillæg-fanen)."],
             ["Overnatning",        "Fast sats pr. overnatning (antal forekomster × sats). Sats fra Stamdata (Tillæg-fanen)."],
         ]
+    )
+
+    heading(doc, "Lørdage, søndage og helligdage", 2, "9.5")
+    body(doc, (
+        "Lørdage, søndage og helligdage har deres egne lønkoder ud over de tre almindelige "
+        "tillæg (kode 1, 7, 8 og 9). Du behøver ikke gøre noget særligt ved registreringen – "
+        "systemet genkender automatisk dagtypen ud fra helligdagskalenderen og ugedagen."
+    ))
+    header_table(doc,
+        ["Dag", "Hvad sker der?"],
+        [
+            ["Lørdag",   "Regnes som en almindelig hverdag. Har medarbejderen ingen garanterede timer den lørdag (det typiske), bliver kørte timer automatisk til kode 8/9 efter samme regler som en hverdags overarbejde."],
+            ["Søndag / helligdag", "Garanterede timer udbetales som kode 4 (fuldlønnet) eller kode 63 (timelønnet), oveni evt. kørsel. Alt kørt arbejde går til kode 1 + kode 9 – uanset klokkeslæt."],
+            ["1. maj / Grundlovsdag", "Halve helligdage: fri fra kl. 12:00. Kørsel før 12 tæller normalt, kørsel efter 12 følger særlige regler for disse dage."],
+        ]
+    )
+    note_box(doc,
+        "En vagt der starter aftenen/natten før en søndag eller helligdag og fortsætter ind i "
+        "den, vil i prøvekørslen og PDF-timesedlen kunne vise sig som to linjer i stedet for én "
+        "– én for delen inden midnat, én for delen efter. Det er korrekt: de to dele følger hver "
+        "sin dags regler. En vagt der fortsætter fra en almindelig hverdag/lørdag ind i en anden "
+        "almindelig hverdag/lørdag vises derimod stadig som én sammenhængende linje.",
+        "GODT AT VIDE"
     )
 
     # ── 10. Vigtige regler ────────────────────────────────────────────────
