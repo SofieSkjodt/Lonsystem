@@ -1881,10 +1881,18 @@ function renderPayrollPreview(data) {
   const container = document.getElementById("payroll-preview-container");
   container.innerHTML = "";
   state.hasUnresolvedPending = !!data.has_unresolved_pending;
+  state.periodClosed = data.period_status === "closed";
   document.getElementById("payroll-period-label").textContent =
     `${formatDateShort(data.period_start)} – ${formatDateShort(data.period_end)}`;
   const koerLoenBtn = document.getElementById("btn-koer-loen");
-  if (koerLoenBtn) koerLoenBtn.disabled = state.hasUnresolvedPending;
+  if (koerLoenBtn) koerLoenBtn.classList.toggle("btn-muted", state.hasUnresolvedPending || state.periodClosed);
+
+  if (data.period_status === "closed") {
+    const closedWarn = document.createElement("div");
+    closedWarn.className = "alert-banner mb-16";
+    closedWarn.innerHTML = `<span class="icon">🔒</span><div class="text"><h4>Perioden er låst</h4>Lønnen er allerede kørt for denne periode. Åbn perioden igen under Administration, hvis der skal foretages ændringer.</div>`;
+    container.appendChild(closedWarn);
+  }
 
   if (data.has_unresolved_pending) {
     const warn = document.createElement("div");
@@ -2038,6 +2046,10 @@ async function confirmProevekoersel() {
 }
 
 async function exportCsv() {
+  if (state.periodClosed) {
+    toast("Lønperioden er allerede låst – lønnen er allerede kørt for denne periode.", "error");
+    return;
+  }
   if (state.hasUnresolvedPending) {
     toast("Lønnen kan ikke køres – der er aktiviteter, der afventer handling. Godkend eller deaktiver dem først.", "error");
     return;
