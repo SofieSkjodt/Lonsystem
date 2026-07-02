@@ -9,8 +9,10 @@ Tre tillægstyper (satser fra "Overtid satser.xlsx"):
                              de første 3 (bekræftet af bruger 10/6-2026)
 
 Normaltid pr. dag kommer fra medarbejderens timefordeling (lige/ulige uger).
-Alle arbejdstimer tæller med i forbruget af normaltid (jf. dokumentets
-eksempel 1, hvor kl. 4-6 tæller med i de arbejdede timer).
+Alle arbejdstimer tæller med i normal_hours (kode 1), men de REGISTREREDE
+normaltimer (7/7,5/8 t) kan kun forbruges i tidsrummet 06-18 – arbejde uden
+for dette vindue (nat, "1 time før", aften) er altid rent tillæg og fortærer
+ikke normaltids-loftet (bekræftet af bruger 2026-07-02).
 
 Beregningen er daglig (pr. aktivitet).
 """
@@ -140,22 +142,22 @@ def calculate_overtime(
         result.normal_hours += duration
 
         if window == "night":
-            # 21-05: Øvrigt overtid-tillæg + forbruger normaltid
+            # 21-05: Øvrigt overtid-tillæg. Registreret normaltid kan kun
+            # forbruges i tidsrummet 06-18, så nattetimer fortærer ikke loftet.
             result.ot_extra_hours += duration
-            normal_remaining = max(Decimal("0"), normal_remaining - duration)
         elif window == "before":
-            # 05-06: "Overtid 1 time før"-tillæg + forbruger normaltid
+            # 05-06: "Overtid 1 time før" regnes separat og fortærer ikke
+            # normaltids-loftet (bekræftet af bruger 2026-07-02).
             result.ot_before_hours += duration
-            normal_remaining = max(Decimal("0"), normal_remaining - duration)
         elif window == "evening":
-            # 18-21: OT 1-3-tillæg (op til 3 timer), derefter Øvrig-tillæg
+            # 18-21: OT 1-3-tillæg (op til 3 timer), derefter Øvrig-tillæg.
+            # Ligger uden for 06-18, så det fortærer heller ikke normaltids-loftet.
             in_13 = min(duration, ot13_remaining)
             result.ot_13_hours += in_13
             ot13_remaining -= in_13
             overflow = duration - in_13
             if overflow > 0:
                 result.ot_extra_hours += overflow
-            normal_remaining = max(Decimal("0"), normal_remaining - duration)
         else:
             # 06-18: forbruger normaltid; overtid ud over kap → supplement-tillæg
             as_normal = min(duration, normal_remaining)

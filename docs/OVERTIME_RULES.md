@@ -20,8 +20,16 @@ og genindlæses ved hvert kald:
 ## Normaltid
 
 - Normaltid pr. dag kommer fra medarbejderens **timefordeling** (lige/ulige uger, indtastet ved oprettelse).
-- **Alle** arbejdstimer tæller med i forbruget af normaltid – også timer kl. 21-05 og 05-06
-  (jf. dokumentets eksempel 1: arbejde kl. 4-14 med normaltid 7 → 1 øvrig + 1 før + 5 normal + 3 OT 1-3).
+- **Alle** arbejdstimer tæller med i normal_hours (kode 1, alle giver normal løn), men det
+  **registrerede** normaltids-loft (7/7,5/8 t) kan kun forbruges i tidsrummet **kl. 06-18**.
+  Arbejde uden for dette vindue (nat 21-05, "1 time før" 05-06, aften 18-21) er altid rent
+  tillæg og fortærer ikke loftet – ellers "blot overarbejde" oveni.
+  **Rettet 2026-07-02:** den oprindelige gengivelse af dokumentets eksempel 1 herunder
+  (5 normal + 3 OT 1-3) var en fejlfortolkning af kravdokumentet, bekræftet af bruger.
+  Korrekt for kl. 4-14 med normaltid 7: nat (04-05) og før (05-06) giver hver 1 tillægstime
+  uden at røre loftet; af de 8 timer i 06-14 dækker loftet de første 7 (ren normaltid), og
+  den sidste time overskrider loftet → 1 OT 1-3. Total kode 1 (alle arbejdstimer) = 10 t;
+  fordelt som 1 øvrig + 1 før + 1 OT 1-3 tillæg oveni.
 
 ## Beregning
 

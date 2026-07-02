@@ -100,7 +100,10 @@
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\query6.py\")",
       "PowerShell(cd app; python -m py_compile calculators/overtime.py calculators/day_type.py routers/payroll_router.py; echo \"compile exit=$LASTEXITCODE\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_finn.py\")",
-      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\commit_msg.txt\")"
+      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\commit_msg.txt\")",
+      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\commit_msg2.txt\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\query_thomas.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_thomas.py\")"
     ]
   }
 }
