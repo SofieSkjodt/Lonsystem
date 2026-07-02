@@ -383,6 +383,8 @@ OT_EXTRA_KEY  = "Øvrigt overtid"   # NB: med 't' (ikke 'g')
 ```
 Semantik (v15+): `normal_hours = total_hours` (alle timer efter pausefradrag). OT-koder er supplement-tillæg oven på normaltidsløn, ikke erstatning.
 
+**Loft deles pr. dag, ikke pr. aktivitet (2026-07-02):** `_calculate_employee()` i `payroll_router.py` initialiserer `day_normal_remaining`/`day_ot13_remaining` ÉN gang pr. kalenderdag (før løkken over `acts_today`) og videresender dem til `calculate_overtime()`/`calculate_special_day_overtime()` via `normal_remaining`/`ot13_remaining`/`kode8_remaining`-parametrene; resultatet indeholder `ot.normal_remaining_after`/`ot.ot13_remaining_after` til næste aktivitet samme dag. Uden dette bliver 7-timers normalloft og 3-timers OT13-loft nulstillet for hver aktivitet, hvilket underberegner Øvrigt overtid (kode 9), når én dag er delt i flere godkendte aktiviteter (fx efter split eller flere separat godkendte DDD-fragmenter).
+
 ## Pausehåndtering (activities.py + overtime.py)
 `_duration_minutes(a)` i `activities.py` fratrækker `pause_intervals` fra brutto-varighed → bruges til "Sum, effektiv tid" i UI og `is_under_4h`/`is_over_12h`.  
 `_calculate_employee()` i `payroll_router.py` sender pauser til `calculate_overtime()` som `[(datetime, datetime), ...]` → `_subtract_pauses()` fjerner dem fra arbejdsintervallerne FØR timefordeling.  

@@ -37,6 +37,11 @@ class OvertimeResult:
     ot_extra_hours: Decimal = Decimal("0")    # Øvrigt overtid
     sh_kode8_hours: Decimal = Decimal("0")   # additiv supplement kode 8 på særlige dage
     sh_kode9_hours: Decimal = Decimal("0")   # additiv supplement kode 9 på særlige dage
+    # Resterende normaltids-/OT13-loft EFTER denne aktivitet – videreføres til næste
+    # aktivitet SAMME dag, når en dag er delt i flere godkendte aktiviteter, så loftet
+    # deles for hele dagen i stedet for at blive nulstillet pr. aktivitet.
+    normal_remaining_after: Decimal = Decimal("0")
+    ot13_remaining_after: Decimal = Decimal("0")
     supplements: dict = field(default_factory=dict)
 
     def supplement_total(self) -> Decimal:
@@ -100,6 +105,8 @@ def calculate_overtime(
     normal_daily_hours: Decimal,
     pause_intervals: list[tuple[datetime, datetime]] | None = None,
     rates: dict | None = None,
+    normal_remaining: Decimal | None = None,
+    ot13_remaining: Decimal | None = None,
 ) -> OvertimeResult:
     """
     Beregn timefordelingen for én aktivitet (ét skift).
@@ -107,13 +114,17 @@ def calculate_overtime(
     (fra timefordelingen, lige/ulige uge).
     pause_intervals: faktiske pauser – fratrækkes i det tidsrum de afholdes,
     så der ikke gives tillæg for tid, hvor der ikke arbejdes.
+    normal_remaining/ot13_remaining: valgfrit resterende loft videreført fra en
+    tidligere aktivitet SAMME dag (når dagen er delt i flere godkendte
+    aktiviteter) – uden angivelse startes der forfra fra
+    normal_daily_hours/OT_13_MAX.
     """
     result = OvertimeResult()
     if rates is None:
         rates = load_overtime_rates()
 
-    normal_remaining = Decimal(str(normal_daily_hours))
-    ot13_remaining = OT_13_MAX
+    normal_remaining = Decimal(str(normal_daily_hours)) if normal_remaining is None else normal_remaining
+    ot13_remaining = OT_13_MAX if ot13_remaining is None else ot13_remaining
 
     work_intervals = _subtract_pauses(start, end, pause_intervals or [])
 
@@ -163,4 +174,6 @@ def calculate_overtime(
         OT_13_KEY:     result.ot_13_hours     * rates.get(OT_13_KEY,     Decimal("0")),
         OT_EXTRA_KEY:  result.ot_extra_hours  * rates.get(OT_EXTRA_KEY,  Decimal("0")),
     }
+    result.normal_remaining_after = normal_remaining
+    result.ot13_remaining_after = ot13_remaining
     return result

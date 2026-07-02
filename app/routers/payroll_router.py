@@ -24,6 +24,7 @@ from database.models import AppUser
 
 from calculators.overtime import (
     OT_13_KEY,
+    OT_13_MAX,
     OT_BEFORE_KEY,
     OT_EXTRA_KEY,
     calculate_overtime,
@@ -249,6 +250,12 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                 totals["sh_timeloennet"] += sh_h
             total_kr += sh_h * hourly_rate
 
+        # Normaltids-/OT13-loft deles på tværs af dagens aktiviteter (ikke nulstillet
+        # pr. aktivitet), så en dag der er delt i flere godkendte aktiviteter (fx efter
+        # split) regnes som ét sammenhængende skift.
+        day_normal_remaining = guaranteed_today
+        day_ot13_remaining = OT_13_MAX
+
         if not acts_today:
             days.append({
                 "date": cur.isoformat(),
@@ -303,12 +310,18 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         ot = calculate_overtime(
                             act.start_time, act.end_time,
                             guaranteed_today, pauses, ot_rates,
+                            normal_remaining=day_normal_remaining,
+                            ot13_remaining=day_ot13_remaining,
                         )
+                        day_normal_remaining = ot.normal_remaining_after
+                        day_ot13_remaining = ot.ot13_remaining_after
                     else:
                         ot = calculate_special_day_overtime(
                             act.start_time, act.end_time,
                             day_type, guaranteed_today, pauses,
+                            kode8_remaining=day_ot13_remaining,
                         )
+                        day_ot13_remaining = ot.ot13_remaining_after
                     day_salt_hours = ot.total_hours if act.salt_supplement else Decimal("0")
                     day_salt_kr = day_salt_hours * salt_rate
                     day_kr = (
