@@ -572,7 +572,7 @@ function renderSegmentTable(a) {
 
 function splitAtSegment(isoTime) {
   openSplitModal();
-  document.getElementById("split-at").value = isoTime.slice(0, 16);
+  setDatetimePicker("split-at", isoTime.slice(0, 16));
 }
 
 async function undoEdit() {
