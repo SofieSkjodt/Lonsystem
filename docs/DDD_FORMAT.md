@@ -93,10 +93,39 @@ inden arbejdet begynder). `_build_activities()` bruger denne post som visningsst
 (`day_start_minute`), så pausen indgår i den viste arbejdstid og i `pause_intervals`
 – men den er stadig ubetalt, da pause_intervals fratrækkes i lønberegningen.
 
+**Km-start/km-slut (dagsodometer-tabel):** Filen indeholder et separat, kompakt
+array af 20-byte elementer i kronologisk rækkefølge – ét pr. køretur/køretøjsskift:
+```
+km-stand      (3 bytes, big-endian)
+tidsstempel   (4 bytes, TimeReal, UTC)  ← matcher dagens day_start_minute til minuttet
+øvrige data   (13 bytes)
+```
+Der findes ingen pålidelig fast start-offset eller TLV-tag for denne tabel, så
+`_extract_daily_odometer()` finder den ved kæde-validering: det længste
+sammenhængende forløb af plausible (km, tidsstempel)-par med præcis 20 bytes'
+afstand (mindst 5 i træk). Bekræftet på testfilen: en kæde på 56 elementer
+fundet uden falske positiver, og alle tre stikprøve-datoer brugeren opgav
+(19/6, 22/6, 23/6-2026) matchede de udtrukne km-tal 100 %.
+
+`km_end` beregnes som `km_start + activityDayDistance` (dagens egen kørte
+distance, se ovenfor) i stedet for at antage kontinuitet til næste tabelpost –
+det giver korrekt resultat også ved køretøjsskift midt i tabellen.
+
+Den tidligere metode (søgning efter CardVehiclesUsed-blokken via
+`vehicleOdometerBegin`/`vehicleOdometerEnd`) er fjernet, da den byggede på en
+byte-offset-antagelse der viste sig ikke at holde og gav enten intet eller
+forkerte tal.
+
+**OBS:** Førerkort gemmer kun et begrænset antal køretøjsbrug-poster, så
+km-tabellen dækker ikke nødvendigvis hele kortets historik – i testfilen kun
+48 ud af 132 arbejdsdage (ca. seneste 2½ måned). Ældre dage vil mangle km-data;
+det er en begrænsning i kortets egne data, ikke i parseren.
+
 **Bekræftet output fra testfil:**
 - 132 arbejdsdage korrekt udtrukket
 - Start/sluttider minutpræcise (efter UTC→lokal-konvertering, inkl. indledende pause)
 - Aktivitetsprocenter beregnet korrekt
+- Km-start/km-slut korrekt for alle dage dækket af dagsodometer-tabellen (48/132 i testfilen)
 
 ## Skip-årsager og feedback ved import
 

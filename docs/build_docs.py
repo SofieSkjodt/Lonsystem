@@ -424,6 +424,7 @@ def build_teknisk():
         ("Bygning af ParsedActivity", "Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt."),
         ("Duplikat-tjek", "Eksisterende aktiviteter med samme medarbejder + starttid springes over."),
         ("Import af aktivitet", "_import_activity() returnerer 'new', 'updated', 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret) – hver årsag tælles separat."),
+        ("Km-start/km-slut", "_extract_daily_odometer() finder et separat array af (km, tidsstempel)-par i filen ved kæde-validering (mindst 5 elementer med præcis 20 bytes' afstand, ingen fast offset). km_start = km-standen tættest på dagens beregnede startminut; km_end = km_start + dagens egen kørte distance."),
     ], 1):
         bullet(doc, f"{step[1]}", f"{i}. {step[0]}: ")
 
@@ -436,6 +437,12 @@ def build_teknisk():
         "En indledende kort pause (fx 1-11 minutter) tælles med i den viste arbejdstid og "
         "fremgår af pause_intervals, men er stadig ubetalt – pause_intervals fratrækkes altid "
         "i lønberegningen uanset hvor i dagen de ligger.",
+        "GODT AT VIDE"
+    )
+    note_box(doc,
+        "Førerkort gemmer kun et begrænset antal køretøjsbrug-poster, så km-tabellen dækker "
+        "ikke nødvendigvis hele kortets historik. Ældre dage vil derfor mangle km-start/km-slut "
+        "– det er en begrænsning i kortets egne data, ikke en fejl i importen.",
         "GODT AT VIDE"
     )
 
@@ -1159,6 +1166,12 @@ def build_bruger():
         "begynder), vises denne pause nu som en del af dagens arbejdstid i "
         "aktivitetstabellen. Pausen aflønnes stadig ikke – den trækkes fra som hvil/pause "
         "ligesom systemets øvrige pauser.",
+        "GODT AT VIDE"
+    )
+    note_box(doc,
+        "Km-start og km-slut hentes fra førerkortet, som kun gemmer et begrænset antal "
+        "køretøjsbrug-poster. Ældre dage vil derfor kunne mangle km-data, selvom resten "
+        "af aktiviteten er importeret korrekt.",
         "GODT AT VIDE"
     )
 

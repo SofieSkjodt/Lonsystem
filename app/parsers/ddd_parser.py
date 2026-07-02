@@ -26,7 +26,7 @@ konverteres til dansk lokal tid (Europe/Copenhagen, DST-korrekt) i _build_activi
 import re
 import struct
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -82,14 +82,14 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
 
     card_number = _extract_card_number(data)
     vehicle_reg = _extract_vehicle_registration(data)
-    vehicle_km_sessions = _extract_vehicle_km_data(data)
+    daily_odometer = _extract_daily_odometer(data)
     record_start = _find_daily_records_start(data)
 
     if record_start is None:
         return []
 
     daily_records = _parse_daily_records(data, record_start)
-    return _build_activities(card_number, vehicle_reg, vehicle_km_sessions, daily_records, str(file_path))
+    return _build_activities(card_number, vehicle_reg, daily_odometer, daily_records, str(file_path))
 
 
 def scan_ddd_folder(folder_path: Path) -> tuple[list[tuple[Path, list[ParsedActivity]]], list[str]]:
@@ -150,75 +150,75 @@ def _extract_card_number(data: bytes) -> str:
     return "UNKNOWN"
 
 
-def _extract_vehicle_km_data(data: bytes) -> list[dict]:
+def _extract_daily_odometer(data: bytes) -> dict[int, int]:
     """
-    Udtræk km-start og km-slut fra CardVehiclesUsed-blokken i .ddd-filen.
+    Finder tabellen med km-standen ved starten af hver køretur/dag.
 
-    Struktur per entry (15 bytes + 14 bytes registration):
-      3 bytes: vehicleOdometerBegin (big-endian, km)
-      3 bytes: vehicleOdometerEnd   (big-endian, km)
-      4 bytes: vehicleFirstUse      (TimeReal, sekunder siden 1970-01-01 UTC)
-      4 bytes: vehicleLastUse       (TimeReal)
-      1 byte:  vehicleRegistrationNation
-      1 byte:  codePage (0x00 eller 0x01)
-     13 bytes: vehicleRegistrationNumber (ASCII, space-padded)
+    Bekræftet ved byte-analyse (2026-07-02): filen indeholder et kompakt array
+    af 20-byte elementer i kronologisk rækkefølge:
+      3 bytes:  km-stand (big-endian)
+      4 bytes:  tidsstempel (TimeReal, UTC) – matcher dagens beregnede
+                dagsstart (day_start_minute) til minuttet
+      13 bytes: øvrige data (bl.a. køretøjsregistrering ved køretøjsskift)
 
-    match.start() peger på codepage-byte, som er 15 bytes efter odo_begin.
+    Der er ingen pålidelig fast start-offset eller TLV-tag at søge efter, så
+    tabellen findes ved kæde-validering: det længste sammenhængende forløb af
+    plausible (km, tidsstempel)-par med præcis 20 bytes' afstand. Tilfældige
+    byte-sekvenser andre steder i filen danner ikke kæder af denne længde.
+
+    OBS: Førerkort gemmer kun et begrænset antal køretøjsbrug-poster, så
+    tabellen dækker typisk ikke hele kortets historik – ældre dage vil derfor
+    ikke have km-data.
+
+    Returnerer {tidsstempel: km-stand}.
     """
-    sessions = []
-    # Søg efter codePage-byte (0x00 eller 0x01) efterfulgt af ASCII-registreringsnummer
-    for match in re.finditer(rb'[\x00\x01]([A-Z][A-Z0-9]{4,11})', data):
-        pos = match.start()  # position af codepage-byte
-        entry_start = pos - 15  # 15 bytes: odo_begin(3)+odo_end(3)+ts_first(4)+ts_last(4)+nation(1)
-        if entry_start < 0:
-            continue
-        try:
-            odo_begin = struct.unpack_from(">I", b'\x00' + data[entry_start:entry_start + 3])[0]
-            odo_end   = struct.unpack_from(">I", b'\x00' + data[entry_start + 3:entry_start + 6])[0]
-            ts_first  = struct.unpack_from(">I", data, entry_start + 6)[0]
-            ts_last   = struct.unpack_from(">I", data, entry_start + 10)[0]
-        except struct.error:
-            continue
+    STRIDE = 20
+    MIN_CHAIN_LENGTH = 5
 
-        # Valider timestamps (2015-2035)
-        if not (1420070400 <= ts_first <= 2051222400):
-            continue
-        if not (1420070400 <= ts_last <= 2051222400):
-            continue
-        if ts_last < ts_first:
-            continue
+    def read_pair(pos: int) -> tuple[int, int] | None:
+        if pos < 0 or pos + 7 > len(data):
+            return None
+        odo = struct.unpack_from(">I", b"\x00" + data[pos:pos + 3])[0]
+        if not (1 <= odo <= 2_000_000):
+            return None
+        ts = struct.unpack_from(">I", data, pos + 3)[0]
+        if not (TS_MIN <= ts <= TS_MAX):
+            return None
+        return odo, ts
 
-        # Valider odometer (1 km – 2.000.000 km)
-        if not (1 <= odo_begin <= 2_000_000):
+    visited: set[int] = set()
+    best_chain: list[tuple[int, int]] = []
+    for start in range(0, len(data) - 7):
+        if start in visited:
             continue
-        if not (1 <= odo_end <= 2_000_000):
+        pair = read_pair(start)
+        if pair is None:
             continue
-        if odo_end < odo_begin:
-            continue
+        chain = [pair]
+        pos = start + STRIDE
+        while True:
+            nxt = read_pair(pos)
+            if nxt is None:
+                break
+            chain.append(nxt)
+            visited.add(pos)
+            pos += STRIDE
+        if len(chain) >= MIN_CHAIN_LENGTH and len(chain) > len(best_chain):
+            best_chain = chain
 
-        reg = match.group(1).decode("ascii")
-        # Undgå at matche tachografkortnummeret
-        if re.fullmatch(r'[A-Z]{2}\d{14}', reg):
-            continue
+    return {ts: odo for odo, ts in best_chain}
 
-        sessions.append({
-            "registration": reg,
-            "km_start": odo_begin,
-            "km_end": odo_end,
-            "ts_first": ts_first,
-            "ts_last": ts_last,
-        })
 
-    # Fjern dubletter (samme reg + ts_first)
-    seen = set()
-    unique = []
-    for s in sessions:
-        key = (s["registration"], s["ts_first"])
-        if key not in seen:
-            seen.add(key)
-            unique.append(s)
-
-    return unique
+def _lookup_daily_km(expected_ts: int, odometer_table: dict[int, int], tolerance_sec: int = 120) -> int | None:
+    """Find km-standen tættest på det forventede tidsstempel (dagens beregnede start), inden for tolerance."""
+    best = None
+    best_diff = None
+    for ts, odo in odometer_table.items():
+        diff = abs(ts - expected_ts)
+        if diff <= tolerance_sec and (best_diff is None or diff < best_diff):
+            best = odo
+            best_diff = diff
+    return best
 
 
 def _find_daily_records_start(data: bytes) -> int | None:
@@ -313,41 +313,10 @@ def _decode_activity_changes(activity_bytes: bytes) -> list[tuple[int, int]]:
     return result
 
 
-def _match_km_for_day(
-    day_dt: datetime,
-    vehicle_registration: str | None,
-    sessions: list[dict],
-) -> tuple[int | None, int | None]:
-    """Find km_start og km_end for en given dag fra vehicle-sessions listen."""
-    if not sessions:
-        return None, None
-    day_ts = int(day_dt.timestamp())
-    day_ts_end = day_ts + 86400
-    best = None
-    for s in sessions:
-        # Session skal overlappe med dagen
-        if s["ts_last"] < day_ts or s["ts_first"] > day_ts_end:
-            continue
-        # Foretræk match på registreringsnummer hvis vi har det
-        if vehicle_registration and s["registration"] != vehicle_registration:
-            continue
-        best = s
-        break
-    if best is None and vehicle_registration is None:
-        # Ingen registreringsnummer tilgængeligt – tag første session der overlapper datoen
-        for s in sessions:
-            if s["ts_last"] >= day_ts and s["ts_first"] <= day_ts_end:
-                best = s
-                break
-    if best:
-        return best["km_start"], best["km_end"]
-    return None, None
-
-
 def _build_activities(
     card_number: str,
     vehicle_registration: str | None,
-    vehicle_km_sessions: list[dict],
+    daily_odometer: dict[int, int],
     daily_records: list[tuple[datetime, int, bytes]],
     source_file: str,
 ) -> list[ParsedActivity]:
@@ -426,7 +395,15 @@ def _build_activities(
         def pct(m: int) -> Decimal | None:
             return Decimal(str(round(m / total_minutes * 100, 2))) if total_minutes else None
 
-        km_start, km_end = _match_km_for_day(day_dt, vehicle_registration, vehicle_km_sessions)
+        # km_start = km-stand fra den separate dagsstart-tabel (tættest på dagens
+        # beregnede startminut). km_end udledes af dagens egen kørte distance
+        # (activityDayDistance) i stedet for at antage kontinuitet til næste
+        # tabelpost, så det også virker korrekt ved køretøjsskift.
+        day_start_ts = int(
+            (day_dt + timedelta(minutes=day_start_minute)).replace(tzinfo=timezone.utc).timestamp()
+        )
+        km_start = _lookup_daily_km(day_start_ts, daily_odometer)
+        km_end = km_start + distance if km_start is not None and distance else None
 
         activities.append(
             ParsedActivity(
