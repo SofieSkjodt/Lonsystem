@@ -690,7 +690,7 @@ def export_csv(period_start: Optional[str] = None,
     employees = _active_employees(db)
 
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=";")
+    writer = csv.writer(output, delimiter=";", lineterminator="\n")
 
     def fmt(v: float) -> str:
         return str(round(v * 100))
@@ -788,7 +788,7 @@ def export_csv_post(body: ExportCsvRequest,
     employees = _active_employees(db)
 
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=";")
+    writer = csv.writer(output, delimiter=";", lineterminator="\n")
 
     def fmt(v: float) -> str:
         return str(round(v * 100))
