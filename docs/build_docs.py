@@ -419,6 +419,7 @@ def build_teknisk():
         ("Lokalisering af poster", "Heuristisk søgning efter timestamp-mønstre identificerer starten på daglige poster."),
         ("Afkodning af ActivityChangeInfo", "2-byte records afkodes bit-for-bit: slot (bit 15-14), aktivitetstype (bit 13-11), minutter fra midnat (bit 10-0). Dato og minutter er UTC."),
         ("Aktivitetstyper", "Rest (hvil), Availability (rådighedstid), Work (andet arbejde), Driving (kørsel)."),
+        ("Dagsstart", "Hver dags aktivitetsarray starter altid med en hvil-post ved minut 0 (videreført status fra dagen før, ikke en reel pause). Findes der en ekstra hvil-post lige derefter, er det chaufførens faktiske dagsstart – en kort pause inden arbejdet begynder – og den bruges som visningsstart for dagen."),
         ("Tidszonekonvertering", "Start/sluttid, segmenter og pauseintervaller konverteres fra UTC til dansk lokal tid (Europe/Copenhagen, DST-korrekt via Python-modulet zoneinfo) inden de gemmes."),
         ("Bygning af ParsedActivity", "Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt."),
         ("Duplikat-tjek", "Eksisterende aktiviteter med samme medarbejder + starttid springes over."),
@@ -429,6 +430,12 @@ def build_teknisk():
         "zoneinfo kræver på Windows Python-pakken tzdata (installeret via requirements.txt), "
         "da Windows ikke leverer sin egen IANA-tidszonedatabase.",
         "TEKNISK NOTE"
+    )
+    note_box(doc,
+        "En indledende kort pause (fx 1-11 minutter) tælles med i den viste arbejdstid og "
+        "fremgår af pause_intervals, men er stadig ubetalt – pause_intervals fratrækkes altid "
+        "i lønberegningen uanset hvor i dagen de ligger.",
+        "GODT AT VIDE"
     )
 
     heading(doc, "Import-flow", 2, "4.2")
@@ -1123,6 +1130,14 @@ def build_bruger():
         "'Sprunget over'-tallet stiger. Kontrollér og ret kortnummeret i Stamdata "
         "hvis en import ikke giver de forventede aktiviteter."
     ))
+
+    note_box(doc,
+        "Starter chaufførens dag med en kort pause (fx et par minutter inden kørslen "
+        "begynder), vises denne pause nu som en del af dagens arbejdstid i "
+        "aktivitetstabellen. Pausen aflønnes stadig ikke – den trækkes fra som hvil/pause "
+        "ligesom systemets øvrige pauser.",
+        "GODT AT VIDE"
+    )
 
     # ── 4. Aktivitetstabellen ─────────────────────────────────────────────
     heading(doc, "Aktivitetstabellen", 1, "4")

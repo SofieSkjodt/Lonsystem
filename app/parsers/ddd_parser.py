@@ -357,28 +357,37 @@ def _build_activities(
         if not changes:
             continue
 
-        # Find first non-rest minute as work start
-        first_work_minute = next(
+        # Find first non-rest minute (afgør om dagen overhovedet har arbejde)
+        first_nonrest_minute = next(
             (m for m, a in changes if a != ACTIVITY_REST), None
         )
-        if first_work_minute is None:
+        if first_nonrest_minute is None:
             continue
 
+        # changes[0] er altid en "rest"-post ved minut 0 (videreført status fra
+        # forrige dag, ikke en reel pause). Er der en ekstra hvil-post lige
+        # derefter, er det chaufførens faktiske dagsstart (kort pause inden
+        # arbejdet begynder) – den skal indgå i den viste arbejdstid, men
+        # tælles stadig som ubetalt pause (ender i pause_intervals nedenfor).
+        day_start_minute = first_nonrest_minute
+        if len(changes) > 1 and changes[0][0] == 0 and changes[1][1] == ACTIVITY_REST:
+            day_start_minute = changes[1][0]
+
         last_minute = changes[-1][0]
-        if last_minute <= first_work_minute:
+        if last_minute <= day_start_minute:
             continue
 
         start_time = _utc_to_local(day_dt + timedelta(
-            hours=first_work_minute // 60,
-            minutes=first_work_minute % 60,
+            hours=day_start_minute // 60,
+            minutes=day_start_minute % 60,
         ))
         end_time = _utc_to_local(day_dt + timedelta(
             hours=last_minute // 60,
             minutes=last_minute % 60,
         ))
 
-        # Calculate time in each activity between work start and end
-        total_minutes = last_minute - first_work_minute
+        # Calculate time in each activity between day start and end
+        total_minutes = last_minute - day_start_minute
         if total_minutes <= 0:
             continue
 
@@ -392,10 +401,10 @@ def _build_activities(
         pause_intervals: list[tuple[datetime, datetime]] = []
         segments: list[tuple[datetime, datetime, str]] = []
         for i, (minute, activity) in enumerate(changes):
-            if minute < first_work_minute:
+            if minute < day_start_minute:
                 continue
             next_minute = changes[i + 1][0] if i + 1 < len(changes) else last_minute
-            seg_start = max(minute, first_work_minute)
+            seg_start = max(minute, day_start_minute)
             seg_end = min(next_minute, last_minute)
             duration = max(0, seg_end - seg_start)
             if activity in mins:

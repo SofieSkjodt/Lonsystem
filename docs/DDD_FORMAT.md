@@ -84,9 +84,18 @@ som ændrer sig hver gang kortet udskiftes/fornys – de gemmes derfor ikke som 
 går umiddelbart forud for feltet i filen, og feltet efterfølges direkte af
 kortudstederens navn (`RIGSPOLITICHEFEN...`) uden separator.
 
+**Dagsstart og indledende pause:** Hver dags activityChangeInfo-array starter altid
+med en "hvil"-post ved minut 0 – det er blot videreført status fra dagen før, ikke en
+reel pause. Bekræftet ved analyse af 132 arbejdsdage: i 129 af dem findes en ekstra
+hvil-post (typisk 1-11 min) umiddelbart efter minut-0-posten, lige inden den første
+rigtige arbejds-/kørselspost. Det er chaufførens faktiske dagsstart (en kort pause
+inden arbejdet begynder). `_build_activities()` bruger denne post som visningsstart
+(`day_start_minute`), så pausen indgår i den viste arbejdstid og i `pause_intervals`
+– men den er stadig ubetalt, da pause_intervals fratrækkes i lønberegningen.
+
 **Bekræftet output fra testfil:**
-- 81 arbejdsdage korrekt udtrukket
-- Start/sluttider minutpræcise (efter UTC→lokal-konvertering)
+- 132 arbejdsdage korrekt udtrukket
+- Start/sluttider minutpræcise (efter UTC→lokal-konvertering, inkl. indledende pause)
 - Aktivitetsprocenter beregnet korrekt
 
 ## Fejlhåndtering og split
