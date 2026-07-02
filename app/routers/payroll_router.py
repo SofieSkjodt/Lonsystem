@@ -597,7 +597,13 @@ def proevekoersel_gem(body: ProevekoerselSaveRequest,
 
     filename = f"proevekoersel_{period.start_date.isoformat()}_{period.end_date.isoformat()}.xlsx"
     filepath = save_dir / filename
-    wb.save(str(filepath))
+    try:
+        wb.save(str(filepath))
+    except PermissionError:
+        raise HTTPException(
+            400,
+            f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
+        )
     return {"path": str(filepath), "filename": filename}
 
 
@@ -709,13 +715,6 @@ def export_csv_post(body: ExportCsvRequest,
             "Lønnen kan ikke køres – der er aktiviteter, der afventer godkendelse eller deaktivering.",
         )
 
-    period.status = PayPeriodStatus.closed
-    period.closed_at = datetime.utcnow()
-    period.closed_by = current_user.initials
-    log_action(db, current_user, "payroll_run", "pay_period", period.id,
-               f"Løn kørt for periode {period.start_date} – {period.end_date}")
-    db.commit()
-
     employees = _active_employees(db)
 
     output = io.StringIO()
@@ -778,7 +777,20 @@ def export_csv_post(body: ExportCsvRequest,
     except Exception as exc:
         import logging; logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
         raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
-    (save_dir / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+    try:
+        (save_dir / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+    except PermissionError:
+        raise HTTPException(
+            400,
+            f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
+        )
+
+    period.status = PayPeriodStatus.closed
+    period.closed_at = datetime.utcnow()
+    period.closed_by = current_user.initials
+    log_action(db, current_user, "payroll_run", "pay_period", period.id,
+               f"Løn kørt for periode {period.start_date} – {period.end_date}")
+    db.commit()
 
     return {"filename": filename, "path": str(save_dir / filename)}
 
