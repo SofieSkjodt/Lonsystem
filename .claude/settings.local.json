@@ -103,7 +103,21 @@
       "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\commit_msg.txt\")",
       "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\commit_msg2.txt\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\query_thomas.py\")",
-      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_thomas.py\")"
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_thomas.py\")",
+      "mcp__claude-in-chrome__tabs_context_mcp",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\debug_export_csv.py\" 2>&1)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\inspect_db.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\inspect_db2.py\")",
+      "PowerShell(Get-Process -Id 29376)",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"ProcessId=29376\")",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='python.exe'\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\debug_export_csv3.py\" 2>&1)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\check_period_status.py\")",
+      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\commit_msg.txt\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\query_steen.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_steen.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_steen_sat_guaranteed.py\")",
+      "PowerShell(python _test_overtime.py)"
     ]
   }
 }

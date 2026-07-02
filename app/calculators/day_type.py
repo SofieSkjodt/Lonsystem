@@ -1,9 +1,12 @@
 """
-Dag-klassifikation og lønberegning for lørdage, søndage og helligdage.
+Dag-klassifikation og lønberegning for søndage og helligdage.
 
-Regler bekræftet af bruger 2026-06-23 (se memory/project_lonsystem_son_helligdage.md):
+Regler bekræftet af bruger 2026-06-23 (se memory/project_lonsystem_son_helligdage.md),
+lørdags-særreglen fjernet igen 2026-07-02 (se memory/project_lonsystem_ot_before_kvote.md):
 - Helligdag trumfer altid lørdag/søndag
-- Tids-tillæg tilsidesættes på alle særlige dage
+- Tids-tillæg tilsidesættes på søndage/helligdage – IKKE på lørdage
+- Lørdag er ikke længere en "særlig dag" beregningsmæssigt – den går altid
+  gennem calculate_overtime() med lørdagens egne garanterede timer som loft
 - SH-betaling (kode 4/63) er additiv – lægges oveni kørselsløn
 """
 from datetime import date, datetime, timedelta
@@ -97,12 +100,18 @@ def calculate_special_day_overtime(
     start: datetime,
     end: datetime,
     day_type: DayType,
-    guaranteed_hours: Decimal,
     pause_intervals: list | None = None,
     kode8_remaining: Decimal | None = None,
 ) -> OvertimeResult:
     """
-    Beregn timefordeling for en kørsel på en særlig dag.
+    Beregn timefordeling for en kørsel på en søndag/helligdag.
+
+    Lørdag regnes IKKE længere som en særlig dag (bekræftet af bruger
+    2026-07-02) – lørdag går altid gennem calculate_overtime() med lørdagens
+    egne garanterede timer (typisk 0) som loft, ligesom en almindelig hverdag.
+    "Uden garanterede timer"-lørdage rammer dermed automatisk den normale
+    dagvindues-logik (kode 8 for de første op til 3 dagtimer, kode 9 for
+    resten), da normaltids-loftet er 0.
 
     Returnerer OvertimeResult hvor:
     - normal_hours  = alle kørte timer (kode 1)
@@ -144,16 +153,6 @@ def calculate_special_day_overtime(
         # Forudsætning: kørsel spænder ikke over midnat (særlige dage er altid ét-dags-aktiviteter)
         noon = start.replace(hour=12, minute=0, second=0, microsecond=0)
         result.sh_kode9_hours = _hours_after_noon(work_intervals, noon)
-
-    elif day_type == DayType.SATURDAY:
-        if guaranteed_hours == Decimal("0"):
-            # Ingen garanterede timer: første (resterende) 3 kørte timer → kode 8, resten → kode 9
-            kode8 = min(total_driven, remaining8)
-            kode9 = max(Decimal("0"), total_driven - kode8)
-            result.sh_kode8_hours = kode8
-            result.sh_kode9_hours = kode9
-            remaining8 -= kode8
-        # Med garanterede timer: kun kode 1, ingen supplements
 
     result.ot13_remaining_after = remaining8
     return result

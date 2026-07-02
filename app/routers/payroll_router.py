@@ -9,6 +9,7 @@ Lønkørsel:
 """
 import csv
 import io
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
@@ -152,6 +153,51 @@ def _normal_hours_for_day(emp: Employee, d: date) -> Decimal:
     return Decimal(str(schedule[key][d.weekday()]))
 
 
+@dataclass
+class _DayPiece:
+    """Et stykke af en aktivitet der falder inden for én kalenderdag."""
+    start_time: datetime
+    end_time: datetime
+    pause_intervals: list
+    activity_type: str
+    salt_supplement: bool
+    vehicle_number: Optional[str]
+
+
+def _split_into_day_pieces(act: Activity) -> list[_DayPiece]:
+    """Splitter en aktivitet, der strækker sig over midnat, i ét stykke pr.
+    kalenderdag – hvert stykke skal beregnes under SIN EGEN dags dag-type og
+    normaltids-loft (fx en søndag-til-mandag-vagt: søndagsdelen får
+    søndagsregler, mandagsdelen får mandagens normale tidsvindues-beregning).
+    Pauseintervaller der overlapper døgnskellet klippes tilsvarende.
+    Bekræftet af bruger 2026-07-02: split gælder alle dage, ikke kun søn-/helligdage.
+    """
+    raw_pauses = [
+        (datetime.fromisoformat(s), datetime.fromisoformat(e))
+        for s, e in (act.pause_intervals or [])
+    ]
+    pieces = []
+    cur = act.start_time
+    while cur < act.end_time:
+        next_midnight = datetime.combine(cur.date() + timedelta(days=1), datetime.min.time())
+        piece_end = min(act.end_time, next_midnight)
+        piece_pauses = []
+        for p_start, p_end in raw_pauses:
+            clipped_start, clipped_end = max(p_start, cur), min(p_end, piece_end)
+            if clipped_start < clipped_end:
+                piece_pauses.append([clipped_start.isoformat(), clipped_end.isoformat()])
+        pieces.append(_DayPiece(
+            start_time=cur,
+            end_time=piece_end,
+            pause_intervals=piece_pauses,
+            activity_type=act.activity_type,
+            salt_supplement=act.salt_supplement,
+            vehicle_number=act.vehicle_number,
+        ))
+        cur = piece_end
+    return pieces
+
+
 def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> dict:
     """Beregn timefordeling og kr. for én medarbejder i et datointerval.
     Alle dage i perioden medtages – dage uden aktivitet vises som 0,
@@ -199,10 +245,38 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         "graviditetsbetinget_sygdom":    "Graviditetsbetinget sygdom",
     }
 
-    # Gruppér aktiviteter på dato (kan være flere pr. dag ved opdelinger)
+    # Indlæs helligdage for perioden (fra v14-helligdagskalender) – bruges også
+    # til at afgøre om en aktivitet der strækker sig over midnat skal splittes.
+    holiday_rows = db.query(Holiday).filter(
+        Holiday.date >= start,
+        Holiday.date <= end,
+    ).all()
+    holiday_map = {h.date: h for h in holiday_rows}
+
+    _ABSOLUTE_DAY_TYPES = (
+        DayType.SUNDAY, DayType.HOLIDAY_FULL,
+        DayType.HOLIDAY_HALF_1MAJ, DayType.HOLIDAY_HALF_GRUNDLOV,
+    )
+
+    # Gruppér aktiviteter på dato (kan være flere pr. dag ved opdelinger).
+    # Normaltids-/OT13-loftet hører til VAGTEN (den dag den startede) og
+    # fortsætter uændret hen over midnat, så længe det ikke er brugt op – det
+    # håndterer calculate_overtime() automatisk ved at behandle vagten som ét
+    # sammenhængende opslag. Kun søndage/helligdage har en loft-uafhængig regel
+    # ("alle kørte timer, uanset tidspunkt"), så en vagt der STARTER på en
+    # søndag/helligdag SKAL splittes ved midnat, så resten af vagten falder
+    # tilbage til den følgende dags egne (loft-baserede) regler.
+    # Bekræftet af bruger 2026-07-02.
+    # Fraværstyper og overnatning er altid ét-dags og splittes aldrig.
     acts_by_date = defaultdict(list)
     for act in activities:
-        acts_by_date[act.start_time.date()].append(act)
+        if act.activity_type == "overnatning" or _ABSENCE_LABELS.get(act.activity_type):
+            acts_by_date[act.start_time.date()].append(act)
+        elif classify_day(act.start_time.date(), holiday_map) in _ABSOLUTE_DAY_TYPES:
+            for piece in _split_into_day_pieces(act):
+                acts_by_date[piece.start_time.date()].append(piece)
+        else:
+            acts_by_date[act.start_time.date()].append(act)
 
     totals = {
         "normal": Decimal("0"), "ot_before": Decimal("0"),
@@ -221,13 +295,6 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     }
     days = []
     total_kr = Decimal("0")
-
-    # Indlæs helligdage for perioden (fra v14-helligdagskalender)
-    holiday_rows = db.query(Holiday).filter(
-        Holiday.date >= start,
-        Holiday.date <= end,
-    ).all()
-    holiday_map = {h.date: h for h in holiday_rows}
 
     # Overnatning håndteres som kolonne (ikke fraværsrække) – forhåndsberegn datoer
     overnight_dates = {a.start_time.date() for a in activities if a.activity_type == "overnatning"}
@@ -306,7 +373,10 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         (_dt.fromisoformat(s), _dt.fromisoformat(e))
                         for s, e in (act.pause_intervals or [])
                     ]
-                    if day_type == DayType.NORMAL:
+                    if day_type in (DayType.NORMAL, DayType.SATURDAY):
+                        # Lørdag er ikke længere en særlig dag – den bruger samme
+                        # tidsvindues-beregning som en hverdag, med lørdagens egne
+                        # garanterede timer (typisk 0) som loft (bekræftet 2026-07-02).
                         ot = calculate_overtime(
                             act.start_time, act.end_time,
                             guaranteed_today, pauses, ot_rates,
@@ -318,7 +388,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                     else:
                         ot = calculate_special_day_overtime(
                             act.start_time, act.end_time,
-                            day_type, guaranteed_today, pauses,
+                            day_type, pauses,
                             kode8_remaining=day_ot13_remaining,
                         )
                         day_ot13_remaining = ot.ot13_remaining_after
