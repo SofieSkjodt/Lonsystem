@@ -170,7 +170,11 @@ def _split_into_day_pieces(act: Activity) -> list[_DayPiece]:
     normaltids-loft (fx en søndag-til-mandag-vagt: søndagsdelen får
     søndagsregler, mandagsdelen får mandagens normale tidsvindues-beregning).
     Pauseintervaller der overlapper døgnskellet klippes tilsvarende.
-    Bekræftet af bruger 2026-07-02: split gælder alle dage, ikke kun søn-/helligdage.
+
+    Kaldes KUN når aktiviteten starter på en søndag/helligdag (se
+    _calculate_employee) – normaltids-/OT13-loftet hører til vagten og skal
+    IKKE nulstilles ved midnat for almindelige hverdage/lørdage (bekræftet af
+    bruger 2026-07-02).
     """
     raw_pauses = [
         (datetime.fromisoformat(s), datetime.fromisoformat(e))
@@ -767,6 +771,13 @@ def export_csv_post(body: ExportCsvRequest,
     Kør løn: låser perioden og gemmer Danløn CSV til valgt mappe.
     """
     period = _resolve_period(body.period_start, db)
+
+    if period.status == PayPeriodStatus.closed:
+        raise HTTPException(
+            400,
+            "Lønperioden er allerede låst – lønnen er allerede kørt for denne periode. "
+            "Åbn perioden igen under Administration, hvis der skal foretages ændringer.",
+        )
 
     pending_count = (
         db.query(Activity)

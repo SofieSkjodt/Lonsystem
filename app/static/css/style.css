@@ -189,6 +189,7 @@ body {
   white-space: nowrap;
 }
 .btn:disabled { opacity: .5; cursor: default; }
+.btn.btn-muted { opacity: .5; cursor: not-allowed; }
 
 .btn-primary   { background: var(--primary); color: #fff; }
 .btn-primary:hover:not(:disabled) { background: var(--primary-dark); }
@@ -204,6 +205,12 @@ body {
 
 .btn-warning   { background: var(--warning); color: #fff; }
 .btn-warning:hover:not(:disabled) { background: #d35400; }
+
+.btn-primary.btn-muted:hover   { background: var(--primary); }
+.btn-success.btn-muted:hover   { background: var(--success); }
+.btn-danger.btn-muted:hover    { background: var(--danger); }
+.btn-secondary.btn-muted:hover { background: var(--surface); }
+.btn-warning.btn-muted:hover   { background: var(--warning); }
 
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 

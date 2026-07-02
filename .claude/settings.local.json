@@ -117,7 +117,10 @@
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\query_steen.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_steen.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e04a325e-4896-415f-9877-bb51bbd724a3\\\\scratchpad\\\\verify_steen_sat_guaranteed.py\")",
-      "PowerShell(python _test_overtime.py)"
+      "PowerShell(python _test_overtime.py)",
+      "PowerShell(git commit --amend -m \"fix: fjern tomme raekker i Danloen CSV \\(lineterminator=LF\\)\")",
+      "PowerShell(Stop-Process -Id 29376 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 29376 -ErrorAction SilentlyContinue)"
     ]
   }
 }
