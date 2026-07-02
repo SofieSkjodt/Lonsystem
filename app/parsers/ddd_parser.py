@@ -92,9 +92,14 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
     return _build_activities(card_number, vehicle_reg, vehicle_km_sessions, daily_records, str(file_path))
 
 
-def scan_ddd_folder(folder_path: Path) -> list[tuple[Path, list[ParsedActivity]]]:
-    """Scan folder for .ddd files. Skips unparseable files with a warning."""
+def scan_ddd_folder(folder_path: Path) -> tuple[list[tuple[Path, list[ParsedActivity]]], list[str]]:
+    """
+    Scan folder for .ddd files.
+    Returns (results, errors) – ikke-parsebare filer rapporteres som fejl i
+    stedet for kun at blive printet til serverkonsollen.
+    """
     results = []
+    errors = []
     ddd_files = sorted(
         list(folder_path.glob("*.ddd")) + list(folder_path.glob("*.DDD"))
     )
@@ -103,8 +108,8 @@ def scan_ddd_folder(folder_path: Path) -> list[tuple[Path, list[ParsedActivity]]
             activities = parse_ddd_file(f)
             results.append((f, activities))
         except Exception as e:
-            print(f"[WARNING] Skipping {f.name}: {e}")
-    return results
+            errors.append(f"{f.name}: fejl ved import ({e})")
+    return results, errors
 
 
 # ---------------------------------------------------------------------------

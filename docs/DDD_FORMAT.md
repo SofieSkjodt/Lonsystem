@@ -98,6 +98,29 @@ inden arbejdet begynder). `_build_activities()` bruger denne post som visningsst
 - Start/sluttider minutpræcise (efter UTC→lokal-konvertering, inkl. indledende pause)
 - Aktivitetsprocenter beregnet korrekt
 
+## Skip-årsager og feedback ved import
+
+`_import_activity()` i `import_ddd.py` returnerer én af fire værdier, der tælles
+separat af `_process_import_results()`:
+
+| Returværdi | Årsag |
+|---|---|
+| `new` | Ny aktivitet oprettet |
+| `updated` | Aktivitet fandtes allerede, men manglede km-start/km-slut som blev udfyldt |
+| `skipped_unknown_card` | Intet førerkortnummer i systemet matcher filens kortnummer |
+| `skipped_duplicate` | Aktiviteten er allerede importeret (samme medarbejder + starttid) |
+
+`scan_ddd_folder()` returnerer `(results, errors)` – filer der ikke kan parses
+(uanset om det sker via mappescanning eller enkeltfil-valg) havner i `errors` i
+stedet for kun at blive printet til serverkonsollen. Filer der giver 0 aktiviteter
+noteres separat (`zero_activity_files`).
+
+Efter hver import vises en pop-up (`modal-import-result`) med enten en
+succesbekræftelse eller en opdelt oversigt over sprungne/fejlede filer og deres
+konkrete årsag (inkl. hvilke kortnumre der ikke matchede). Hele opsummeringen
+logges desuden som én `ddd_import`-hændelse i hændelsesloggen (Brugerstyring →
+Hændelseslog), så årsagerne kan slås op igen senere.
+
 ## Fejlhåndtering og split
 
 Fejl i dataindlæsning kan medføre at en aktivitets starttid er fra **dagen forinden**.
@@ -116,4 +139,4 @@ I dette tilfælde markeres aktiviteten automatisk som 🔴 Rød (deaktiveret).
 - [x] Bekræft Python-bibliotek til .ddd-parsing – ingen PyPI-bibliotek findes; custom parser i `ddd_parser.py` er bekræftet korrekt (kortnummer + UTC→lokal tid rettet 2026-07-01)
 - [ ] Sti til inputmappe
 - [ ] Frekvens for automatisk scanning (fx hvert X minut, eller ved knap-tryk)
-- [ ] Hvad sker der med .ddd-filer der allerede er indlæst? (duplikat-håndtering)
+- [x] Hvad sker der med .ddd-filer der allerede er indlæst? (duplikat-håndtering) – springes over som `skipped_duplicate`, adskilt fra `skipped_unknown_card`; begge vises i pop-up og logges i hændelsesloggen (2026-07-02)

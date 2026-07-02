@@ -1762,8 +1762,54 @@ function _showImportResult(result) {
     (result.skipped ? ` Sprunget over: ${result.skipped}.` : "") +
     (result.files_processed !== undefined ? ` Filer behandlet: ${result.files_processed}.` : "") +
     (result.errors?.length ? ` Fejl: ${result.errors.join("; ")}` : "");
-  toast(msg, result.imported > 0 ? "success" : "info");
   document.getElementById("import-result").textContent = msg;
+
+  const allClean = !result.skipped && !result.errors?.length && !result.zero_activity_files?.length;
+  const body = document.getElementById("import-result-modal-body");
+
+  if (allClean) {
+    body.innerHTML = `
+      <div style="text-align:center;padding:16px 0">
+        <div style="font-size:40px;line-height:1;margin-bottom:10px">&#9989;</div>
+        <div style="font-size:16px;font-weight:600;color:var(--primary)">Importering succesfuld</div>
+        <div style="color:var(--text-light);margin-top:6px">
+          ${result.imported} aktivitet${result.imported !== 1 ? "er" : ""} importeret fra
+          ${result.files_processed} fil${result.files_processed !== 1 ? "er" : ""}.
+        </div>
+      </div>`;
+  } else {
+    const rowStyle = "margin-bottom:12px;font-size:13px;line-height:1.5";
+    const rows = [];
+    rows.push(`<div style="${rowStyle}"><b>Filer behandlet:</b> ${result.files_processed}</div>`);
+    rows.push(`<div style="${rowStyle}"><b>Importeret:</b> ${result.imported}</div>`);
+    if (result.updated) {
+      rows.push(`<div style="${rowStyle}"><b>Opdateret (km-data udfyldt):</b> ${result.updated}</div>`);
+    }
+    if (result.skipped_unknown_card) {
+      rows.push(`<div style="${rowStyle};color:var(--danger)">
+        <b>Sprunget over – ukendt førerkortnummer (${result.skipped_unknown_card}):</b><br>
+        ${(result.unknown_cards || []).map(h).join(", ")}<br>
+        <span style="font-weight:400">Kontrollér at kortnummeret er registreret korrekt på medarbejderen i Stamdata (de første 14 tegn, uden udskiftnings-/fornyelsescifre).</span>
+      </div>`);
+    }
+    if (result.skipped_duplicate) {
+      rows.push(`<div style="${rowStyle}"><b>Sprunget over – allerede importeret:</b> ${result.skipped_duplicate}</div>`);
+    }
+    if (result.zero_activity_files?.length) {
+      rows.push(`<div style="${rowStyle}">
+        <b>Fil(er) uden aktiviteter (${result.zero_activity_files.length}):</b><br>
+        ${result.zero_activity_files.map(h).join(", ")}
+      </div>`);
+    }
+    if (result.errors?.length) {
+      rows.push(`<div style="${rowStyle};color:var(--danger)">
+        <b>Fejl (${result.errors.length}):</b>
+        <ul style="margin:4px 0 0 18px">${result.errors.map(e => `<li>${h(e)}</li>`).join("")}</ul>
+      </div>`);
+    }
+    body.innerHTML = rows.join("");
+  }
+  openModal("modal-import-result");
 }
 
 async function importDddPickFiles() {
@@ -3312,6 +3358,7 @@ const ACTION_LABELS = {
   stamdata_create: { label: "Stamdata oprettet",        color: "#00695c", bg: "#e0f2f1" },
   stamdata_update: { label: "Stamdata opdateret",       color: "#424242", bg: "#f5f5f5" },
   stamdata_delete: { label: "Stamdata slettet",         color: "#b71c1c", bg: "#fee2e2" },
+  ddd_import:      { label: "DDD-import",               color: "#317423", bg: "#d4edcc" },
 };
 
 let _auditLogEntries = [];

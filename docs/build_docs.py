@@ -423,6 +423,7 @@ def build_teknisk():
         ("Tidszonekonvertering", "Start/sluttid, segmenter og pauseintervaller konverteres fra UTC til dansk lokal tid (Europe/Copenhagen, DST-korrekt via Python-modulet zoneinfo) inden de gemmes."),
         ("Bygning af ParsedActivity", "Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt."),
         ("Duplikat-tjek", "Eksisterende aktiviteter med samme medarbejder + starttid springes over."),
+        ("Import af aktivitet", "_import_activity() returnerer 'new', 'updated', 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret) – hver årsag tælles separat."),
     ], 1):
         bullet(doc, f"{step[1]}", f"{i}. {step[0]}: ")
 
@@ -444,6 +445,21 @@ def build_teknisk():
         "En tkinter-dialog (Windows-nativ) åbnes via GET /api/browse-ddd-files eller "
         "/api/browse-ddd-folder. Den valgte sti sendes med POST /api/import-ddd-from, "
         "som parser filerne og gemmer nye aktiviteter i databasen."
+    ))
+    body(doc, (
+        "_process_import_results() i import_ddd.py samler resultatet af alle filer: antal "
+        "importeret, opdateret (km-data udfyldt på en eksisterende aktivitet), samt sprunget "
+        "over opdelt på årsag (ukendt førerkortnummer – med de konkrete kortnumre – eller "
+        "allerede importeret). Filer der giver 0 aktiviteter og eventuelle parse-fejl (også "
+        "ved mappe-scanning) indgår i samme resultat. Frontenden viser resultatet i en "
+        "pop-up (modal-import-result): 'Importering succesfuld' hvis alt gik igennem uden "
+        "sprungne aktiviteter/fejl, ellers en opdelt oversigt over årsagerne."
+    ))
+    body(doc, (
+        "Hver importkørsel logges som én hændelse (action 'ddd_import') i hændelsesloggen "
+        "via log_action(), med samme opdelte opsummering i tekstform i details-feltet – så "
+        "årsager til sprungne aktiviteter kan slås op bagefter, ikke kun ses i pop-up'en "
+        "lige efter kørslen."
     ))
 
     # ── 5. Overtidsberegning ──────────────────────────────────────────────
@@ -1103,16 +1119,23 @@ def build_bruger():
         "Klik på 'Importer .ddd' i den venstre menu.",
         "Vælg 'Vælg filer' for at importere enkeltfiler, eller 'Vælg mappe' for at importere alle .ddd-filer i en mappe.",
         "En Windows-filhåndterings-dialog åbner sig – naviger til filerne og bekræft valget.",
-        "Systemet importerer filerne og viser et resume: antal importerede, antal opdaterede, antal sprunget over og eventuelle fejl.",
+        "Systemet importerer filerne og viser en pop-up med resultatet: enten '✅ Importering succesfuld', "
+        "eller en opdelt oversigt over antal importerede, opdaterede og sprunget over – med den konkrete "
+        "årsag til hver sprunget-over-gruppe.",
     ], 1):
         bullet(doc, step, f"Trin {i}: ")
 
     note_box(doc,
         "Systemet springer automatisk allerede importerede aktiviteter over "
         "(baseret på medarbejder + starttidspunkt). Det er sikkert at importere "
-        "samme mappe flere gange. 'Sprunget over' kan dog OGSÅ betyde at ingen "
-        "medarbejder i systemet har det kortnummer der findes i filen – der vises "
-        "ingen fejlmelding i dette tilfælde, se Forudsætninger nedenfor.",
+        "samme mappe flere gange. Pop-up'en skelner mellem 'sprunget over – allerede "
+        "importeret' og 'sprunget over – ukendt førerkortnummer' (med de konkrete "
+        "kortnumre), så det altid er tydeligt hvorfor en aktivitet ikke kom med.",
+        "GODT AT VIDE"
+    )
+    note_box(doc,
+        "Alle importkørsler logges under Brugerstyring → Hændelseslog med samme "
+        "opsummering, så du kan slå det op igen senere – også selvom pop-up'en er lukket.",
         "GODT AT VIDE"
     )
 

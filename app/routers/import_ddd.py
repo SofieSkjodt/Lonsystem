@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
-from auth import require_permission
+from auth import require_permission, log_action
 from calculators.auto_approval import should_auto_approve
 from calculators.baseline_updater import update_baseline_from_activity
 from database.session import get_db
@@ -68,17 +68,14 @@ def import_ddd_from(body: ImportFromRequest,
     Importer .ddd-filer fra en valgt mappe eller en liste af enkeltfiler.
     Springer allerede importerede aktiviteter over.
     """
-    imported = 0
-    updated = 0
-    skipped = 0
     errors = []
-    files_processed = 0
 
     if body.source_folder:
         folder = Path(body.source_folder).resolve()
         if not folder.exists():
             raise HTTPException(400, "Mappen findes ikke")
-        results = scan_ddd_folder(folder)
+        results, scan_errors = scan_ddd_folder(folder)
+        errors.extend(scan_errors)
     elif body.source_files:
         MAX_DDD_BYTES = 10 * 1024 * 1024  # 10 MB – reelle .ddd-filer er ~100-300 KB
         results = []
@@ -98,31 +95,11 @@ def import_ddd_from(body: ImportFromRequest,
                 results.append((p, acts))
             except Exception as e:
                 import logging; logging.error(f"Fejl ved parsing af {p}: {e}")
-                errors.append(f"{p.name}: fejl ved import")
+                errors.append(f"{p.name}: fejl ved import ({e})")
     else:
         raise HTTPException(400, "Angiv enten source_folder eller source_files")
 
-    for file_path, activities in results:
-        files_processed += 1
-        for act in activities:
-            try:
-                result = _import_activity(act, db)
-                if result == "new":
-                    imported += 1
-                elif result == "updated":
-                    updated += 1
-                else:
-                    skipped += 1
-            except Exception as e:
-                errors.append(f"{file_path.name}: {e}")
-
-    return {
-        "imported": imported,
-        "updated": updated,
-        "skipped": skipped,
-        "errors": errors,
-        "files_processed": files_processed,
-    }
+    return _process_import_results(results, errors, current_user, db)
 
 
 @router.post("/import-ddd")
@@ -135,43 +112,90 @@ def import_ddd_folder(current_user: AppUser = Depends(_ddd_access),
     if not DDD_INPUT_DIR.exists():
         raise HTTPException(status_code=404, detail="ddd_input mappe ikke fundet")
 
-    results = scan_ddd_folder(DDD_INPUT_DIR)
+    results, errors = scan_ddd_folder(DDD_INPUT_DIR)
+    return _process_import_results(results, errors, current_user, db)
+
+
+def _process_import_results(
+    results: list, errors: list, current_user: AppUser, db: Session
+) -> dict:
+    """
+    Importerer de fundne aktiviteter, sammentæller resultat pr. årsag og
+    logger en hændelse i audit-loggen så alle skip-årsager kan læses bagefter.
+    """
     imported = 0
     updated = 0
-    skipped = 0
-    errors = []
+    skipped_unknown_card = 0
+    skipped_duplicate = 0
+    unknown_cards: set[str] = set()
+    zero_activity_files: list[str] = []
 
     for file_path, activities in results:
+        if not activities:
+            zero_activity_files.append(file_path.name)
         for act in activities:
             try:
                 result = _import_activity(act, db)
-                if result == "new":
-                    imported += 1
-                elif result == "updated":
-                    updated += 1
-                else:
-                    skipped += 1
             except Exception as e:
                 errors.append(f"{file_path.name}: {e}")
+                continue
+            if result == "new":
+                imported += 1
+            elif result == "updated":
+                updated += 1
+            elif result == "skipped_unknown_card":
+                skipped_unknown_card += 1
+                unknown_cards.add(act.tachograph_card_number)
+            elif result == "skipped_duplicate":
+                skipped_duplicate += 1
+
+    skipped = skipped_unknown_card + skipped_duplicate
+
+    summary_parts = [
+        f"{len(results)} fil(er) behandlet",
+        f"{imported} importeret",
+        f"{updated} opdateret",
+    ]
+    if skipped_unknown_card:
+        summary_parts.append(
+            f"{skipped_unknown_card} sprunget over (ukendt førerkortnummer: "
+            f"{', '.join(sorted(unknown_cards))})"
+        )
+    if skipped_duplicate:
+        summary_parts.append(f"{skipped_duplicate} sprunget over (allerede importeret)")
+    if zero_activity_files:
+        summary_parts.append(
+            f"{len(zero_activity_files)} fil(er) uden aktiviteter: "
+            f"{', '.join(zero_activity_files)}"
+        )
+    if errors:
+        summary_parts.append(f"{len(errors)} fejl: {'; '.join(errors)}")
+
+    log_action(db, current_user, "ddd_import", "import", None, "; ".join(summary_parts))
+    db.commit()
 
     return {
         "imported": imported,
         "updated": updated,
         "skipped": skipped,
+        "skipped_unknown_card": skipped_unknown_card,
+        "skipped_duplicate": skipped_duplicate,
+        "unknown_cards": sorted(unknown_cards),
+        "zero_activity_files": zero_activity_files,
         "errors": errors,
         "files_processed": len(results),
     }
 
 
 def _import_activity(act: ParsedActivity, db: Session) -> str:
-    """Import a single parsed activity. Returns 'new', 'updated' or 'skipped'."""
+    """Import a single parsed activity. Returns 'new', 'updated', 'skipped_unknown_card' or 'skipped_duplicate'."""
     employee = (
         db.query(Employee)
         .filter(Employee.tachograph_card_number == act.tachograph_card_number)
         .first()
     )
     if not employee:
-        return "skipped"  # Unknown card number – employee must be created first
+        return "skipped_unknown_card"  # Unknown card number – employee must be created first
 
     # Check for existing activity
     existing = (
@@ -195,7 +219,7 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
         if changed:
             db.commit()
             return "updated"
-        return "skipped"
+        return "skipped_duplicate"
 
     pay_period = get_or_create_period_for_date(act.start_time.date(), db)
 
