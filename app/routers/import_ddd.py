@@ -216,6 +216,39 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
         if act.km_end is not None and existing.km_end is None:
             existing.km_end = act.km_end
             changed = True
+
+        # En senere kortudlæsning kan dække en mere komplet dag (senere sluttidspunkt)
+        # end den tidligere importerede – udvid i så fald i stedet for at springe over,
+        # ellers går den ekstra tid tabt for altid.
+        if act.end_time > existing.end_time:
+            existing.end_time = act.end_time
+            existing.availability_time_pct = act.availability_time_pct
+            existing.rest_pause_pct = act.rest_pause_pct
+            existing.other_work_pct = act.other_work_pct
+            existing.driving_pct = act.driving_pct
+            existing.pause_intervals = [
+                [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
+            ]
+            existing.segments = [
+                [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
+            ]
+            if act.vehicle_registration and not existing.vehicle_registration:
+                existing.vehicle_registration = act.vehicle_registration
+                if not existing.vehicle_number:
+                    v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
+                    if v:
+                        existing.vehicle_number = v.vehicle_number
+            if existing.status != ActivityStatus.pending:
+                # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der blev
+                # taget stilling til – genåbnes til afventende, så tiden skal godkendes igen.
+                existing.status = ActivityStatus.pending
+                existing.approved_by = None
+                existing.approved_at = None
+                existing.deactivated_by = None
+                existing.auto_approved = False
+                existing.auto_approval_flags = []
+            changed = True
+
         if changed:
             db.commit()
             return "updated"
