@@ -655,7 +655,7 @@ def build_teknisk():
             ["/api/payroll/preview",         "POST", "Returnerer JSON med mellemregninger for alle eller én medarbejder."],
             ["/api/payroll/proevekoersel",   "POST", "Genererer Excel-fil med prøvekørsel og returnerer download-link."],
             ["/api/payroll/proevekoersel-gem","POST","Gemmer Excel-fil i brugervalgt mappe (tkinter-dialog)."],
-            ["/api/payroll/export-csv",      "POST", "Genererer Danløn CSV-fil og downloader den."],
+            ["/api/payroll/export-csv",      "POST", "Genererer Danløn CSV-fil og downloader den. Afviser (400) hvis perioden allerede er låst, eller der er afventende aktiviteter i perioden."],
             ["/api/payroll/pdf-timesedler",  "POST", "Genererer PDF-timesedler og gemmer i valgt mappe."],
             ["/api/payroll/browse-folder",   "GET",  "Åbner Windows-mappe-dialog (tkinter) og returnerer valgt sti."],
             ["/api/payroll/downloads-folder","GET",  "Returnerer stien til brugerens Downloads-mappe."],
@@ -1534,6 +1534,14 @@ def build_bruger():
         "CSV-filen indeholder op til 6 kolonner per lønpost: CVR-nummer, medarbejdernr., lønkode, "
         "antal (timer eller forekomster), sats og evt. total. "
         "Hvilke kolonner der medtages afhænger af opsætningen i Stamdata → Løntypekoder."
+    ))
+    body(doc, (
+        "'Kør løn'-knappen er grå og kan ikke bruges, hvis der enten er aktiviteter i perioden, "
+        "der endnu ikke er godkendt eller deaktiveret, eller hvis lønperioden allerede er kørt og låst. "
+        "I begge tilfælde vises en advarsel, hvis man alligevel klikker på knappen. Afventende aktiviteter "
+        "skal godkendes eller deaktiveres under fanen 'Aktiviteter', før knappen aktiveres igen. En allerede "
+        "låst periode kan genåbnes under 'Administration' (kræver rettigheden 'Åbn låst lønperiode'), hvis "
+        "der skal foretages ændringer og køres løn igen."
     ))
 
     heading(doc, "CSV-kolonneopsætning per løntypekode", 2, "9.3.1")

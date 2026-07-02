@@ -4,7 +4,7 @@
 FastAPI + SQLite (WAL) + vanilla HTML/JS.  
 **Daglig drift:** `cd app && uvicorn main:app --host 0.0.0.0 --port 8000`  
 **Under udvikling:** `cd app && uvicorn main:app --host 0.0.0.0 --port 8000 --reload` (auto-genstart ved .py-ændringer)  
-Ændringer i `.py`-filer kræver servergenstart. Ændringer i `app.js`/`style.css`/`index.html` træder i kraft ved browser-reload (cache-busting via `app_js_mtime`).  
+Ændringer i `.py`-filer kræver servergenstart. `app.js` har automatisk cache-busting (`?v={{ app_js_mtime }}`, filens mtime) – ændringer træder altid i kraft ved reload. `style.css` og `index.html` har IKKE automatisk cache-busting: `style.css?v=N` i `index.html` er et manuelt versionsnummer der SKAL bumpes for hånd, hver gang `style.css` ændres, ellers kan browsere med gammel cache blive hængende på den gamle CSS (skete 2026-07-02: ny `.btn-muted`-regel virkede ikke i browseren, selvom JS-logikken var korrekt, fordi `?v=6` ikke var bumpet).  
 CVR: læses altid fra Stamdata → CVR-nummer (MasterCvrNumber). Lønperiode: faste 14-dage (start beregnet fra dato).  
 Auth: SessionMiddleware (session-cookie, 1 dag). Seed-admin: initialer=`admin`, adgangskode=`admin` (skift ved første login).
 
@@ -143,7 +143,7 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | GET | /preview | JSON til lønkørsel-siden |
 | GET | /proevekoersel | Excel-fil download |
 | POST | /proevekoersel-gem | Gem Excel til mappe |
-| POST | /export-csv | Danløn CSV |
+| POST | /export-csv | Danløn CSV – afviser (400) hvis perioden allerede er `closed`, eller der er `pending`-aktiviteter i perioden |
 | POST | /pdf-timesedler | Dan PDF'er (A4 landscape) |
 
 ---
@@ -369,6 +369,8 @@ Kolonner: `CVR ; medarbejdernr ; Danløn-kode ; timer ; sats`
 
 `_calculate_employee()` returnerer `sygdom_hours` og `afspadsering_hours` separat i result-dict.
 
+**Kør løn – låsning (2026-07-02):** `export_csv_post()` i `payroll_router.py` afviser med 400, hvis (a) perioden allerede har `status == PayPeriodStatus.closed`, eller (b) der findes `pending`-aktiviteter for aktive medarbejdere i perioden – begge dele skal være håndteret (godkendt/deaktiveret) først. Perioden sættes først til `closed` EFTER at CSV-filen er skrevet succesfuldt (ikke før) – en fejlet fil-skrivning (fx filen åben i Excel → `PermissionError`) fanges og giver en klar fejlbesked i stedet for at låse perioden uden gyldig eksport. Samme `PermissionError`-fangst er i `proevekoersel_gem()` (Excel-prøvekørsel).
+
 ---
 
 ## Overtidsberegning (calculators/overtime.py)
@@ -410,5 +412,9 @@ Pauser oprettes manuelt via `modal-pause` (kun HH:MM, dato arves fra aktiviteten
 5. `app.js`: rediger/opret-logik
 
 ### Genstart-frit (kun JS/HTML)
-Ændringer i `app.js`/`style.css`/`index.html` kræver kun browser-refresh (cache-busting er aktiv).  
+Ændringer i `app.js`/`index.html` kræver kun browser-refresh (`app.js` cache-buster er automatisk).  
+Ændringer i `style.css` kræver ALTID at versionsnummeret i `index.html` (`style.css?v=N`) bumpes manuelt – ellers cacher browsere den gamle fil.  
 Ændringer i `.py`-filer: stop server, ryd `__pycache__`, genstart.
+
+### Deaktiver knap + advarsel ved klik (i stedet for `disabled`-attribut)
+Når en handling skal blokeres MED forklaring (ikke bare forsvinde): brug en CSS-klasse (fx `btn-muted`, se `style.css`) i stedet for `disabled`-attributten – en reelt `disabled` knap sender ikke klik-events, så en `toast()`-advarsel kan ikke vises. Mønster: `renderX()` sætter `btn.classList.toggle("btn-muted", betingelse)`, og handler-funktionen selv (fx `exportCsv()`) tjekker betingelsen først og kalder `toast(...)` + `return` før resten af logikken. Eksempel: "Kør løn"-knappen (`btn-koer-loen`) er nedtonet og viser en advarsel, hvis perioden allerede er låst (`state.periodClosed`) eller der er afventende aktiviteter (`state.hasUnresolvedPending`) – se `renderPayrollPreview()` og `exportCsv()` i `app.js`. Server-siden validerer det samme uafhængigt (`export_csv_post()` i `payroll_router.py`) som forsvar i dybden.
