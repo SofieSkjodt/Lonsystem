@@ -1,10 +1,10 @@
 from collections import defaultdict
 from datetime import date, timedelta
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 import io
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import StreamingResponse
 from openpyxl import load_workbook
 from sqlalchemy.orm import Session
@@ -283,7 +283,7 @@ def export_per_employee(
 def export_per_type(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
-    absence_type: Optional[str] = None,
+    absence_type: Optional[List[str]] = Query(None),
     current_user: AppUser = Depends(_access),
     db: Session = Depends(get_db),
 ):
@@ -298,7 +298,7 @@ def export_per_type(
     type_labels: dict = {}
     for emp in data["employees"]:
         for atype, ainfo in emp["absences"].items():
-            if absence_type and atype != absence_type:
+            if absence_type and atype not in absence_type:
                 continue
             if atype not in type_totals:
                 type_totals[atype] = {"days": 0, "hours": 0.0}
@@ -333,8 +333,13 @@ def export_per_type(
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
-    type_label_clean = type_labels.get(absence_type, absence_type).replace(" ", "_").replace("/", "_") if absence_type else ""
-    type_suffix = f"_{type_label_clean}" if type_label_clean else ""
+    if not absence_type:
+        type_suffix = ""
+    elif len(absence_type) == 1:
+        lbl = type_labels.get(absence_type[0], absence_type[0])
+        type_suffix = "_" + lbl.replace(" ", "_").replace("/", "_")
+    else:
+        type_suffix = "_udvalgte"
     filename = f"fravaer_per_type{type_suffix}_{d_from}_{d_to}.xlsx"
     return StreamingResponse(
         buf,

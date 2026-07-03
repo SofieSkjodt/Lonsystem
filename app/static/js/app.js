@@ -2225,25 +2225,49 @@ function doExportPerEmployee() {
 }
 
 function exportAbsencePerType() {
-  const sel = document.getElementById("export-per-type-select");
-  sel.innerHTML = '<option value="">Al fravær</option>';
+  const list = document.getElementById("export-type-list");
+  list.innerHTML = "";
+  const allCb = document.getElementById("export-type-all");
+  allCb.checked = true;
+
   const types = (window._absenceOverviewData || {}).absence_types || [];
   types.forEach(t => {
-    const opt = document.createElement("option");
-    opt.value = t.value;
-    opt.textContent = t.label;
-    sel.appendChild(opt);
+    const lbl = document.createElement("label");
+    lbl.style.cssText = "display:flex;align-items:center;gap:8px;cursor:pointer";
+    const cb = document.createElement("input");
+    cb.type = "checkbox"; cb.value = t.value; cb.checked = true;
+    cb.style.cssText = "width:15px;height:15px;cursor:pointer";
+    cb.addEventListener("change", exportTypeCbChanged);
+    lbl.appendChild(cb);
+    lbl.appendChild(document.createTextNode(t.label));
+    list.appendChild(lbl);
   });
   openModal("modal-export-per-type");
 }
 
+function exportTypeAllChanged() {
+  const checked = document.getElementById("export-type-all").checked;
+  document.querySelectorAll("#export-type-list input[type=checkbox]")
+    .forEach(cb => { cb.checked = checked; });
+}
+
+function exportTypeCbChanged() {
+  const all = [...document.querySelectorAll("#export-type-list input[type=checkbox]")];
+  document.getElementById("export-type-all").checked = all.every(cb => cb.checked);
+}
+
 function doExportPerType() {
-  const from  = readDatePicker("absence-from-dp");
-  const to    = readDatePicker("absence-to-dp");
-  const atype = document.getElementById("export-per-type-select").value;
+  const from   = readDatePicker("absence-from-dp");
+  const to     = readDatePicker("absence-to-dp");
+  const allCb  = document.getElementById("export-type-all");
+  const selected = [...document.querySelectorAll("#export-type-list input[type=checkbox]:checked")]
+    .map(cb => cb.value);
+
   const p = new URLSearchParams();
   if (from && to) { p.set("date_from", from); p.set("date_to", to); }
-  if (atype)       p.set("absence_type", atype);
+  if (!allCb.checked && selected.length > 0) {
+    selected.forEach(v => p.append("absence_type", v));
+  }
   const qs = p.toString() ? "?" + p.toString() : "";
   window.location.href = `/api/absence-overview/export-per-type${qs}`;
   closeModal("modal-export-per-type");

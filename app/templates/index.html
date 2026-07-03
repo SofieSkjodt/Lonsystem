@@ -1475,17 +1475,18 @@
 </div>
 
 <div id="modal-export-per-type" class="modal-overlay">
-  <div class="modal" style="width:400px">
+  <div class="modal" style="width:420px">
     <div class="modal-header">
       <h2>Eksporter per fraværstype</h2>
       <button class="modal-close" onclick="closeModal('modal-export-per-type')">&#215;</button>
     </div>
     <div class="modal-body">
       <div class="form-group">
-        <label>Fraværstype</label>
-        <select id="export-per-type-select" style="width:100%">
-          <option value="">Al fravær</option>
-        </select>
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;margin-bottom:8px;font-weight:600">
+          <input type="checkbox" id="export-type-all" checked onchange="exportTypeAllChanged()" style="width:15px;height:15px;cursor:pointer">
+          Al fravær
+        </label>
+        <div id="export-type-list" style="display:flex;flex-direction:column;gap:6px;padding-left:4px;max-height:260px;overflow-y:auto"></div>
       </div>
     </div>
     <div class="modal-footer">
