@@ -53,6 +53,20 @@ Baseline opdateres automatisk, når en aktivitet godkendes (manuelt eller automa
 
 ---
 
+## Re-godkendelse og baseline-integritet
+
+For at undgå forfejlede statistikker ved genåbning + re-godkendelse gælder følgende regler:
+
+| Scenarie | Opførsel |
+|---|---|
+| Aktivitet godkendes **første gang** | Tilføjes til baseline; de bidragede værdier gemmes på aktiviteten (`baseline_duration_minutes`, `baseline_start_hour`) |
+| Aktivitet genåbnes og godkendes **uden ændringer** (< 30 sek forskel) | Springes over – tæller ikke dobbelt i baseline |
+| Aktivitet genåbnes og godkendes med **ændret tidsrum** | Welford **downdate** fjerner det gamle bidrag; det nye tilføjes. Altid præcis ét bidrag pr. aktivitet |
+
+`rebuild_baselines_for_employee` nulstiller markørerne på alle aktiviteter inden genopbygning, så en ren rekonstruktion aldrig dobbelt-tæller.
+
+---
+
 ## Sekvens ved import
 
 ```
@@ -96,7 +110,8 @@ I kalender-visningen: knap **"Auto-godkend egnede"** kører `POST /api/activitie
 
 ## Visning i UI
 
-- Auto-godkendte aktiviteter vises med et grønt badge med **A**-suffiks.
+- Auto-godkendte aktiviteter vises med en **gul prik (●)** foran aktivitetsbadget i kalendervisningen.
+- Knappen skifter til "● Autogodkendte" efter vellykket kørsels.
 - Aktiviteter med flags (dvs. afviste auto-godkendelser) vises med et gult advarselsfelt i detaljevisningen med årsag(erne) til afvisning.
 
 ---
@@ -122,8 +137,8 @@ I kalender-visningen: knap **"Auto-godkend egnede"** kører `POST /api/activitie
 **Natskiftsarbejde (midnight-wraparound)**
 Starttids-baseline beregnes som decimaltal. Chaufføre der konsekvent starter tæt på midnat (fx 23:30) vil have en mean-starttid der ikke giver mening, og aktiviteterne auto-godkendes aldrig. De sættes til `pending` med en forklarende besked.
 
-**Dobbelttælling ved genåbning**
-Hvis en aktivitet genåbnes og derefter godkendes igen, tæller den to gange i baseline. Dette påvirker mean og std marginalt. Kør `rebuild-baselines` for den pågældende medarbejder for at nulstille til korrekte tal.
+**Natskiftsarbejde (midnight-wraparound)**
+Starttids-baseline beregnes som decimaltal. Chaufføre der konsekvent starter tæt på midnat vil have en mean-starttid der ikke giver mening. Disse aktiviteter sættes til `pending` med en forklarende besked og skal godkendes manuelt.
 
 ---
 
@@ -134,6 +149,6 @@ Hvis en aktivitet genåbnes og derefter godkendes igen, tæller den to gange i b
 | `app/calculators/auto_approval.py` | `should_auto_approve()` – selve beslutningslogikken |
 | `app/calculators/baseline_updater.py` | Welford-opdatering og rebuild-funktion |
 | `app/routers/auto_approval_router.py` | Admin-endpoints (rebuild, summary) |
-| `app/database/models.py` | `EmployeeBaseline`-model, `Activity.auto_approved`, `Activity.auto_approval_flags` |
+| `app/database/models.py` | `EmployeeBaseline`-model; `Activity.auto_approved`, `.auto_approval_flags`, `.baseline_duration_minutes`, `.baseline_start_hour` |
 | `tests/test_auto_approval.py` | Funktionstest for should_auto_approve |
 | `tests/test_baseline_updater.py` | Funktionstest for Welford-opdatering |

@@ -40,7 +40,7 @@ app/
     day_type.py                # Dag-klassifikation og lønberegning for lørdage, søndage og helligdage (SH-betaling)
     holidays.py                # easter_date() + danish_holidays(year) – genererer helligdage via Computus
     auto_approval.py           # should_auto_approve(activity, db) → (bool, list[str]); MIN_SAMPLES=5
-    baseline_updater.py        # update_baseline_from_activity(), rebuild_baselines_for_employee()
+    baseline_updater.py        # update_baseline_from_activity() – Welford update + downdate-dedup; rebuild_baselines_for_employee()
   parsers/ddd_parser.py        # .ddd-filparsing
   templates/index.html         # Eneste HTML-side (alle modaler herinde)
   static/
@@ -83,6 +83,10 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | parent_activity_id / split_part | Int | Split-relation |
 | vehicle_registration | String | Nummerplade (fx DF67671) |
 | vehicle_number | String | Vognnummer |
+| auto_approved | Boolean | True hvis auto-godkendt |
+| auto_approval_flags | JSON | Liste over afvisningsårsager (tom = godkendt) |
+| baseline_duration_minutes | Numeric nullable | Varighed (min) der sidst blev bidraget til baseline (deduplication) |
+| baseline_start_hour | Numeric nullable | Starttid (decimal timer) der sidst blev bidraget til baseline |
 
 ### Øvrige
 - **PayPeriod**: start_date, end_date, status(open/preview/closed)
