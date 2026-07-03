@@ -106,6 +106,12 @@ def _migrate():
         if "auto_approval_flags" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN auto_approval_flags TEXT NOT NULL DEFAULT '[]'")
             conn.commit()
+        if "baseline_duration_minutes" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN baseline_duration_minutes REAL")
+            conn.commit()
+        if "baseline_start_hour" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN baseline_start_hour REAL")
+            conn.commit()
 
 
 def _seed_roles():
