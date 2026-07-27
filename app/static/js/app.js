@@ -248,14 +248,37 @@ function renderActivitiesTable() {
     }).join("")}
   </tr>`;
 
+  // Helper: er datoen søndag eller helligdag? (bestemmer om aktivitet splittes)
+  const _isAbsDay = iso => {
+    const d = new Date(iso + "T00:00:00");
+    if (d.getDay() === 0) return true;
+    return (state.holidays || []).some(h => h.date === iso);
+  };
+  const _fmtLocal = dt => {
+    const p = n => String(n).padStart(2, "0");
+    return `${dt.getFullYear()}-${p(dt.getMonth()+1)}-${p(dt.getDate())}T${p(dt.getHours())}:${p(dt.getMinutes())}:${p(dt.getSeconds())}`;
+  };
+
   // Gruppér aktiviteter: employee_id -> dato-ISO -> [{a, role}]
-  // Midnatskrydsende aktiviteter optræder i to kolonner: "start" og "end"
+  // Kørsels-aktiviteter der starter på søn/helligdag splittes ved midnat
+  // (afspejler lønberegningens _split_into_day_pieces-logik)
   const byEmpDay = {};
   for (const a of activities) {
     const startDate = a.start_time.slice(0, 10);
     const endDate   = a.end_time.slice(0, 10);
     (byEmpDay[a.employee_id] ??= {})[startDate] ??= [];
-    if (endDate !== startDate) {
+    if (endDate !== startDate && a.activity_type === "normal" && _isAbsDay(startDate)) {
+      let cur = new Date(a.start_time);
+      const endDt = new Date(a.end_time);
+      while (cur < endDt) {
+        const midnight = new Date(cur.getFullYear(), cur.getMonth(), cur.getDate() + 1);
+        const pieceEnd = endDt < midnight ? endDt : midnight;
+        const piece = { ...a, start_time: _fmtLocal(cur), end_time: _fmtLocal(pieceEnd), _orig_id: a.id };
+        const pieceDate = _fmtLocal(cur).slice(0, 10);
+        (byEmpDay[a.employee_id][pieceDate] ??= []).push({a: piece, role: "piece"});
+        cur = midnight;
+      }
+    } else if (endDate !== startDate) {
       byEmpDay[a.employee_id][startDate].push({a, role: "start"});
       (byEmpDay[a.employee_id][endDate] ??= []).push({a, role: "end"});
     } else {
@@ -328,6 +351,12 @@ function renderCellActivity(a, role = "full") {
   if (role === "end") {
     return `<div class="badge-group">
       <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
+    </div>`;
+  }
+  if (role === "piece") {
+    const id = a._orig_id ?? a.id;
+    return `<div class="badge-group">
+      <span class="time-badge ${a.status}${autoCls}" data-id="${id}" title="${title}">${k}${formatTime(a.start_time)}–${formatTime(a.end_time)}${warn}${autoSuffix}</span>
     </div>`;
   }
   return `<div class="badge-group">
