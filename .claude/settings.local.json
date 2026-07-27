@@ -140,7 +140,12 @@
       "PowerShell(Stop-Process -Id 31508 -Force -ErrorAction SilentlyContinue)",
       "PowerShell(Get-Process -Id 31508 -ErrorAction SilentlyContinue)",
       "PowerShell(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Process -Name python -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Process -Name python -ErrorAction SilentlyContinue)",
+      "PowerShell(head -50)",
+      "PowerShell(git add CODEREF.md app/database/lonsystem.db-shm app/database/lonsystem.db-wal)",
+      "PowerShell(git commit -m \"docs: opdater CODEREF.md med many-to-many disponentgrupper\")",
+      "PowerShell(python \"$env:TEMP\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\816143c6-9668-4472-b189-22e7385186dc\\\\scratchpad\\\\cleanup_test_employee.py\")",
+      "PowerShell(git add -A)"
     ]
   }
 }

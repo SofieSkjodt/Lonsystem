@@ -89,7 +89,11 @@ function toast(msg, type = "info") {
 function setLoading(on) {
   document.getElementById("loading-overlay").classList.toggle("open", on);
 }
-function openModal(id)  { document.getElementById(id).classList.add("open"); }
+function openModal(id) {
+  const modal = document.getElementById(id);
+  modal.classList.add("open");
+  modal.querySelector(".modal-body")?.scrollTo(0, 0);
+}
 function closeModal(id) { document.getElementById(id).classList.remove("open"); }
 function closeAllModals() {
   document.querySelectorAll(".modal-overlay").forEach(m => m.classList.remove("open"));
@@ -920,9 +924,15 @@ function _dpBindEvents(wrap) {
       const popW = 264;
       let left = rect.left;
       if (left + popW > window.innerWidth - 8) left = window.innerWidth - popW - 8;
-      popup.style.top  = (rect.bottom + 4) + "px";
       popup.style.left = left + "px";
+      popup.style.top   = "-9999px";
       popup.style.display = "block";
+      const popH = popup.offsetHeight;
+      const fitsBelow = rect.bottom + 4 + popH <= window.innerHeight - 8;
+      const top = fitsBelow
+        ? rect.bottom + 4
+        : Math.max(8, rect.top - popH - 4);
+      popup.style.top = top + "px";
     }
   });
 
@@ -1504,6 +1514,29 @@ function renderEmployeeList() {
 
 const DEFAULT_SCHEDULE = [7.5, 7.5, 7.5, 7.5, 7, 0, 0]; // man-tor, fre, lør, søn
 
+function _hoursFromTimes(startVal, endVal) {
+  if (!startVal || !endVal) return null;
+  const [sh, sm] = startVal.split(":").map(Number);
+  const [eh, em] = endVal.split(":").map(Number);
+  let mins = (eh * 60 + em) - (sh * 60 + sm);
+  if (mins < 0) mins += 24 * 60; // arbejdstid over midnat
+  return Math.round((mins / 60) * 100) / 100;
+}
+
+function _scheduleRowCell(prefix, day, hours) {
+  return `
+    <td>
+      <div style="display:flex;align-items:center;gap:6px">
+        <input type="number" step="0.1" min="0" max="24" class="sched-${prefix}" data-day="${day}" value="${hours}" style="width:70px"> t
+      </div>
+      <div style="display:flex;align-items:center;gap:4px;margin-top:4px;font-size:12px;color:var(--text-light)">
+        <input type="time" class="sched-${prefix}-start" data-day="${day}" style="width:88px">
+        –
+        <input type="time" class="sched-${prefix}-end" data-day="${day}" style="width:88px">
+      </div>
+    </td>`;
+}
+
 function buildScheduleTable(schedule) {
   const tbody = document.querySelector("#schedule-table tbody");
   tbody.innerHTML = "";
@@ -1512,16 +1545,48 @@ function buildScheduleTable(schedule) {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${WEEKDAYS[i]}</td>
-      <td><input type="number" step="0.1" min="0" max="24" class="sched-even" data-day="${i}" value="${schedule?.even?.[i] ?? def}" style="width:90px"></td>
-      <td><input type="number" step="0.1" min="0" max="24" class="sched-odd" data-day="${i}" value="${schedule?.odd?.[i] ?? def}" style="width:90px"></td>
+      ${_scheduleRowCell("even", i, schedule?.even?.[i] ?? def)}
+      ${_scheduleRowCell("odd", i, schedule?.odd?.[i] ?? def)}
     `;
     tbody.appendChild(tr);
   }
+  document.querySelectorAll("#schedule-table .sched-even, #schedule-table .sched-odd").forEach(el =>
+    el.addEventListener("input", _updateScheduleTotals));
+  ["even", "odd"].forEach(prefix => {
+    document.querySelectorAll(`#schedule-table .sched-${prefix}-start, #schedule-table .sched-${prefix}-end`).forEach(el => {
+      el.addEventListener("input", () => {
+        const day = el.dataset.day;
+        const startEl = document.querySelector(`.sched-${prefix}-start[data-day="${day}"]`);
+        const endEl   = document.querySelector(`.sched-${prefix}-end[data-day="${day}"]`);
+        const hours = _hoursFromTimes(startEl.value, endEl.value);
+        if (hours !== null) {
+          document.querySelector(`.sched-${prefix}[data-day="${day}"]`).value = hours;
+          _updateScheduleTotals();
+        }
+      });
+    });
+  });
+  _updateScheduleTotals();
 }
+
+function _updateScheduleTotals() {
+  const sum = cls => [...document.querySelectorAll(cls)].reduce((s, el) => s + (parseFloat(el.value) || 0), 0);
+  document.getElementById("sched-even-total").textContent = fmtHours(sum(".sched-even"));
+  document.getElementById("sched-odd-total").textContent  = fmtHours(sum(".sched-odd"));
+}
+
 function readScheduleTable() {
   const even = [], odd = [];
-  document.querySelectorAll(".sched-even").forEach(el => even.push(parseFloat(el.value) || 0));
-  document.querySelectorAll(".sched-odd").forEach(el => odd.push(parseFloat(el.value) || 0));
+  ["even", "odd"].forEach(prefix => {
+    const target = prefix === "even" ? even : odd;
+    for (let day = 0; day < 7; day++) {
+      const startEl = document.querySelector(`.sched-${prefix}-start[data-day="${day}"]`);
+      const endEl   = document.querySelector(`.sched-${prefix}-end[data-day="${day}"]`);
+      const fromTimes = _hoursFromTimes(startEl.value, endEl.value);
+      const numEl = document.querySelector(`.sched-${prefix}[data-day="${day}"]`);
+      target.push(fromTimes !== null ? fromTimes : (parseFloat(numEl.value) || 0));
+    }
+  });
   return { even, odd };
 }
 
@@ -1642,9 +1707,28 @@ async function confirmEmployee() {
     toast("Udfyld lønnummer, navn og ansættelsesdato", "error");
     return;
   }
+
+  if (!id) {
+    try {
+      const all = await GET("/api/employees?active_only=false");
+      const nameMatches = all.filter(e =>
+        e.first_name.trim().toLowerCase() === body.first_name.toLowerCase() &&
+        e.last_name.trim().toLowerCase() === body.last_name.toLowerCase());
+      const cardMatches = body.tachograph_card_number
+        ? all.filter(e => (e.tachograph_card_number || "").trim().toLowerCase() === body.tachograph_card_number.toLowerCase())
+        : [];
+      if (nameMatches.length || cardMatches.length) {
+        _showEmployeeDuplicateWarning(body, nameMatches, cardMatches);
+        return;
+      }
+    } catch (_) { /* duplikat-tjek må ikke blokere oprettelse hvis den fejler */ }
+  }
+  await _saveEmployee(id, body);
+}
+
+async function _saveEmployee(id, body) {
   try {
     if (id) {
-      const existing = state.employees.find(x => x.id === parseInt(id));
       await PATCH(`/api/employees/${id}`, body);
       toast("Medarbejder opdateret", "success");
     } else {
@@ -1655,6 +1739,34 @@ async function confirmEmployee() {
     await loadEmployees();
     fillEmployeeFilter();
   } catch (e) { toast(e.message, "error"); }
+}
+
+let _pendingEmployeeBody = null;
+
+function _showEmployeeDuplicateWarning(body, nameMatches, cardMatches) {
+  _pendingEmployeeBody = body;
+  const parts = [];
+  if (cardMatches.length) {
+    parts.push(`<p>Førerkortnummeret <b>${h(body.tachograph_card_number)}</b> er allerede registreret på: <b>${cardMatches.map(e => h(e.name)).join(", ")}</b>. Det kan ikke bruges igen.</p>`);
+  }
+  if (nameMatches.length) {
+    parts.push(`<p>Der findes allerede en medarbejder med navnet <b>${h(body.first_name)} ${h(body.last_name)}</b>: <b>${nameMatches.map(e => h(e.name + " (" + e.employee_number + ")")).join(", ")}</b>.</p>`);
+  }
+  document.getElementById("emp-duplicate-warning-body").innerHTML = parts.join("");
+  document.getElementById("btn-emp-duplicate-ok").style.display = cardMatches.length ? "none" : "";
+  openModal("modal-emp-duplicate-warning");
+}
+
+function empDuplicateChange() {
+  closeModal("modal-emp-duplicate-warning");
+  _pendingEmployeeBody = null;
+}
+
+async function empDuplicateIgnore() {
+  const body = _pendingEmployeeBody;
+  closeModal("modal-emp-duplicate-warning");
+  _pendingEmployeeBody = null;
+  if (body) await _saveEmployee("", body);
 }
 
 // ── Anciennitet popup ──────────────────────────────────────────────────────

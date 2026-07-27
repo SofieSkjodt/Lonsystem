@@ -1161,16 +1161,39 @@
 
       <hr>
       <h3 style="font-size:14px;font-weight:600;margin-bottom:10px">Timefordeling (14-dages periode)</h3>
-      <table style="font-size:13px" id="schedule-table">
+      <div class="form-hint" style="margin-bottom:8px">Angiv enten timeantal eller fra/til-tid for hver dag – fra/til beregner og overskriver timeantallet.</div>
+      <table style="font-size:13px;width:100%" id="schedule-table">
         <thead>
           <tr><th>Dag</th><th>Lige uger</th><th>Ulige uger</th></tr>
         </thead>
         <tbody><!-- rows built by JS --></tbody>
+        <tfoot>
+          <tr style="font-weight:600;border-top:2px solid var(--border)">
+            <td>Ugentligt timeantal</td>
+            <td id="sched-even-total">0 t</td>
+            <td id="sched-odd-total">0 t</td>
+          </tr>
+        </tfoot>
       </table>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-employee')">Annuller</button>
       <button class="btn btn-primary" id="emp-save-btn" onclick="confirmEmployee()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- Advarsel om mulig dublet-medarbejder (navn/førerkortnummer) -->
+<div id="modal-emp-duplicate-warning" class="modal-overlay">
+  <div class="modal" style="width:460px">
+    <div class="modal-header">
+      <h2>&#9888; Mulig dublet</h2>
+      <button class="modal-close" onclick="empDuplicateChange()">&#215;</button>
+    </div>
+    <div class="modal-body" id="emp-duplicate-warning-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="empDuplicateChange()">Ændre</button>
+      <button class="btn btn-primary" id="btn-emp-duplicate-ok" onclick="empDuplicateIgnore()">OK, opret alligevel</button>
     </div>
   </div>
 </div>
