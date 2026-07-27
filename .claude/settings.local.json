@@ -145,7 +145,10 @@
       "PowerShell(git add CODEREF.md app/database/lonsystem.db-shm app/database/lonsystem.db-wal)",
       "PowerShell(git commit -m \"docs: opdater CODEREF.md med many-to-many disponentgrupper\")",
       "PowerShell(python \"$env:TEMP\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\816143c6-9668-4472-b189-22e7385186dc\\\\scratchpad\\\\cleanup_test_employee.py\")",
-      "PowerShell(git add -A)"
+      "PowerShell(git add -A)",
+      "PowerShell(git commit -m $msg)",
+      "PowerShell(git commit -F \"$env:TEMP\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\816143c6-9668-4472-b189-22e7385186dc\\\\scratchpad\\\\commit_msg.txt\")",
+      "PowerShell(\\(Get-Content \"docs\\\\build_docs.py\" | Measure-Object -Line\\).Lines)"
     ]
   }
 }

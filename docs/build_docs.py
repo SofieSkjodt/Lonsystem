@@ -284,10 +284,18 @@ def build_teknisk():
             ["hire_date",             "Date",            "Ansættelsesdato"],
             ["termination_date",      "Date",            "Fratrædelsesdato (default 31-12-9999)"],
             ["work_schedule",         "JSON",            '{"even":[man..søn], "odd":[man..søn]} – normaltimer pr. dag i lig/ulige uge'],
-            ["dispatcher_group",      "String (opt.)",   "Disponentgruppe/afdeling til filtrering i aktivitetstabellen"],
             ["anciennitet_dismissed_at","DateTime (opt.)","Tidspunkt for afvisning af anciennitetsvarsel (nulstilles ved overenskomstskifte)"],
         ]
     )
+    body(doc, (
+        "Disponentgrupper (afdelinger) er ikke et enkelt felt på medarbejderen, men en mange-til-mange-relation "
+        "via tabellerne dispatcher_groups (navn, beskrivelse) og employee_dispatcher_groups (kobling). En medarbejder "
+        "kan tilhøre 0-N grupper samtidig, og der er ingen 'primær' gruppe. Grupperne administreres under "
+        "Stamdata → Disponentgrupper (opret/omdøb/slet); en medarbejder tilknyttes sine grupper via afkrydsningsbokse "
+        "i medarbejder-modalen. Ved filtrering (aktivitetstabel, fraværsoversigt-eksport) vises en medarbejder under "
+        "alle sine tilknyttede grupper. Frem til 27. juli 2026 lå dette som en enkelt tekststreng på medarbejderen – "
+        "denne kolonne er fjernet og data migreret automatisk til de nye tabeller ved første opstart efter opgraderingen."
+    ))
 
     heading(doc, "Activity – aktiviteter", 2, "2.2")
     header_table(doc,
@@ -400,6 +408,14 @@ def build_teknisk():
         ["Periode-slut",  "Altid en søndag (14 dage efter start)"],
         ["Beregning",     "period_start_for_date(d): finder nærmeste mandag via modulo-14 fra ankerpunktet"],
     ])
+    body(doc, (
+        "get_billing_period() i pay_period.py bestemmer hvilken periode en NY eller RETTET aktivitet skal "
+        "placeres i: hører datoen til en periode der allerede har status 'closed' (der er kørt løn), "
+        "returneres i stedet den efterfølgende periode (get_or_create_period_for_date() kaldt på "
+        "periodens slutdato + 1 dag). Bruges ved oprettelse af aktivitet, rettelse af starttid og "
+        "DDD-import. Genåbning af en allerede placeret aktivitet ændrer bevidst ikke dens pay_period_id – "
+        "kun oversigtsvisningen (se afsnit 4.4 i Brugervejledningen) sørger for at den stadig ses korrekt."
+    ))
     body(doc, (
         "Timefordelingen på medarbejderen skelner mellem 'lige' og 'ulige' uger. "
         "Dette bestemmes af is_even_week(d): ISO-ugenummer % 2 == 0 → 'even' (lige uge). "
@@ -602,7 +618,7 @@ def build_teknisk():
     heading(doc, "Stamdata-modulet i brugerfladen", 2, "6.2")
     body(doc, (
         "Stamdata-menupunktet (⚙️ Stamdata) i venstre menu giver administratorer adgang til "
-        "seks faner med CRUD-funktionalitet for alle masterdatatabeller:"
+        "otte faner med CRUD-funktionalitet for alle masterdatatabeller:"
     ))
     header_table(doc,
         ["Fane", "Indhold", "CRUD-muligheder"],
@@ -612,7 +628,9 @@ def build_teknisk():
             ["Tillæg",            "master_supplement_rates","Rediger satser for salttillæg, overnatning, §56"],
             ["Løntypekoder",      "master_pay_types",       "Opret nye, rediger type/kode/CSV-flag/antal-type/sats-kilde/inkl. sats/inkl. total, slet alle"],
             ["Fraværstyper",      "master_absence_types",   "Opret nye, aktiver/deaktiver, slet alle"],
+            ["CVR nummer",        "master_cvr_numbers",     "Opret, rediger, sæt standard, slet"],
             ["Helligdage",        "holidays",               "Auto-generer for år, opret manuelt, slet. Kræver 'manage_holidays'-rettighed."],
+            ["Disponentgrupper",  "dispatcher_groups",      "Opret, omdøb/rediger beskrivelse, slet (fjerner automatisk tilknytning hos medlemmer)"],
         ]
     )
     note_box(doc,
@@ -814,12 +832,12 @@ def build_teknisk():
     heading(doc, "Stamdata-view", 2, "9.6")
     body(doc, (
         "Stamdata-view aktiveres fra menupunktet '⚙️ Stamdata' i venstre menu (kræver 'stamdata'-rettighed). "
-        "View'et indeholder en tab-navigator med fem faner – kun én pane er synlig ad gangen:"
+        "View'et indeholder en tab-navigator med otte faner – kun én pane er synlig ad gangen:"
     ))
     two_col_table(doc, [
         ["switchStamdataTab(tab)", "Skifter aktiv pane og opdaterer fane-styling (border, farve, vægt)."],
-        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle fem faner parallelt."],
-        ["btn-stamdata-add-*",     "'+Tilføj'-knap i toolbar vises kun for den aktive fane (Overenskomsttyper og Fraværstyper)."],
+        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle otte faner parallelt."],
+        ["btn-stamdata-add-*",     "'+Tilføj'-knap i toolbar vises kun for den aktive fane."],
     ])
     body(doc, (
         "Fraværstyper-fanen viser alle rækker fra master_absence_types med Aktiv-badge (grøn/grå). "
@@ -1001,7 +1019,7 @@ def build_teknisk():
         ["app/database/lonsystem.db",                    "Databasen – det vigtigste. Kopieres via SQLites eget backup-API, sikkert mens systemet kører."],
         ["app/Overtid satser.xlsx",                      "Overtidssatser."],
         ["app/Overenskomsttyper og timesatser.xlsx",     "Timesatser og overenskomsttyper."],
-        ["app/Afdelinger.xlsx",                          "Disponentgrupper/afdelinger."],
+        ["app/Afdelinger.xlsx",                          "Historisk Excel-fil – disponentgrupper læses ikke længere herfra, men fra databasetabellen dispatcher_groups (se afsnit 2.1)."],
     ])
     body(doc, (
         "Hvert backup gemmes som en ZIP-fil med navneformatet lonsystem_YYYY-MM-DD_HH-MM.zip. "
@@ -1144,7 +1162,7 @@ def build_bruger():
         ["Lønkørsel",      "Åbner lønkørselspanelet med prøvekørsel, PDF og CSV-eksport."],
         ["Importer .ddd",  "Import af tachografdata fra fil eller mappe."],
         ["Medarbejdere",   "Oversigt over og redigering af medarbejderstamdata."],
-        ["⚙️ Stamdata",    "Konfiguration af systemets masterdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder (inkl. CSV-kolonneopsætning), fraværstyper og helligdage. Alle typer og koder kan oprettes, redigeres og slettes. Kun synlig for administratorer."],
+        ["⚙️ Stamdata",    "Konfiguration af systemets masterdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder (inkl. CSV-kolonneopsætning), fraværstyper, CVR-numre, helligdage og disponentgrupper. Alle typer og koder kan oprettes, redigeres og slettes. Kun synlig for administratorer."],
     ])
 
     heading(doc, "Periodenavigation", 2, "2.2")
@@ -1271,6 +1289,25 @@ def build_bruger():
     bullet(doc, "Vis alle aktiviteter, kun afventende, kun godkendte eller kun deaktiverede.", "Status: ")
     bullet(doc, "Filtrer til én bestemt chauffør.", "Medarbejder: ")
     bullet(doc, "Vis kun chauffører fra den valgte afdeling. Medarbejder-filteret opdateres automatisk.", "Afdeling: ")
+
+    heading(doc, "Vagter over midnat og periodegrænser", 2, "4.4")
+    body(doc, (
+        "En kørselsvagt der starter på en søndag eller en helligdag og strækker sig over midnat vises "
+        "opdelt i to – ét stykke i hver af de to datokolonner, med sit eget klokkeslæt-interval. Det er "
+        "kun en visningsmæssig opdeling (samme princip som lønberegningen bruger for søn-/helligdage); "
+        "klik på et af stykkerne åbner altid den samlede, oprindelige aktivitet. Vagter der starter en "
+        "almindelig hverdag eller lørdag vises som hidtil (start i én kolonne, slut i den næste)."
+    ))
+    body(doc, (
+        "En vagt der starter sidst i én periode og slutter ind i den næste periode, vises nu i begge "
+        "perioders aktivitetstabel, så den ikke 'forsvinder' ved periodeskifte."
+    ))
+    note_box(doc,
+        "Registrerer eller retter du en aktivitet, hvis dato hører til en periode der allerede er "
+        "kørt løn på (status 'Lukket'), lægges den automatisk over i den EFTERFØLGENDE periode i "
+        "stedet for at blive afvist. Det gælder både manuel oprettelse/rettelse og import af .ddd-filer.",
+        "BEMÆRK"
+    )
 
     # ── 5. Aktivitetsdetaljer og godkendelse ──────────────────────────────
     doc.add_page_break()
@@ -1412,7 +1449,7 @@ def build_bruger():
         [
             ["Aftale",              "Ja", "Timelønnet med fast arbejdstid eller ikke fastlagt arbejdstid."],
             ["Overenskomsttype",    "Ja", "Bestemmer timesatsen. Vælg fra listen der stammer fra Stamdata (Overenskomsttyper-fanen)."],
-            ["Disponentgruppe",     "Nej","Afdeling – bruges til at filtrere aktivitetstabellen."],
+            ["Disponentgrupper",    "Nej","Afdeling(er) – afkrydsningsbokse, en medarbejder kan tilhøre flere grupper samtidig. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten."],
             ["Lønnummer",           "Ja", "Unikt lønnummer (bruges i Danløn-eksporten)."],
             ["Førerkortnummer",     "Nej","EU-førerkortnummer – påkrævet for at importere .ddd-filer korrekt."],
             ["Navn",                "Ja", "Fornavn og efternavn."],
@@ -1424,6 +1461,14 @@ def build_bruger():
             ["Fuldlønnet",          "—", "Afkryd hvis medarbejderen er fuldlønnet."],
         ]
     )
+    note_box(doc,
+        "Hvis navn (for- og efternavn) eller førerkortnummer allerede findes på en anden medarbejder "
+        "(aktiv eller inaktiv), viser systemet en advarsel ved oprettelse. Ved navnesammenfald kan du "
+        "vælge 'OK, opret alligevel' for at oprette begge, eller 'Ændre' for at vende tilbage og rette. "
+        "Ved sammenfald på førerkortnummer kan du KUN vælge 'Ændre' – to medarbejdere kan ikke dele samme "
+        "førerkortnummer i databasen.",
+        "BEMÆRK"
+    )
 
     heading(doc, "Timefordeling", 2, "7.2")
     body(doc, (
@@ -1434,7 +1479,14 @@ def build_bruger():
     bullet(doc, "Fredag: 7 timer")
     bullet(doc, "Lørdag–søndag: 0 timer")
     body(doc, (
-        "Juster timeantallet ved at klikke i felterne og skrive det ønskede antal. "
+        "For hver dag kan du udfylde ENTEN et timeantal ELLER en fra/til-tid – begge felter står altid "
+        "synlige side om side. Udfylder du fra/til-tid, beregner systemet automatisk timeantallet "
+        "(sluttid minus starttid – en sluttid tidligere end starttid tolkes som en vagt der går over "
+        "midnat) og overskriver timeantal-feltet. Et 'Ugentligt timeantal'-felt nederst i tabellen "
+        "summerer automatisk timerne for hver uge, og opdateres med det samme uanset hvilken af de to "
+        "indtastningsmåder du bruger."
+    ))
+    body(doc, (
         "Normaltimerne bruges til beregning af overtidstillæg og til at auto-udfylde sluttidspunktet ved registrering af ferie."
     ))
 

@@ -139,8 +139,15 @@ CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Ligh
 | GET | / | active_only=true |
 | POST | / | Opret |
 | PATCH | /{id} | Rediger |
+| GET | /{id} | Hent én |
+| PATCH | /{id} | Rediger |
 | GET | /agreement-types | [{name, hourly_rate}] fra Excel |
+| GET | /dispatcher-groups | Alle disponentgrupper (kun `get_current_user`) – bruges til afkrydsningsboksene i medarbejder-modalen |
 | GET | /anciennitet-alerts | Medarbejdere med ≥9 mdr der mangler variant |
+
+`EmployeeCreate`/`EmployeeUpdate` bruger `dispatcher_group_ids: list[int]` (ikke længere en enkelt streng); `EmployeeResponse.dispatcher_groups` er en liste af `{id, name, description}`. Fuld CRUD på selve grupperne (opret/omdøb/slet) ligger under `/api/stamdata/dispatcher-groups` (kræver `stamdata`-tilladelse) – fane "Disponentgrupper" i Stamdata-viewet.
+
+**Advarsel om mulig dublet ved oprettelse (app.js: `confirmEmployee`, kun ved `id` tom):** Før POST slås navn (for+efternavn, case-insensitive) og førerkortnummer op mod `GET /api/employees?active_only=false`. Navnesammenfald → `modal-emp-duplicate-warning` med to knapper: "Ændre" (luk advarslen, bliv i oprettelsesmodalen) og "OK, opret alligevel" (kalder `_saveEmployee` med det gemte `_pendingEmployeeBody`). Match på førerkortnummer skjuler OK-knappen (`btn-emp-duplicate-ok`) – kan kun rettes, ikke ignoreres, da kolonnen stadig er unik i DB.
 
 ### /api/auto-approval
 | Method | Sti | Beskrivelse |
@@ -255,9 +262,12 @@ ABSENCE_TYPES = new Set()  // populeres af loadAbsenceTypes()
 | `renderEmployeeList()` | 959 | HTML for medarbejderlisten |
 | `openNewEmployeeModal()` | 1019 | Nulstiller form |
 | `openEditEmployee(id)` | 1037 | Fylder form med eksisterende data |
-| `confirmEmployee()` | 1064 | POST eller PATCH; auto-dismiss anciennitet hvis agreement_type ændres |
-| `checkAnciennitetsAlerts()` | 1119 | GET /anciennitet-alerts; server filtrerer allerede dismissed; viser modal |
-| `dismissAnciennitetsAlert(id)` | 1112 | POST /api/employees/{id}/dismiss-anciennitet (server-side, ikke localStorage) |
+| `confirmEmployee()` | 1682 | Validerer, kører dublet-tjek (kun ved oprettelse), kalder `_saveEmployee` |
+| `_saveEmployee(id, body)` | 1729 | Selve POST/PATCH – udtrukket fra `confirmEmployee` så dublet-advarslen kan kalde den bagefter |
+| `_showEmployeeDuplicateWarning(body, nameMatches, cardMatches)` | 1746 | Bygger og åbner `modal-emp-duplicate-warning`; skjuler OK-knappen ved førerkort-match |
+| `checkAnciennitetsAlerts()` | ~1786 | GET /anciennitet-alerts; server filtrerer allerede dismissed; viser modal |
+| `dismissAnciennitetsAlert(id)` | ~1650 | POST /api/employees/{id}/dismiss-anciennitet (server-side, ikke localStorage) |
+| `buildScheduleTable(schedule)` / `readScheduleTable()` | 1540 / 1578 | Se "Timefordeling – fra/til-tid" nedenfor |
 
 ### Lønkørsel
 | Funktion | Linje | Hvad |
@@ -350,6 +360,21 @@ Manuel dismiss: "Ændring foretaget"-knap (id: `btn-anciennitet-done`) → `dism
 
 ---
 
+## Timefordeling – fra/til-tid (2026-07-27, app.js)
+`work_schedule`-formatet er uændret (`{"even":[7 tal],"odd":[7 tal]}` – kun beregnede timetal persisteres, ikke klokketider). I medarbejder-modalen kan hver dag udfyldes med ÉT af to input: et timetal-felt (`.sched-even`/`.sched-odd`) eller et fra/til-tidspar (`.sched-even-start`/`-end`). Fra/til vinder altid, hvis begge er udfyldt: `_hoursFromTimes()` beregner timer (sluttid−starttid, wrapper til næste dag hvis negativt – dvs. vagt over midnat), overskriver timetal-feltet live via `input`-listener, og `readScheduleTable()` genberegner defensivt fra fra/til ved selve gemningen (falder tilbage til timetal-feltets værdi hvis fra/til er tomme). `_updateScheduleTotals()` opdaterer et "Ugentligt timeantal"-total pr. uge-kolonne (`#sched-even-total`/`#sched-odd-total`) på hver ændring, uanset input-metode. Ved rediger af eksisterende medarbejder er kun timetal-felterne udfyldt (fra/til gemmes ikke, kun det beregnede resultat).
+
+---
+
+## Rollerettigheder – approve_activities / view_calendar (2026-07-27, session.py)
+`_ensure_activity_permissions()` tilføjer disse to nye tilladelser til ALLE eksisterende roller ved opstart (idempotent) – seed-data for nye roller (`_seed_roles()`) inkluderer dem også fra start. Følger samme mønster som `_ensure_anciennitet_alert_permission()`/`_ensure_manage_baselines_permission()`.
+
+---
+
+## UI-robusthed for modaler og dato-vælger (2026-07-27, app.js)
+`openModal(id)` nulstiller nu `.modal-body`s scroll-position til top ved hver åbning (før: bevarede scroll fra sidste gang modalen var åben – mærkbart i medarbejder-modalen efter man havde scrollet ned til timefordelingen). `buildDatePicker`s klik-handler måler nu popup-højden og flipper til at åbne OPAD i stedet for nedad, hvis nedad ville skubbe kalenderen uden for viewportet (fx felter langt nede i en scrollet modal) – se `_dpBindEvents()`.
+
+---
+
 ## DDD-import (parsers/ddd_parser.py)
 Filens dato/minutter er **UTC** – konverteres til Europe/Copenhagen (DST-korrekt via `zoneinfo`) i `_build_activities` for start_time/end_time/segments/pause_intervals. Kræver `tzdata`-pakken (i requirements.txt – Windows har ingen egen IANA-tidszonedatabase).
 **Kortnummer**: rå felt i filen er 16 tegn (`[A-Z]{2}\d{14}`), men kun de første 14 tegn (`driverIdentification`) er det stabile nummer til medarbejder-matching – sidste 2 cifre er udskiftnings-/fornyelsesindeks og ændrer sig ved kortfornyelse. `_extract_card_number()` matcher det fulde felt, returnerer kun de første 14 tegn.
@@ -357,6 +382,15 @@ Filens dato/minutter er **UTC** – konverteres til Europe/Copenhagen (DST-korre
 **Skip-årsager**: `_import_activity()` returnerer `new`/`updated`/`skipped_unknown_card`/`skipped_duplicate` – tælles separat af `_process_import_results()` og logges som én `ddd_import`-hændelse (log_action) med fuld opsummering inkl. konkrete ukendte kortnumre. Frontend viser resultatet i `modal-import-result` (success-visning eller opdelt årsagsliste) i stedet for kun en toast. `scan_ddd_folder()` returnerer nu `(results, errors)` – parse-fejl ved mappescanning ryger i `errors` i stedet for kun `print()` til konsollen.
 **Genimport af samme dag med mere komplet data**: Dedup matcher på `(employee_id, start_time, source=tachograph)`. Har en ny udlæsning et SENERE `end_time` end den eksisterende aktivitet (fx fordi kortet først blev downloadet midt på dagen og senere igen efter vagtens afslutning), udvides `end_time`/`segments`/`pause_intervals`/procentfelter i stedet for at blive sprunget over som duplikat. Var aktiviteten `approved`/`deactivated`, genåbnes den til `pending` (approved_by/approved_at/deactivated_by nulstilles) så den udvidede tid skal godkendes igen, før den tæller med i løn. Kun km-felterne blev opdateret ved duplikat før denne rettelse (2026-07-02) – resten af den nye tid gik tabt for altid ved delvise kortudlæsninger.
 **Km-start/km-slut**: `_extract_daily_odometer()` finder en kæde af 20-byte (km, UTC-tidsstempel)-par (mindst 5 i træk, ingen fast offset) – tidsstemplet matcher dagens `day_start_minute`. `km_end = km_start + distance` (dagens egen activityDayDistance), IKKE næste tabelpost (håndterer køretøjsskift korrekt). Kortet gemmer kun et begrænset antal poster, så ikke alle dage har km-data. Erstatter den tidligere CardVehiclesUsed-baserede søgning, som byggede på en forkert byte-offset-antagelse.
+
+---
+
+## Periodegrænser i aktivitetsoversigten og sen registrering (2026-07-27)
+**Visning af aktiviteter der krydser periodegrænsen:** `list_activities()` i `activities.py` filtrerer ikke længere kun på `pay_period_id` – et OR-filter medtager også aktiviteter hvor `start_time` ligger før periodens startdato, men `end_time` ligger på/efter den (fx en søndagsvagt der starter sidst i forrige periode og fortsætter ind i den viste periode). Kun aktiviteter der faktisk krydser grænsen påvirkes.
+
+**Sen registrering på en allerede lukket periode:** ny hjælpefunktion `get_billing_period()` i `pay_period.py` – hvis den relevante dato hører til en periode med `status == closed`, returneres i stedet den PÅFØLGENDE periode (kalder `get_or_create_period_for_date()` på `end_date + 1 dag`). Bruges ved oprettelse af aktivitet (`POST /api/activities`), redigering af starttid (`PUT /api/activities/{id}`) og DDD-import (`_process_activity` i `import_ddd.py`). `reopen`-endpointet er bevidst IKKE ændret – en genåbnet aktivitet bevarer sin oprindelige `pay_period_id`; det er kun visningen (ovenstående OR-filter), der sørger for at den stadig ses i den efterfølgende periodes oversigt.
+
+**Split af søn-/helligdagsvagter over midnat i aktivitetsoversigten (frontend, app.js):** en kørselsvagt (`activity_type == "normal"`) der starter på søndag/helligdag og strækker sig over midnat vises nu opdelt pr. kalenderdag i gitteret (matcher `_split_into_day_pieces()` i lønberegningen) – hvert stykke viser sit eget `HH:MM–HH:MM` i sin egen datokolonne, klik åbner altid den oprindelige aktivitet (`_orig_id`). Vagter der starter hverdage/lørdage er uændrede (kun start/slut-badge i hver ende).
 
 ---
 
