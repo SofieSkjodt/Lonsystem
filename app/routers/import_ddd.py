@@ -11,7 +11,7 @@ from calculators.auto_approval import should_auto_approve
 from calculators.baseline_updater import update_baseline_from_activity
 from database.session import get_db
 from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, Vehicle
-from calculators.pay_period import get_or_create_period_for_date
+from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
 
 router = APIRouter(prefix="/api", tags=["import"])
@@ -254,7 +254,7 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
             return "updated"
         return "skipped_duplicate"
 
-    pay_period = get_or_create_period_for_date(act.start_time.date(), db)
+    pay_period = get_billing_period(act.start_time.date(), db)
 
     vehicle_number = None
     if act.vehicle_registration:

@@ -33,6 +33,15 @@ def period_for_date(d: date, db: Session) -> PayPeriod | None:
     )
 
 
+def get_billing_period(d: date, db: Session) -> PayPeriod:
+    """Som get_or_create_period_for_date, men returnerer næste åbne periode
+    hvis perioden for d allerede er lukket (sen registrering)."""
+    period = get_or_create_period_for_date(d, db)
+    if period.status == PayPeriodStatus.closed:
+        return get_or_create_period_for_date(period.end_date + timedelta(days=1), db)
+    return period
+
+
 def get_or_create_period_for_date(d: date, db: Session) -> PayPeriod:
     """Returnér perioden der indeholder d – opret hvis den ikke findes.
 

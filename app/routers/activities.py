@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, log_action
 from calculators.baseline_updater import update_baseline_from_activity
-from calculators.pay_period import get_or_create_period_for_date
+from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee
 from database.schemas import (
     ActivityApprove,
@@ -85,11 +85,16 @@ def get_absence_types(
                     continue
                 result.append({"value": value, "label": str(label).strip()})
         wb.close()
-    # Tilføj brugerdefinerede løntypekoder som aktivitetstyper
+    # Tilføj brugerdefinerede løntypekoder som aktivitetstyper (spring over dubletter)
+    existing_keys = {r["value"] for r in result}
     user_pay_types = db.query(MasterPayType).filter(
         MasterPayType.is_user_created == True
     ).order_by(MasterPayType.sort_order).all()
-    result.extend([{"value": upt.code_key, "label": upt.label} for upt in user_pay_types])
+    result.extend([
+        {"value": upt.code_key, "label": upt.label}
+        for upt in user_pay_types
+        if upt.code_key not in existing_keys
+    ])
     return result
 
 
@@ -259,7 +264,7 @@ def create_manual_activity(body: ActivityCreate,
         if _months_between(emp.hire_date, body.terminsdato) < _NINE_MONTHS:
             activity_type = "barsel_u_loen"
 
-    period = get_or_create_period_for_date(body.start_time.date(), db)
+    period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"
     activity = Activity(
         employee_id=body.employee_id,
@@ -321,7 +326,7 @@ def update_activity(activity_id: int, body: ActivityUpdate,
         setattr(a, field, value)
     # Update pay period if start_time changed
     if body.start_time:
-        period = get_or_create_period_for_date(body.start_time.date(), db)
+        period = get_billing_period(body.start_time.date(), db)
         a.pay_period_id = period.id
     log_action(db, current_user, "update_activity", "activity", a.id)
     db.commit()
