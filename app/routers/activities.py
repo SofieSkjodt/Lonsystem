@@ -4,6 +4,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from openpyxl import load_workbook
+from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session
 
 from auth import get_current_user, log_action
@@ -162,15 +163,24 @@ def list_activities(
     db: Session = Depends(get_db),
 ):
     """Return activities for a pay period. If period_start omitted, uses today."""
-    from datetime import date
-
     start_date = date.fromisoformat(period_start) if period_start else date.today()
     period = get_or_create_period_for_date(start_date, db)
+
+    period_start_dt = datetime.combine(period.start_date, datetime.min.time())
 
     q = (
         db.query(Activity)
         .join(Activity.employee)
-        .filter(Activity.pay_period_id == period.id)
+        .filter(
+            or_(
+                Activity.pay_period_id == period.id,
+                # Aktiviteter fra forrige periode der slutter i denne (krydser periodegraensen)
+                and_(
+                    Activity.end_time >= period_start_dt,
+                    Activity.start_time < period_start_dt,
+                ),
+            )
+        )
     )
     if employee_id:
         q = q.filter(Activity.employee_id == employee_id)
