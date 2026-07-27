@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from auth import get_current_user, require_permission
 from calculators.pay_period import get_or_create_period_for_date
 from calculators.rates_loader import load_agreement_types_from_db
-from database.models import Activity, ActivityStatus, AppUser, Employee
+from database.models import Activity, ActivityStatus, AppUser, DispatcherGroup, Employee
 from database.session import get_db
 
 router = APIRouter(prefix="/api/absence-overview", tags=["absence-overview"])
@@ -184,10 +184,14 @@ def employee_options(
         .order_by(Employee.first_name, Employee.last_name)
         .all()
     )
-    groups = sorted({e.dispatcher_group for e in emps if e.dispatcher_group})
+    used_group_ids = {g.id for e in emps for g in e.dispatcher_groups}
+    groups = db.query(DispatcherGroup).filter(DispatcherGroup.id.in_(used_group_ids)).order_by(DispatcherGroup.name).all()
     return {
-        "employees": [{"id": e.id, "name": e.name, "dispatcher_group": e.dispatcher_group} for e in emps],
-        "dispatcher_groups": groups,
+        "employees": [
+            {"id": e.id, "name": e.name, "dispatcher_group_ids": [g.id for g in e.dispatcher_groups]}
+            for e in emps
+        ],
+        "dispatcher_groups": [{"id": g.id, "name": g.name} for g in groups],
     }
 
 
@@ -196,7 +200,7 @@ def export_per_employee(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     employee_id: Optional[int] = None,
-    dispatcher_group: Optional[str] = None,
+    dispatcher_group_id: Optional[int] = None,
     current_user: AppUser = Depends(_access),
     db: Session = Depends(get_db),
 ):
@@ -208,14 +212,17 @@ def export_per_employee(
 
     # Filter employees
     employees = data["employees"]
+    group_name = None
     if employee_id:
         employees = [e for e in employees if e["employee_id"] == employee_id]
-    elif dispatcher_group:
-        # Look up which employee ids belong to this dispatcher group
+    elif dispatcher_group_id:
+        group = db.query(DispatcherGroup).filter(DispatcherGroup.id == dispatcher_group_id).first()
+        group_name = group.name if group else None
+        # Medarbejderen vises under alle sine tilknyttede grupper
         group_emp_ids = {
             e.id for e in db.query(Employee).filter(
                 Employee.active == True,
-                Employee.dispatcher_group == dispatcher_group,
+                Employee.dispatcher_groups.any(DispatcherGroup.id == dispatcher_group_id),
             ).all()
         }
         employees = [e for e in employees if e["employee_id"] in group_emp_ids]
@@ -267,8 +274,8 @@ def export_per_employee(
 
     if employee_id and employees:
         suffix = f"_{_safe(employees[0]['employee_name'])}"
-    elif dispatcher_group:
-        suffix = f"_{_safe(dispatcher_group)}"
+    elif group_name:
+        suffix = f"_{_safe(group_name)}"
     else:
         suffix = ""
     filename = f"fravaer_per_medarbejder{suffix}_{d_from}_{d_to}.xlsx"

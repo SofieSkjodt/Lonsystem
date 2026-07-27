@@ -75,7 +75,6 @@ class Employee(Base):
     termination_date = Column(Date, nullable=False, default=date(9999, 12, 31))
     # Timefordeling over 14 dage: {"even": [man..søn], "odd": [man..søn]} i timer
     work_schedule = Column(JSON, nullable=False, default=default_work_schedule)
-    dispatcher_group = Column(String, nullable=True)  # Disponentgruppe/afdeling
     cvr_number = Column(String(20), nullable=True)          # Tilknyttet CVR-nummer (None = standard)
     anciennitet_dismissed_at = Column(DateTime, nullable=True)  # Tidspunkt for afvist anciennitetsadvarsel
     created_at = Column(DateTime, server_default=func.now())

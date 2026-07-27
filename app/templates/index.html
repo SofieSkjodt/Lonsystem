@@ -147,12 +147,6 @@
         </select>
         <select id="filter-dispatcher-group" style="width:180px">
           <option value="">Alle afdelinger</option>
-          <option value="2 - Kran">2 - Kran</option>
-          <option value="4 - Makulering">4 - Makulering</option>
-          <option value="5 - Milj&#248;">5 - Milj&#248;</option>
-          <option value="8 - THG">8 - THG</option>
-          <option value="9 - BN">9 - BN</option>
-          <option value="10 - ISOPLUS-CHJ">10 - ISOPLUS-CHJ</option>
         </select>
         <div class="spacer"></div>
         <button id="btn-auto-approve" class="btn btn-secondary" onclick="bulkAutoApprove()" title="Auto-godkend alle egnede ventende aktiviteter i denne periode">Autogodkend aktiviteter</button>
@@ -364,6 +358,7 @@
         <button id="btn-stamdata-add-absence" class="btn btn-primary" style="display:none" onclick="openStamdataAbsenceModal()">+ Tilføj</button>
         <button id="btn-stamdata-add-cvr" class="btn btn-primary" style="display:none" onclick="openNewCvrModal()">+ Tilføj</button>
         <button id="btn-stamdata-add-holiday" class="btn btn-primary" style="display:none" onclick="openNewHolidayModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-dispatcher" class="btn btn-primary" style="display:none" onclick="openStamdataDispatcherModal()">+ Tilføj</button>
       </div>
 
       <!-- Tab-switcher -->
@@ -396,6 +391,10 @@
                 style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer"
                 data-perm-require="manage_holidays">
           Helligdage
+        </button>
+        <button id="sd-tab-dispatcher" onclick="switchStamdataTab('dispatcher')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Disponentgrupper
         </button>
       </div>
 
@@ -523,6 +522,23 @@
             </thead>
             <tbody id="stamdata-paytype-tbody">
               <tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Disponentgrupper -->
+        <div id="sd-pane-dispatcher" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Navn</th>
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Beskrivelse</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Medarbejdere</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-dispatcher-tbody">
+              <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1060,16 +1076,8 @@
       </div>
 
       <div class="form-group">
-        <label>Disponentgruppe</label>
-        <select id="emp-dispatcher-group">
-          <option value="">[Ingen afdeling]</option>
-          <option value="2 - Kran">2 - Kran</option>
-          <option value="4 - Makulering">4 - Makulering</option>
-          <option value="5 - Milj&#248;">5 - Milj&#248;</option>
-          <option value="8 - THG">8 - THG</option>
-          <option value="9 - BN">9 - BN</option>
-          <option value="10 - ISOPLUS-CHJ">10 - ISOPLUS-CHJ</option>
-        </select>
+        <label>Disponentgrupper</label>
+        <div id="emp-dispatcher-groups" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
 
       <div class="form-group" id="emp-cvr-group" style="display:none">
@@ -1521,6 +1529,30 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-absence')">Annuller</button>
       <button class="btn btn-primary" onclick="confirmStamdataAbsence()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<div id="modal-stamdata-dispatcher" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2 id="stamdata-dispatcher-title">Disponentgruppe</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-dispatcher')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-dispatcher-id">
+      <div class="form-group">
+        <label>Navn</label>
+        <input type="text" id="stamdata-dispatcher-name" placeholder="fx 11 - Nyt lager">
+      </div>
+      <div class="form-group">
+        <label>Beskrivelse</label>
+        <input type="text" id="stamdata-dispatcher-description" placeholder="Valgfri">
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-dispatcher')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataDispatcher()">Gem</button>
     </div>
   </div>
 </div>

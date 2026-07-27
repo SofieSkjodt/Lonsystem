@@ -26,21 +26,24 @@ const state = {
   roles: [],               // { id, name, display_name, is_system, permissions[] }
   usersAdminTab: "users",  // aktiv fane i users-admin view
   holidays: [],            // { date: "YYYY-MM-DD", name: string, half_day_from: string|null }
+  dispatcherGroups: [],    // { id, name, description }
 };
 
 const PERMISSION_LABELS = {
-  payroll:          "Lønkørsel",
-  absence_overview: "Fraværsoversigt",
-  import_ddd:       "Importer .ddd",
-  user_management:  "Brugerstyring",
-  reopen_period:    "Åbn låst lønperiode",
-  stamdata:         "Stamdata",
-  view_employees:   "Se medarbejdere",
-  manage_employees: "Tilføj medarbejdere",
-  view_vehicles:    "Se vognpark",
-  manage_vehicles:  "Tilføj vogn",
-  manage_holidays:   "Administrér helligdage",
-  anciennitet_alert: "Anciennitetsvarsel",
+  payroll:             "Lønkørsel",
+  absence_overview:    "Fraværsoversigt",
+  import_ddd:          "Importer .ddd",
+  user_management:     "Brugerstyring",
+  reopen_period:       "Åbn låst lønperiode",
+  stamdata:            "Stamdata",
+  view_employees:      "Se medarbejdere",
+  manage_employees:    "Tilføj medarbejdere",
+  view_vehicles:       "Se vognpark",
+  manage_vehicles:     "Tilføj vogn",
+  manage_holidays:     "Administrér helligdage",
+  anciennitet_alert:   "Anciennitetsvarsel",
+  approve_activities:  "Godkend aktiviteter",
+  view_calendar:       "Se aktivitetskalender",
 };
 
 let manualPauses = [];
@@ -211,7 +214,7 @@ function renderActivitiesTable() {
     if (empFilter && a.employee_id !== parseInt(empFilter)) return false;
     if (groupFilter) {
       const emp = state.employees.find(e => e.id === a.employee_id);
-      if (!emp || emp.dispatcher_group !== groupFilter) return false;
+      if (!emp || !_empInGroup(emp, groupFilter)) return false;
     }
     return true;
   });
@@ -288,7 +291,7 @@ function renderActivitiesTable() {
 
   // Rækker: medarbejdere (filtreret hvis valgt), sorteret efter navn
   let emps = state.employees.filter(e => e.active);
-  if (groupFilter) emps = emps.filter(e => e.dispatcher_group === groupFilter);
+  if (groupFilter) emps = emps.filter(e => _empInGroup(e, groupFilter));
   if (empFilter) emps = emps.filter(e => e.id === parseInt(empFilter));
   emps.sort((x, y) => x.name.localeCompare(y.name, "da"));
 
@@ -1550,6 +1553,20 @@ async function _loadEmpCvrDropdown(selectedCvr) {
   } catch (_) { group.style.display = "none"; }
 }
 
+function _renderDispatcherGroupCheckboxes(selectedIds) {
+  const container = document.getElementById("emp-dispatcher-groups");
+  if (!state.dispatcherGroups.length) {
+    container.innerHTML = `<p style="font-size:13px;color:var(--text-light);margin:0">Ingen disponentgrupper oprettet endnu</p>`;
+    return;
+  }
+  container.innerHTML = state.dispatcherGroups.map(g => `
+    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px">
+      <input type="checkbox" value="${g.id}" ${selectedIds.includes(g.id) ? "checked" : ""}
+             style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
+      ${h(g.name)}
+    </label>`).join("");
+}
+
 async function openNewEmployeeModal() {
   await loadAgreementTypes();
   document.getElementById("emp-modal-title").textContent = "Opret medarbejder";
@@ -1559,7 +1576,7 @@ async function openNewEmployeeModal() {
    "emp-email","emp-phone","emp-mobile"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("emp-agreement-kind").value = "";
   fillAgreementTypeSelect();
-  document.getElementById("emp-dispatcher-group").value = "";
+  _renderDispatcherGroupCheckboxes([]);
   buildDatePicker("emp-hire", "");
   buildDatePicker("emp-termination", "9999-12-31");
   document.getElementById("emp-active").checked = true;
@@ -1587,7 +1604,7 @@ async function openEditEmployee(id) {
   document.getElementById("emp-mobile").value = e.mobile || "";
   document.getElementById("emp-agreement-kind").value = e.agreement_kind;
   fillAgreementTypeSelect(e.agreement_type);
-  document.getElementById("emp-dispatcher-group").value = e.dispatcher_group || "";
+  _renderDispatcherGroupCheckboxes((e.dispatcher_groups || []).map(g => g.id));
   buildDatePicker("emp-hire", e.hire_date);
   buildDatePicker("emp-termination", e.termination_date);
   document.getElementById("emp-active").checked = e.active;
@@ -1611,7 +1628,7 @@ async function confirmEmployee() {
     mobile: document.getElementById("emp-mobile").value.trim() || null,
     agreement_kind: document.getElementById("emp-agreement-kind").value,
     agreement_type: document.getElementById("emp-agreement-type").value,
-    dispatcher_group: document.getElementById("emp-dispatcher-group").value || null,
+    dispatcher_group_ids: [...document.querySelectorAll("#emp-dispatcher-groups input:checked")].map(cb => parseInt(cb.value)),
     cvr_number: document.getElementById("emp-cvr-group").style.display !== "none"
       ? (document.getElementById("emp-cvr").value || null)
       : null,
@@ -2215,7 +2232,7 @@ async function exportAbsencePerEmployee() {
     grpSel.innerHTML = "";
     (opts.dispatcher_groups || []).forEach(g => {
       const o = document.createElement("option");
-      o.value = g; o.textContent = g;
+      o.value = g.id; o.textContent = g.name;
       grpSel.appendChild(o);
     });
 
@@ -2244,7 +2261,7 @@ function doExportPerEmployee() {
   const p = new URLSearchParams();
   if (from && to) { p.set("date_from", from); p.set("date_to", to); }
   if (scope === "group") {
-    p.set("dispatcher_group", document.getElementById("emp-export-group-select").value);
+    p.set("dispatcher_group_id", document.getElementById("emp-export-group-select").value);
   } else if (scope === "employee") {
     p.set("employee_id", document.getElementById("emp-export-employee-select").value);
   }
@@ -2854,7 +2871,7 @@ async function deleteRole(roleId, displayName) {
 // ── Stamdata ────────────────────────────────────────────────────────────────
 
 function switchStamdataTab(tab) {
-  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday"].forEach(t => {
+  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday", "dispatcher"].forEach(t => {
     const pane = document.getElementById(`sd-pane-${t}`);
     const btn  = document.getElementById(`sd-tab-${t}`);
     if (pane) pane.style.display = t === tab ? "" : "none";
@@ -2871,6 +2888,7 @@ function switchStamdataTab(tab) {
   document.getElementById("btn-stamdata-add-absence").style.display    = tab === "absence"    ? "" : "none";
   document.getElementById("btn-stamdata-add-cvr").style.display        = tab === "cvr"        ? "" : "none";
   document.getElementById("btn-stamdata-add-holiday").style.display    = tab === "holiday"    ? "" : "none";
+  document.getElementById("btn-stamdata-add-dispatcher").style.display = tab === "dispatcher" ? "" : "none";
 }
 
 async function loadStamdata() {
@@ -2883,6 +2901,7 @@ async function loadStamdata() {
     loadStamdataAbsenceTypes(),
     loadStamdataCvrNumbers(),
     loadStamdataHolidays(),
+    loadStamdataDispatcherGroups(),
   ]);
 }
 
@@ -3235,6 +3254,71 @@ async function deleteStamdataAbsence(id, label) {
     await DEL(`/api/stamdata/absence-types/${id}`);
     toast("Fraværstype slettet");
     await loadStamdataAbsenceTypes();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Disponentgrupper (stamdata) ──────────────────────────────────────────────
+
+async function loadStamdataDispatcherGroups() {
+  const tbody = document.getElementById("stamdata-dispatcher-tbody");
+  if (!tbody) return;
+  try {
+    const rows = await GET("/api/stamdata/dispatcher-groups");
+    if (!rows.length) {
+      tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-light)">Ingen disponentgrupper oprettet endnu</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid var(--border);background:#fff">
+        <td style="padding:10px 14px">${h(r.name)}</td>
+        <td style="padding:10px 14px;color:var(--text-light)">${h(r.description || "")}</td>
+        <td style="padding:10px 14px;text-align:center">${r.employee_count}</td>
+        <td style="padding:10px 14px;text-align:center">
+          <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;margin-right:4px"
+                  onclick="openStamdataDispatcherModal(${r.id},${jq(r.name)},${jq(r.description || "")})">Rediger</button>
+          <button class="btn btn-danger" style="font-size:12px;padding:4px 10px"
+                  onclick="deleteStamdataDispatcher(${r.id},${jq(r.name)},${r.employee_count})">Slet</button>
+        </td>
+      </tr>`).join("");
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
+  // Ny/ændret gruppe kan påvirke medarbejder-modal og filtre
+  try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); fillDispatcherGroupFilter(); } catch (_) {}
+}
+
+function openStamdataDispatcherModal(id, name, description) {
+  document.getElementById("stamdata-dispatcher-id").value = id || "";
+  document.getElementById("stamdata-dispatcher-name").value = name || "";
+  document.getElementById("stamdata-dispatcher-description").value = description || "";
+  document.getElementById("stamdata-dispatcher-title").textContent = id ? "Rediger disponentgruppe" : "Ny disponentgruppe";
+  openModal("modal-stamdata-dispatcher");
+}
+
+async function confirmStamdataDispatcher() {
+  const id   = document.getElementById("stamdata-dispatcher-id").value;
+  const name = document.getElementById("stamdata-dispatcher-name").value.trim();
+  const description = document.getElementById("stamdata-dispatcher-description").value.trim();
+  if (!name) { toast("Navn er påkrævet", "error"); return; }
+  try {
+    if (id) {
+      await PATCH(`/api/stamdata/dispatcher-groups/${id}`, { name, description });
+      toast("Disponentgruppe opdateret");
+    } else {
+      await POST("/api/stamdata/dispatcher-groups", { name, description });
+      toast("Disponentgruppe oprettet");
+    }
+    closeModal("modal-stamdata-dispatcher");
+    await loadStamdataDispatcherGroups();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function deleteStamdataDispatcher(id, name, employeeCount) {
+  const warn = employeeCount ? `\n${employeeCount} medarbejder(e) er tilknyttet og vil miste denne gruppe.` : "";
+  if (!confirm(`Slet disponentgruppen "${name}"?${warn}`)) return;
+  try {
+    await DEL(`/api/stamdata/dispatcher-groups/${id}`);
+    toast("Disponentgruppe slettet");
+    await loadStamdataDispatcherGroups();
+    await loadEmployees();
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -3596,12 +3680,25 @@ function statusLabel(s) {
   return { pending: "Afventer", approved: "Godkendt", deactivated: "Deaktiveret" }[s] || s;
 }
 
+function _empInGroup(emp, groupId) {
+  return (emp.dispatcher_groups || []).some(g => String(g.id) === String(groupId));
+}
+
+function fillDispatcherGroupFilter() {
+  const sel = document.getElementById("filter-dispatcher-group");
+  if (!sel) return;
+  const cur = sel.value;
+  sel.innerHTML = `<option value="">Alle afdelinger</option>` +
+    state.dispatcherGroups.map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
+  if (state.dispatcherGroups.find(g => String(g.id) === cur)) sel.value = cur;
+}
+
 function fillEmployeeFilter() {
   const sel = document.getElementById("filter-employee");
   const cur = sel.value;
   const groupFilter = document.getElementById("filter-dispatcher-group")?.value || "";
   const visible = groupFilter
-    ? state.employees.filter(e => e.dispatcher_group === groupFilter)
+    ? state.employees.filter(e => _empInGroup(e, groupFilter))
     : state.employees;
   const placeholder = groupFilter ? "Alle i afdelingen" : "Alle medarbejdere";
   sel.innerHTML = `<option value="">${placeholder}</option>` +
@@ -3613,10 +3710,12 @@ function fillEmployeeFilter() {
 // ── Startup ────────────────────────────────────────────────────────────────
 async function loadApp() {
   try {
-    [state.employees, state.vehicles] = await Promise.all([
+    [state.employees, state.vehicles, state.dispatcherGroups] = await Promise.all([
       GET("/api/employees"),
       GET("/api/vehicles"),
+      GET("/api/employees/dispatcher-groups"),
     ]);
+    fillDispatcherGroupFilter();
     fillEmployeeFilter();
   } catch (e) { console.error(e); }
 

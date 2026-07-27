@@ -135,7 +135,12 @@
       "mcp__claude-in-chrome__read_console_messages",
       "mcp__claude-in-chrome__computer",
       "mcp__claude-in-chrome__tabs_create_mcp",
-      "mcp__claude-in-chrome__javascript_tool"
+      "mcp__claude-in-chrome__javascript_tool",
+      "PowerShell(python -c \"import sqlite3; print\\(sqlite3.sqlite_version\\)\")",
+      "PowerShell(Stop-Process -Id 31508 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Id 31508 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-Process -Name python -ErrorAction SilentlyContinue)"
     ]
   }
 }

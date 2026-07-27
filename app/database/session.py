@@ -50,6 +50,8 @@ def init_db():
     _ensure_sh_pay_types()    # SH-løntypekoder kode 4 og 63
     _ensure_anciennitet_alert_permission()
     _ensure_manage_baselines_permission()
+    _ensure_activity_permissions()
+    _migrate_dispatcher_groups()
 
 
 def _migrate():
@@ -121,11 +123,11 @@ def _seed_roles():
         if db.query(Role).count() == 0:
             for r in [
                 Role(name="admin", display_name="Administrator", is_system=True,
-                     permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines"]),
+                     permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines", "approve_activities", "view_calendar"]),
                 Role(name="lonbogholder", display_name="Lønbogholder", is_system=False,
-                     permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert"]),
+                     permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert", "approve_activities", "view_calendar"]),
                 Role(name="disponent", display_name="Disponent", is_system=False,
-                     permissions=[]),
+                     permissions=["approve_activities", "view_calendar"]),
             ]:
                 db.add(r)
             db.commit()
@@ -365,6 +367,60 @@ def _ensure_anciennitet_alert_permission():
         db.close()
 
 
+def _migrate_dispatcher_groups():
+    """
+    Seeder de faste disponentgrupper og migrerer eksisterende medarbejderes
+    (legacy) dispatcher_group-streng til den nye many-to-many-tabel.
+    Idempotent – dropper legacy-kolonnen efter migrering.
+    """
+    import sqlite3 as _sqlite3
+    from database.models import DispatcherGroup, EmployeeDispatcherGroup
+
+    db = SessionLocal()
+    try:
+        default_groups = [
+            "2 - Kran", "4 - Makulering", "5 - Miljø",
+            "8 - THG", "9 - BN", "10 - ISOPLUS-CHJ",
+        ]
+        existing_names = {g.name for g in db.query(DispatcherGroup).all()}
+        for name in default_groups:
+            if name not in existing_names:
+                db.add(DispatcherGroup(name=name))
+        db.commit()
+
+        with _sqlite3.connect(str(DB_PATH)) as conn:
+            emp_cols = {row[1] for row in conn.execute("PRAGMA table_info(employees)")}
+            if "dispatcher_group" not in emp_cols:
+                return
+            rows = conn.execute(
+                "SELECT id, dispatcher_group FROM employees "
+                "WHERE dispatcher_group IS NOT NULL AND dispatcher_group != ''"
+            ).fetchall()
+            groups_by_name = {g.name: g.id for g in db.query(DispatcherGroup).all()}
+            for emp_id, group_name in rows:
+                group_id = groups_by_name.get(group_name)
+                if group_id is None:
+                    g = DispatcherGroup(name=group_name)
+                    db.add(g)
+                    db.commit()
+                    db.refresh(g)
+                    groups_by_name[group_name] = g.id
+                    group_id = g.id
+                already_linked = db.query(EmployeeDispatcherGroup).filter_by(
+                    employee_id=emp_id, dispatcher_group_id=group_id
+                ).first()
+                if not already_linked:
+                    db.add(EmployeeDispatcherGroup(employee_id=emp_id, dispatcher_group_id=group_id))
+            db.commit()
+            conn.execute("ALTER TABLE employees DROP COLUMN dispatcher_group")
+            conn.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved migrering af disponentgrupper: {e}")
+    finally:
+        db.close()
+
+
 def _ensure_manage_baselines_permission():
     """Tilføjer manage_baselines til admin-rollen (idempotent)."""
     from database.models import Role
@@ -380,5 +436,28 @@ def _ensure_manage_baselines_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af manage_baselines-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_activity_permissions():
+    """Tilføjer approve_activities og view_calendar til alle roller (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        new_perms = ["approve_activities", "view_calendar"]
+        for role in db.query(Role).all():
+            perms = list(role.permissions or [])
+            changed = False
+            for p in new_perms:
+                if p not in perms:
+                    perms.append(p)
+                    changed = True
+            if changed:
+                role.permissions = perms
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af aktivitetsrettigheder: {e}")
     finally:
         db.close()

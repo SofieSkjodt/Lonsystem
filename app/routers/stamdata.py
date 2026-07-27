@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from auth import log_action, require_permission
 from database.models import (
-    AppUser, Employee,
+    AppUser, Employee, DispatcherGroup,
     MasterAgreementType, MasterOvertimeRate,
     MasterSupplementRate, MasterPayType, MasterAbsenceType, MasterCvrNumber,
     Holiday,
@@ -516,6 +516,99 @@ def delete_absence_type(
         raise HTTPException(404, "Ikke fundet")
     log_action(db, current_user, "stamdata_delete", "absence_type", row.id,
                f"Slettet fraværstype: {row.label}")
+    db.delete(row)
+    db.commit()
+
+
+# ── Disponentgrupper ─────────────────────────────────────────────────────────
+
+
+class DispatcherGroupBody(BaseModel):
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+def _dispatcher_group_row(r) -> dict:
+    return {
+        "id": r.id,
+        "name": r.name,
+        "description": r.description,
+        "employee_count": len(r.employees),
+    }
+
+
+@router.get("/dispatcher-groups")
+def list_dispatcher_groups(
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    rows = db.query(DispatcherGroup).order_by(DispatcherGroup.name).all()
+    return [_dispatcher_group_row(r) for r in rows]
+
+
+@router.post("/dispatcher-groups", status_code=201)
+def create_dispatcher_group(
+    body: DispatcherGroupBody,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    if not body.name:
+        raise HTTPException(400, "Navn er påkrævet")
+    name = body.name.strip()
+    if db.query(DispatcherGroup).filter(DispatcherGroup.name == name).first():
+        raise HTTPException(400, "En disponentgruppe med dette navn eksisterer allerede")
+    row = DispatcherGroup(name=name, description=(body.description or "").strip() or None)
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    log_action(db, current_user, "stamdata_create", "dispatcher_group", row.id,
+               f"Oprettet disponentgruppe: {row.name}")
+    db.commit()
+    return _dispatcher_group_row(row)
+
+
+@router.patch("/dispatcher-groups/{group_id}")
+def update_dispatcher_group(
+    group_id: int,
+    body: DispatcherGroupBody,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    row = db.query(DispatcherGroup).filter(DispatcherGroup.id == group_id).first()
+    if not row:
+        raise HTTPException(404, "Ikke fundet")
+    if body.name is not None:
+        name = body.name.strip()
+        if not name:
+            raise HTTPException(400, "Navn er påkrævet")
+        conflict = db.query(DispatcherGroup).filter(
+            DispatcherGroup.name == name,
+            DispatcherGroup.id != group_id,
+        ).first()
+        if conflict:
+            raise HTTPException(400, "En anden disponentgruppe med dette navn eksisterer allerede")
+        row.name = name
+    if body.description is not None:
+        row.description = body.description.strip() or None
+    db.commit()
+    log_action(db, current_user, "stamdata_update", "dispatcher_group", row.id,
+               f"Disponentgruppe opdateret: {row.name}")
+    db.commit()
+    return _dispatcher_group_row(row)
+
+
+@router.delete("/dispatcher-groups/{group_id}", status_code=204)
+def delete_dispatcher_group(
+    group_id: int,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    row = db.query(DispatcherGroup).filter(DispatcherGroup.id == group_id).first()
+    if not row:
+        raise HTTPException(404, "Ikke fundet")
+    log_action(db, current_user, "stamdata_delete", "dispatcher_group", row.id,
+               f"Slettet disponentgruppe: {row.name}")
+    row.employees = []
     db.delete(row)
     db.commit()
 

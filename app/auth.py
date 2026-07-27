@@ -7,18 +7,20 @@ from database.models import AppUser
 from database.session import get_db
 
 ALL_PERMISSIONS = {
-    "payroll":           "Lønkørsel",
-    "absence_overview":  "Fraværsoversigt",
-    "import_ddd":        "Importer .ddd",
-    "user_management":   "Brugerstyring",
-    "reopen_period":     "Åbn låst lønperiode",
-    "stamdata":          "Stamdata",
-    "view_employees":    "Se medarbejdere",
-    "manage_employees":  "Tilføj medarbejdere",
-    "view_vehicles":     "Se vognpark",
-    "manage_vehicles":   "Tilføj vogn",
-    "manage_holidays":   "Administrér helligdage",
-    "anciennitet_alert": "Anciennitetsvarsel",
+    "payroll":             "Lønkørsel",
+    "absence_overview":    "Fraværsoversigt",
+    "import_ddd":          "Importer .ddd",
+    "user_management":     "Brugerstyring",
+    "reopen_period":       "Åbn låst lønperiode",
+    "stamdata":            "Stamdata",
+    "view_employees":      "Se medarbejdere",
+    "manage_employees":    "Tilføj medarbejdere",
+    "view_vehicles":       "Se vognpark",
+    "manage_vehicles":     "Tilføj vogn",
+    "manage_holidays":     "Administrér helligdage",
+    "anciennitet_alert":   "Anciennitetsvarsel",
+    "approve_activities":  "Godkend aktiviteter",
+    "view_calendar":       "Se aktivitetskalender",
 }
 
 

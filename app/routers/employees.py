@@ -10,9 +10,10 @@ from calculators.rates_loader import (
     seniority_variant_exists_from_db,
 )
 from database.session import get_db
-from database.models import AppUser, Employee
+from database.models import AppUser, DispatcherGroup, Employee
 from database.schemas import (
     AnciennitetsAlert,
+    DispatcherGroupResponse,
     EmployeeCreate,
     EmployeeResponse,
     EmployeeUpdate,
@@ -57,7 +58,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         termination_date=emp.termination_date,
         work_schedule=WorkSchedule(**emp.work_schedule),
         months_employed=_months_employed(emp.hire_date),
-        dispatcher_group=emp.dispatcher_group,
+        dispatcher_groups=[DispatcherGroupResponse.model_validate(g) for g in emp.dispatcher_groups],
         cvr_number=emp.cvr_number,
         anciennitet_dismissed_at=emp.anciennitet_dismissed_at,
     )
@@ -85,6 +86,24 @@ def agreement_types(current_user: AppUser = Depends(get_current_user),
     return [{"name": k, "hourly_rate": float(v)} for k, v in types.items()]
 
 
+@router.get("/dispatcher-groups", response_model=list[DispatcherGroupResponse])
+def dispatcher_groups(current_user: AppUser = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """Liste over disponentgrupper – bruges til at udfylde medarbejder-modalens afkrydsningsliste."""
+    return db.query(DispatcherGroup).order_by(DispatcherGroup.name).all()
+
+
+def _resolve_dispatcher_groups(db: Session, ids: list[int]) -> list[DispatcherGroup]:
+    if not ids:
+        return []
+    groups = db.query(DispatcherGroup).filter(DispatcherGroup.id.in_(ids)).all()
+    found_ids = {g.id for g in groups}
+    missing = set(ids) - found_ids
+    if missing:
+        raise HTTPException(400, f"Ukendt disponentgruppe-id: {', '.join(str(i) for i in sorted(missing))}")
+    return groups
+
+
 @router.post("", response_model=EmployeeResponse, status_code=201)
 def create_employee(body: EmployeeCreate,
                     current_user: AppUser = Depends(require_permission("manage_employees")),
@@ -97,9 +116,10 @@ def create_employee(body: EmployeeCreate,
     if body.agreement_type not in load_agreement_types_from_db(db):
         raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
 
-    data = body.model_dump()
+    data = body.model_dump(exclude={"dispatcher_group_ids"})
     data["work_schedule"] = body.work_schedule.model_dump()
     emp = Employee(**data)
+    emp.dispatcher_groups = _resolve_dispatcher_groups(db, body.dispatcher_group_ids)
     db.add(emp)
     db.commit()
     db.refresh(emp)
@@ -167,10 +187,12 @@ def update_employee(employee_id: int, body: EmployeeUpdate,
     if body.agreement_type and body.agreement_type not in load_agreement_types_from_db(db):
         raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
     old_agreement_type = emp.agreement_type
-    for field_name, value in body.model_dump(exclude_none=True).items():
+    for field_name, value in body.model_dump(exclude_none=True, exclude={"dispatcher_group_ids"}).items():
         if field_name == "work_schedule":
             value = body.work_schedule.model_dump()
         setattr(emp, field_name, value)
+    if body.dispatcher_group_ids is not None:
+        emp.dispatcher_groups = _resolve_dispatcher_groups(db, body.dispatcher_group_ids)
     # Nulstil afvist anciennitetsadvarsel hvis overenskomsttype er ændret
     if body.agreement_type and body.agreement_type != old_agreement_type:
         emp.anciennitet_dismissed_at = None

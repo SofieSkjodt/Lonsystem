@@ -19,6 +19,14 @@ class WorkSchedule(BaseModel):
     )
 
 
+class DispatcherGroupResponse(BaseModel):
+    id: int
+    name: str
+    description: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
 class EmployeeCreate(BaseModel):
     employee_number: str                       # Lønnummer
     tachograph_card_number: Optional[str] = None  # Førerkortnummer
@@ -36,7 +44,7 @@ class EmployeeCreate(BaseModel):
     hire_date: date
     termination_date: date = date(9999, 12, 31)
     work_schedule: WorkSchedule = Field(default_factory=WorkSchedule)
-    dispatcher_group: Optional[str] = None
+    dispatcher_group_ids: list[int] = Field(default_factory=list)
     cvr_number: Optional[str] = None
 
 
@@ -57,7 +65,7 @@ class EmployeeUpdate(BaseModel):
     hire_date: Optional[date] = None
     termination_date: Optional[date] = None
     work_schedule: Optional[WorkSchedule] = None
-    dispatcher_group: Optional[str] = None
+    dispatcher_group_ids: Optional[list[int]] = None
     cvr_number: Optional[str] = None
 
 
@@ -82,7 +90,7 @@ class EmployeeResponse(BaseModel):
     termination_date: date
     work_schedule: WorkSchedule
     months_employed: int
-    dispatcher_group: Optional[str] = None
+    dispatcher_groups: list[DispatcherGroupResponse] = Field(default_factory=list)
     cvr_number: Optional[str] = None
     anciennitet_dismissed_at: Optional[datetime] = None
 
