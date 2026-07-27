@@ -66,8 +66,15 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | agreement_kind | Enum(hourly_fixed/hourly_flexible) | |
 | agreement_type | String | Fra Excel-ark |
 | work_schedule | JSON | `{"even":[0..6],"odd":[0..6]}` timer man-søn |
-| dispatcher_group | String nullable | Afdeling |
+| dispatcher_groups | many-to-many via employee_dispatcher_groups | Se DispatcherGroup nedenfor – medarbejder kan have 0-N grupper |
 | hire_date / termination_date | Date | Ansættelses-/slutdato |
+
+### DispatcherGroup (tabel: dispatcher_groups) + EmployeeDispatcherGroup (join-tabel)
+| Felt | Type | Bemærk |
+|---|---|---|
+| name | String unik | Fx "2 - Kran" |
+| description | Text nullable | |
+CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Lightweight read-only liste til dropdowns: `GET /api/employees/dispatcher-groups` (kun `get_current_user`). Medarbejder-modal bruger afkrydsningsbokse (`EmployeeCreate/Update.dispatcher_group_ids`), ingen primær gruppe. Historik: frem til 2026-07-27 lå dette som en enkelt `employees.dispatcher_group`-streng; migreret til many-to-many (kolonnen droppet, se `session.py: _migrate_dispatcher_groups`).
 
 ### Activity (tabel: activities)
 | Felt | Type | Bemærk |
