@@ -120,7 +120,22 @@
       "PowerShell(python _test_overtime.py)",
       "PowerShell(git commit --amend -m \"fix: fjern tomme raekker i Danloen CSV \\(lineterminator=LF\\)\")",
       "PowerShell(Stop-Process -Id 29376 -Force -ErrorAction SilentlyContinue)",
-      "PowerShell(Get-Process -Id 29376 -ErrorAction SilentlyContinue)"
+      "PowerShell(Get-Process -Id 29376 -ErrorAction SilentlyContinue)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\debug_closed_guard.py\" 2>&1)",
+      "PowerShell(git add app/templates/index.html)",
+      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\commit_msg2.txt\")",
+      "PowerShell(git add CODEREF.md docs/build_docs.py \"docs/Brugervejledning.docx\" \"docs/Teknisk dokumentation.docx\")",
+      "PowerShell(git commit -F \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\10247304-bc85-4599-af79-36f49765f760\\\\scratchpad\\\\commit_msg3.txt\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_nicolaisen.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_nicolaisen2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_nicolaisen3.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_nicolaisen4.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_nicolaisen5.py\")",
+      "mcp__claude-in-chrome__navigate",
+      "mcp__claude-in-chrome__read_console_messages",
+      "mcp__claude-in-chrome__computer",
+      "mcp__claude-in-chrome__tabs_create_mcp",
+      "mcp__claude-in-chrome__javascript_tool"
     ]
   }
 }
