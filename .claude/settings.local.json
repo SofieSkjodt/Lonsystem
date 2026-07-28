@@ -148,7 +148,8 @@
       "PowerShell(git add -A)",
       "PowerShell(git commit -m $msg)",
       "PowerShell(git commit -F \"$env:TEMP\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\816143c6-9668-4472-b189-22e7385186dc\\\\scratchpad\\\\commit_msg.txt\")",
-      "PowerShell(\\(Get-Content \"docs\\\\build_docs.py\" | Measure-Object -Line\\).Lines)"
+      "PowerShell(\\(Get-Content \"docs\\\\build_docs.py\" | Measure-Object -Line\\).Lines)",
+      "PowerShell(git commit -m \"chore: daglig backup + DB-tilstand pr. 2026-07-28\")"
     ]
   }
 }
