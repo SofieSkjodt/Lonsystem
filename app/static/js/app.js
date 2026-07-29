@@ -381,14 +381,15 @@ function renderCellActivity(a, role = "full") {
 function renderPctBar(a) {
   const d = pct(a.driving_pct), w = pct(a.other_work_pct), av = pct(a.availability_time_pct);
   const r = Math.max(0, 100 - d - w - av);
-  return `<div class="pct-bar" title="Kørsel ${d}% / Arbejde ${w}% / Rådighed ${av}% / Hvil ${r}%">
+  return `<div class="pct-bar" title="Kørsel ${fmtPct(d)}% / Arbejde ${fmtPct(w)}% / Rådighed ${fmtPct(av)}% / Hvil ${fmtPct(r)}%">
     <div class="pct-driving" style="width:${d}%"></div>
     <div class="pct-work" style="width:${w}%"></div>
     <div class="pct-avail" style="width:${av}%"></div>
     <div class="pct-rest" style="width:${r}%"></div>
   </div>`;
 }
-function pct(v) { return v ? Math.round(parseFloat(v)) : 0; }
+function pct(v) { return v ? parseFloat(v) : 0; }
+function fmtPct(v) { return v.toFixed(2); }
 
 function renderActionBtns(a) {
   const btns = [];
@@ -462,7 +463,7 @@ function openActivityDetail(id) {
       const e = Math.min(new Date(a.end_time).getTime(), new Date(pe).getTime());
       if (e > s) pauseMs += (e - s);
     }
-    r = totalMs > 0 ? Math.round((pauseMs / totalMs) * 100) : 0;
+    r = totalMs > 0 ? (pauseMs / totalMs) * 100 : 0;
     d = Math.max(0, 100 - r);
     effektivLabel = "Effektiv tid";
   } else {
@@ -530,10 +531,10 @@ function openActivityDetail(id) {
         <div class="pct-rest" style="width:${r}%"></div>
       </div>
       <div class="pct-legend">
-        <div class="pct-legend-item"><span class="pct-dot" style="background:#2563eb"></span>${effektivLabel} ${d}%</div>
-        ${!hasSegmentData ? "" : `<div class="pct-legend-item"><span class="pct-dot" style="background:#059669"></span>Andet arbejde ${w}%</div>
-        <div class="pct-legend-item"><span class="pct-dot" style="background:#d97706"></span>Rådighedstid ${av}%</div>`}
-        <div class="pct-legend-item"><span class="pct-dot" style="background:#9ca3af"></span>Hvil/pause ${r}%</div>
+        <div class="pct-legend-item"><span class="pct-dot" style="background:#2563eb"></span>${effektivLabel} ${fmtPct(d)}%</div>
+        ${!hasSegmentData ? "" : `<div class="pct-legend-item"><span class="pct-dot" style="background:#059669"></span>Andet arbejde ${fmtPct(w)}%</div>
+        <div class="pct-legend-item"><span class="pct-dot" style="background:#d97706"></span>Rådighedstid ${fmtPct(av)}%</div>`}
+        <div class="pct-legend-item"><span class="pct-dot" style="background:#9ca3af"></span>Hvil/pause ${fmtPct(r)}%</div>
       </div>
     </div>
 
