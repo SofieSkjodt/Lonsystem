@@ -1201,15 +1201,19 @@ function isoWeekNumber(d) {
 
 function updateManualTypeVisibility() {
   const type = document.getElementById("manual-type").value;
+  const tilDatoVal = document.getElementById("manual-til-dato")?.value || "";
   const isFerie        = (type === "ferie" || type === "selvbetalt_fridag");
   const isSygdom       = (type === "sygdom" || type === "barn_1sygedag" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus");
   const isAfspadsering = (type === "afspadsering");
+  // Afspadsering er kun dato-kun/periode-visuelt når "Til dato" er udfyldt – enkelt dag beholder redigerbar start-/sluttid (delvis dag).
+  const isAfspadseringPeriode = isAfspadsering && !!tilDatoVal;
   const isFeriefri     = (type === "feriefri");
   const isBarsel       = (type === "barsel");
   const isOvernatning  = (type === "overnatning");
-  const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning;
+  const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom";
+  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || isAfspadseringPeriode;
+  const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
   document.getElementById("manual-normal-fields").style.display = isAbsence ? "none" : "";
   document.getElementById("manual-end-group").style.display     = isDateOnly ? "none" : "";
@@ -1240,8 +1244,8 @@ function updateManualTypeVisibility() {
     document.getElementById("manual-reg-hint").textContent = "";
     document.getElementById("manual-salt").checked = false;
   }
-  document.getElementById("manual-til-dato-group").style.display = isRangeType ? "" : "none";
-  if (!isRangeType) document.getElementById("manual-til-dato").value = "";
+  document.getElementById("manual-til-dato-group").style.display = tilDatoFieldVisible ? "" : "none";
+  if (!tilDatoFieldVisible) document.getElementById("manual-til-dato").value = "";
   const pauseSection = document.getElementById("manual-pause-section");
   if (pauseSection) pauseSection.style.display = isDateOnly ? "none" : "";
 
@@ -1415,6 +1419,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
   updateManualTypeVisibility();
 
   document.getElementById("manual-type").onchange = updateManualTypeVisibility;
+  document.getElementById("manual-til-dato").onchange = updateManualTypeVisibility;
   document.getElementById("manual-employee").onchange = () => {
     const t = document.getElementById("manual-type").value;
     if (t === "ferie" || t === "selvbetalt_fridag") applyFerieDefaults();
@@ -1486,7 +1491,7 @@ async function confirmManualActivity() {
     return;
   }
 
-  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom"];
+  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "afspadsering"];
   const isRange = _RANGE_TYPES.includes(actType) && !!tilDato;
 
   if (!start || (!isRange && !end)) {
