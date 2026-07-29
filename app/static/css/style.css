@@ -360,6 +360,9 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 .badge-group { margin-bottom: 6px; }
 .badge-group:last-child { margin-bottom: 0; }
 
+.time-badge-stacked { line-height: 1.35; padding: 3px 4px; }
+.time-badge-stacked .time-line { display: block; }
+
 /* ── Saks i hændelsestabel ── */
 .seg-split-btn {
   background: none;
