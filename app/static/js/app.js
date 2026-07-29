@@ -367,7 +367,10 @@ function renderCellActivity(a, role = "full") {
   if (role === "piece") {
     const id = a._orig_id ?? a.id;
     return `<div class="badge-group">
-      <span class="time-badge ${a.status}${autoCls}" data-id="${id}" title="${title}">${k}${formatTime(a.start_time)}–${formatTime(a.end_time)}${warn}${autoSuffix}${incomplete}</span>
+      <span class="time-badge time-badge-stacked ${a.status}${autoCls}" data-id="${id}" title="${title}">
+        <span class="time-line">${k}${formatTime(a.start_time)}${warn}</span>
+        <span class="time-line">${formatTime(a.end_time)}${autoSuffix}${incomplete}</span>
+      </span>
     </div>`;
   }
   return `<div class="badge-group">
