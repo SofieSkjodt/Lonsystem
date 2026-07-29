@@ -180,6 +180,12 @@ def _split_into_day_pieces(act: Activity) -> list[_DayPiece]:
         (datetime.fromisoformat(s), datetime.fromisoformat(e))
         for s, e in (act.pause_intervals or [])
     ]
+    for seg in (act.segments or []):
+        try:
+            if len(seg) >= 3 and seg[2] == "rest":
+                raw_pauses.append((datetime.fromisoformat(seg[0]), datetime.fromisoformat(seg[1])))
+        except (ValueError, IndexError):
+            pass
     pieces = []
     cur = act.start_time
     while cur < act.end_time:
@@ -377,6 +383,12 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         (_dt.fromisoformat(s), _dt.fromisoformat(e))
                         for s, e in (act.pause_intervals or [])
                     ]
+                    for seg in (getattr(act, "segments", None) or []):
+                        try:
+                            if len(seg) >= 3 and seg[2] == "rest":
+                                pauses.append((_dt.fromisoformat(seg[0]), _dt.fromisoformat(seg[1])))
+                        except (ValueError, IndexError):
+                            pass
                     if day_type in (DayType.NORMAL, DayType.SATURDAY):
                         # Lørdag er ikke længere en særlig dag – den bruger samme
                         # tidsvindues-beregning som en hverdag, med lørdagens egne
