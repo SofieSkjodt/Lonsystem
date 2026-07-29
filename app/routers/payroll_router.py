@@ -176,16 +176,16 @@ def _split_into_day_pieces(act: Activity) -> list[_DayPiece]:
     IKKE nulstilles ved midnat for almindelige hverdage/lørdage (bekræftet af
     bruger 2026-07-02).
     """
-    raw_pauses = [
-        (datetime.fromisoformat(s), datetime.fromisoformat(e))
-        for s, e in (act.pause_intervals or [])
-    ]
-    for seg in (act.segments or []):
-        try:
-            if len(seg) >= 3 and seg[2] == "rest":
-                raw_pauses.append((datetime.fromisoformat(seg[0]), datetime.fromisoformat(seg[1])))
-        except (ValueError, IndexError):
-            pass
+    if act.segments:
+        raw_pauses = [
+            (datetime.fromisoformat(seg[0]), datetime.fromisoformat(seg[1]))
+            for seg in act.segments if len(seg) >= 3 and seg[2] == "rest"
+        ]
+    else:
+        raw_pauses = [
+            (datetime.fromisoformat(s), datetime.fromisoformat(e))
+            for s, e in (act.pause_intervals or [])
+        ]
     pieces = []
     cur = act.start_time
     while cur < act.end_time:
@@ -379,16 +379,17 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "overnight": overnight_today,
                     })
                 else:
-                    pauses = [
-                        (_dt.fromisoformat(s), _dt.fromisoformat(e))
-                        for s, e in (act.pause_intervals or [])
-                    ]
-                    for seg in (getattr(act, "segments", None) or []):
-                        try:
-                            if len(seg) >= 3 and seg[2] == "rest":
-                                pauses.append((_dt.fromisoformat(seg[0]), _dt.fromisoformat(seg[1])))
-                        except (ValueError, IndexError):
-                            pass
+                    _segs = getattr(act, "segments", None)
+                    if _segs:
+                        pauses = [
+                            (_dt.fromisoformat(seg[0]), _dt.fromisoformat(seg[1]))
+                            for seg in _segs if len(seg) >= 3 and seg[2] == "rest"
+                        ]
+                    else:
+                        pauses = [
+                            (_dt.fromisoformat(s), _dt.fromisoformat(e))
+                            for s, e in (act.pause_intervals or [])
+                        ]
                     if day_type in (DayType.NORMAL, DayType.SATURDAY):
                         # Lørdag er ikke længere en særlig dag – den bruger samme
                         # tidsvindues-beregning som en hverdag, med lørdagens egne

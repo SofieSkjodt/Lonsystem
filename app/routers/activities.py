@@ -107,14 +107,12 @@ TWELVE_HOURS = 12 * 60
 
 def _duration_minutes(a: Activity) -> int:
     total = int((a.end_time - a.start_time).total_seconds() // 60)
-    # Kombinér manuelle pauser og 'rest'-segmenter fra tachograf
-    pauses = list(a.pause_intervals or [])
-    for seg in (a.segments or []):
-        try:
-            if len(seg) >= 3 and seg[2] == "rest":
-                pauses.append([seg[0], seg[1]])
-        except (TypeError, IndexError):
-            pass
+    # Segmenter er autoritativ kilde for DDD-aktiviteter (pause_intervals kan være forældet
+    # efter 'Ret linje'/'Tilpas'). Manuelle aktiviteter har ingen segmenter → brug pause_intervals.
+    if a.segments:
+        pauses = [[seg[0], seg[1]] for seg in a.segments if len(seg) >= 3 and seg[2] == "rest"]
+    else:
+        pauses = list(a.pause_intervals or [])
     for p in pauses:
         try:
             ps = datetime.fromisoformat(p[0])

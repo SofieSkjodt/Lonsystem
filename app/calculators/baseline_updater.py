@@ -181,14 +181,10 @@ def _welford_downdate(
 def _effective_duration_minutes(activity: Activity) -> float:
     """Netto varighed i minutter efter pausefradrag."""
     total = (activity.end_time - activity.start_time).total_seconds() / 60.0
-    # Kombinér manuelle pauser og 'rest'-segmenter fra tachograf
-    pauses = list(activity.pause_intervals or [])
-    for seg in (activity.segments or []):
-        try:
-            if len(seg) >= 3 and seg[2] == "rest":
-                pauses.append([seg[0], seg[1]])
-        except (TypeError, IndexError):
-            pass
+    if activity.segments:
+        pauses = [[seg[0], seg[1]] for seg in activity.segments if len(seg) >= 3 and seg[2] == "rest"]
+    else:
+        pauses = list(activity.pause_intervals or [])
     for p in pauses:
         try:
             ps = datetime.fromisoformat(p[0])

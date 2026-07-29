@@ -536,7 +536,7 @@ function openActivityDetail(id) {
     </div>
 
     ${renderSegmentTable(a)}
-    ${(a.pause_intervals && a.pause_intervals.length) ? `
+    ${(!a.segments || !a.segments.length) && (a.pause_intervals && a.pause_intervals.length) ? `
     <div class="form-group mt-16">
       <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light)">Pauser (fratrækkes i tidsrummet de afholdes)</label>
       <div style="font-size:13px;padding:8px;background:var(--bg);border-radius:4px">
