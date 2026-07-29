@@ -647,7 +647,10 @@ async function correctSegment(activityId, segIdx, revert = false) {
   try {
     const updated = await POST(`/api/activities/${activityId}/correct-segment`, { segment_index: segIdx, revert });
     state.activities = state.activities.map(a => a.id === updated.id ? updated : a);
+    const body = document.getElementById("modal-activity-body");
+    const scrollTop = body ? body.scrollTop : 0;
     openActivityDetail(activityId);
+    if (body) body.scrollTop = scrollTop;
     renderActivitiesTable();
     toast(revert ? "Segment gendannet" : "Linje rettet til 'Andet arbejde'", "success");
   } catch (e) { toast(e.message, "error"); }
@@ -754,7 +757,10 @@ async function confirmResizeSegment() {
     });
     state.activities = state.activities.map(a => a.id === updated.id ? updated : a);
     closeModal("modal-resize-segment");
+    const body = document.getElementById("modal-activity-body");
+    const scrollTop = body ? body.scrollTop : 0;
     openActivityDetail(activityId);
+    if (body) body.scrollTop = scrollTop;
     renderActivitiesTable();
     toast("Pauselængde tilpasset", "success");
   } catch (e) { toast(e.message, "error"); }
