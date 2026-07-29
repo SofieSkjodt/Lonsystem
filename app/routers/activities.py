@@ -1,11 +1,14 @@
 from datetime import date, datetime, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from openpyxl import load_workbook
+from pydantic import BaseModel
 from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_current_user, log_action
 from calculators.baseline_updater import update_baseline_from_activity
@@ -115,6 +118,38 @@ def _duration_minutes(a: Activity) -> int:
         except (ValueError, IndexError):
             pass
     return max(0, total)
+
+
+def _recalculate_pcts(a: Activity) -> None:
+    """Genberegn procentfordelinger ud fra det aktuelle segments-felt."""
+    segments = a.segments or []
+    total_sec = (a.end_time - a.start_time).total_seconds()
+    if total_sec <= 0:
+        return
+    type_sec: dict[str, float] = {"driving": 0.0, "work": 0.0, "availability": 0.0, "rest": 0.0}
+    for seg in segments:
+        try:
+            s = datetime.fromisoformat(seg[0])
+            e = datetime.fromisoformat(seg[1])
+            t = seg[2]
+            if t in type_sec:
+                type_sec[t] += (e - s).total_seconds()
+        except (ValueError, IndexError):
+            pass
+    a.driving_pct           = Decimal(str(round(type_sec["driving"]      / total_sec * 100, 2)))
+    a.other_work_pct        = Decimal(str(round(type_sec["work"]         / total_sec * 100, 2)))
+    a.availability_time_pct = Decimal(str(round(type_sec["availability"] / total_sec * 100, 2)))
+    a.rest_pause_pct        = Decimal(str(round(type_sec["rest"]         / total_sec * 100, 2)))
+
+
+class SegmentCorrectionBody(BaseModel):
+    segment_index: int
+    revert: bool = False
+
+
+class SegmentResizeBody(BaseModel):
+    segment_index: int
+    new_end_iso: str  # "YYYY-MM-DDTHH:MM" eller "YYYY-MM-DDTHH:MM:SS"
 
 
 def _to_response(a: Activity) -> ActivityResponse:
@@ -482,6 +517,126 @@ def deactivate_activity(activity_id: int, body: ActivityDeactivate,
                f"Deaktiveret for {a.employee.name} ({a.start_time.strftime('%d-%m-%Y')})")
     db.commit()
     db.refresh(a)
+    return _to_response(a)
+
+
+@router.post("/{activity_id}/correct-segment", response_model=ActivityResponse)
+def correct_segment(
+    activity_id: int,
+    body: SegmentCorrectionBody,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ret et segment (rest→work) eller gendan det. Gemmer original type som 4. element."""
+    a = (
+        db.query(Activity)
+        .options(selectinload(Activity.employee), selectinload(Activity.split_children))
+        .filter(Activity.id == activity_id)
+        .first()
+    )
+    if not a:
+        raise HTTPException(404, "Aktivitet ikke fundet")
+
+    segments = [list(seg) for seg in (a.segments or [])]
+    idx = body.segment_index
+    if idx < 0 or idx >= len(segments):
+        raise HTTPException(400, "Ugyldigt segmentindeks")
+
+    seg = segments[idx]
+    if body.revert:
+        if len(seg) < 4:
+            raise HTTPException(400, "Segment er ikke rettet")
+        seg = seg[:2] + [seg[3]]          # gendan original type
+    else:
+        if seg[2] != "rest":
+            raise HTTPException(400, "Kun pausesegmenter kan rettes")
+        if len(seg) >= 4:
+            raise HTTPException(400, "Segment er allerede rettet")
+        seg = seg[:2] + ["work", seg[2]]  # ret til arbejde, bevar original
+
+    segments[idx] = seg
+    a.segments = segments
+    flag_modified(a, "segments")
+    _recalculate_pcts(a)
+    db.commit()
+    db.refresh(a)
+    log_action(db, current_user, "correct_segment", "activity", activity_id,
+               {"segment_index": idx, "revert": body.revert})
+    return _to_response(a)
+
+
+@router.post("/{activity_id}/resize-segment", response_model=ActivityResponse)
+def resize_segment(
+    activity_id: int,
+    body: SegmentResizeBody,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Tilpas længden af et pausesegment.
+    Kortere: det overskydende tid tilføjes som nyt 'work'-segment.
+    Længere: næste segment forkortes tilsvarende.
+    """
+    from datetime import datetime as _dt
+
+    a = (
+        db.query(Activity)
+        .options(selectinload(Activity.employee), selectinload(Activity.split_children))
+        .filter(Activity.id == activity_id)
+        .first()
+    )
+    if not a:
+        raise HTTPException(404, "Aktivitet ikke fundet")
+
+    segments = [list(seg) for seg in (a.segments or [])]
+    idx = body.segment_index
+    if idx < 0 or idx >= len(segments):
+        raise HTTPException(400, "Ugyldigt segmentindeks")
+
+    seg = segments[idx]
+    if seg[2] != "rest":
+        raise HTTPException(400, "Kun pausesegmenter kan tilpasses")
+
+    new_end_str = body.new_end_iso if len(body.new_end_iso) > 16 else body.new_end_iso + ":00"
+    try:
+        new_end_dt = _dt.fromisoformat(new_end_str)
+    except ValueError:
+        raise HTTPException(400, "Ugyldigt tidspunkt")
+
+    seg_start_dt = _dt.fromisoformat(seg[0])
+    seg_end_dt   = _dt.fromisoformat(seg[1])
+
+    if new_end_dt <= seg_start_dt:
+        raise HTTPException(400, "Ny sluttid skal være efter segmentets starttid")
+    if new_end_dt == seg_end_dt:
+        raise HTTPException(400, "Ingen ændring")
+
+    if new_end_dt < seg_end_dt:
+        # Forkortelse: del resten op som nyt arbejdssegment
+        shortened = seg[:2] + [seg[2]] + (seg[3:] if len(seg) > 3 else [])
+        shortened[1] = new_end_str
+        new_work = [new_end_str, seg[1], "work"]
+        segments = segments[:idx] + [shortened, new_work] + segments[idx + 1:]
+    else:
+        # Forlængelse: lån tid fra næste segment
+        if idx + 1 >= len(segments):
+            raise HTTPException(400, "Der er intet næste segment at tage tid fra")
+        next_seg = segments[idx + 1]
+        next_end_dt = _dt.fromisoformat(next_seg[1])
+        if new_end_dt >= next_end_dt:
+            raise HTTPException(400, "Ny sluttid overstiger næste segments sluttid")
+        extended = seg[:2] + [seg[2]] + (seg[3:] if len(seg) > 3 else [])
+        extended[1] = new_end_str
+        shortened_next = [new_end_str] + next_seg[1:]
+        segments = segments[:idx] + [extended, shortened_next] + segments[idx + 2:]
+
+    a.segments = segments
+    flag_modified(a, "segments")
+    _recalculate_pcts(a)
+    a.is_edited = True
+    db.commit()
+    db.refresh(a)
+    log_action(db, current_user, "resize_segment", "activity", activity_id,
+               {"segment_index": idx, "new_end_iso": body.new_end_iso})
     return _to_response(a)
 
 

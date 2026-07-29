@@ -793,6 +793,30 @@
   </div>
 </div>
 
+<!-- Tilpas pause (resize segment) modal -->
+<div id="modal-resize-segment" class="modal-overlay">
+  <div class="modal" style="width:420px;max-width:95vw">
+    <div class="modal-header">
+      <h2>Tilpas pauselængde</h2>
+      <button class="modal-close" onclick="closeModal('modal-resize-segment')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div id="resize-seg-info" style="font-size:13px;padding:8px;background:var(--bg);border-radius:4px;margin-bottom:14px"></div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Ny sluttid for pausen <span style="color:var(--danger)">*</span></label>
+          <div class="dt-picker" id="resize-seg-end"></div>
+        </div>
+      </div>
+      <div id="resize-seg-preview" style="font-size:13px;padding:8px;border-radius:4px;background:var(--bg);min-height:36px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-resize-segment')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmResizeSegment()">Anvend</button>
+    </div>
+  </div>
+</div>
+
 <!-- Prøvekørsel gem modal -->
 <div id="modal-proevekoersel" class="modal-overlay">
   <div class="modal" style="width:460px">

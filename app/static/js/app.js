@@ -47,6 +47,7 @@ const PERMISSION_LABELS = {
 };
 
 let manualPauses = [];
+let _resizeSegState = null;
 let _absenceConflictConfirmed = false;
 
 const WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
@@ -575,6 +576,15 @@ function openActivityDetail(id) {
   document.querySelectorAll("#modal-activity-body .seg-split-btn").forEach(btn => {
     btn.addEventListener("click", () => splitAtSegment(btn.dataset.splitAt));
   });
+  document.querySelectorAll("#modal-activity-body .seg-correct-btn").forEach(btn => {
+    btn.addEventListener("click", () => correctSegment(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
+  });
+  document.querySelectorAll("#modal-activity-body .seg-revert-btn").forEach(btn => {
+    btn.addEventListener("click", () => correctSegment(parseInt(btn.dataset.id), parseInt(btn.dataset.idx), true));
+  });
+  document.querySelectorAll("#modal-activity-body .seg-resize-btn").forEach(btn => {
+    btn.addEventListener("click", () => openResizeSegment(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
+  });
 
   openModal("modal-activity");
   document.getElementById("modal-activity-body").scrollTop = 0;
@@ -590,15 +600,29 @@ const SEGMENT_ICONS = {
 function renderSegmentTable(a) {
   if (!a.segments || a.segments.length === 0) return "";
   // Saksen vises ikke på første linje (split ved aktivitetens start giver ingen mening)
-  const rows = a.segments.map(([s, e, name], idx) => {
+  const rows = a.segments.map((seg, idx) => {
+    const [s, e, name, correctedFrom] = seg;
     const mins = Math.round((new Date(e) - new Date(s)) / 60000);
     const h = Math.floor(mins / 60), m = mins % 60;
     const canSplit = idx > 0;
-    return `<tr>
+    const isCorrected = correctedFrom !== undefined;
+    const rowBg = name === "rest" ? `style="background:#d4edcc;"` : "";
+    const tilrettet = isCorrected ? "Ja" : (a.is_edited ? "Ja" : "Nej");
+    let retBtns = "";
+    if (name === "rest" && !isCorrected) {
+      retBtns = `<div style="display:flex;flex-direction:column;gap:3px;align-items:flex-start">
+        <button class="seg-correct-btn" data-idx="${idx}" data-id="${a.id}" style="font-size:11px;padding:2px 7px;cursor:pointer" title="Ret til 'Andet arbejde'">Ret linje</button>
+        <button class="seg-resize-btn" data-idx="${idx}" data-id="${a.id}" style="font-size:11px;padding:2px 7px;cursor:pointer" title="Tilpas pauselængde">Tilpas</button>
+      </div>`;
+    } else if (isCorrected) {
+      retBtns = `<button class="seg-revert-btn" data-idx="${idx}" data-id="${a.id}" style="font-size:11px;padding:2px 7px;cursor:pointer" title="Gendan til '${SEGMENT_LABELS[correctedFrom] || correctedFrom}'">Gendan</button>`;
+    }
+    return `<tr ${rowBg}>
       <td>${formatDateTime(s)}</td>
       <td>${SEGMENT_LABELS[name] || name}</td>
       <td>${h} t. ${m} m.</td>
-      <td>${a.is_edited ? "Ja" : "Nej"}</td>
+      <td style="text-align:center">${retBtns}</td>
+      <td>${tilrettet}</td>
       <td style="text-align:center">${SEGMENT_ICONS[name] || ""}</td>
       <td style="text-align:center">${canSplit
         ? `<button class="seg-split-btn" data-split-at="${s}" title="Split aktiviteten her (kl. ${formatTime(s)})">✂️</button>`
@@ -611,12 +635,129 @@ function renderSegmentTable(a) {
     <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
       <table style="font-size:12px">
         <thead>
-          <tr><th>Dato og tid</th><th>Status</th><th>Forbrugt tid</th><th>Tilrettet</th><th>Type</th><th style="width:36px"></th></tr>
+          <tr><th>Dato og tid</th><th>Status</th><th>Forbrugt tid</th><th>Ret</th><th>Tilrettet</th><th>Type</th><th style="width:36px"></th></tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
     </div>
   </div>`;
+}
+
+async function correctSegment(activityId, segIdx, revert = false) {
+  try {
+    const updated = await POST(`/api/activities/${activityId}/correct-segment`, { segment_index: segIdx, revert });
+    state.activities = state.activities.map(a => a.id === updated.id ? updated : a);
+    openActivityDetail(activityId);
+    renderActivitiesTable();
+    toast(revert ? "Segment gendannet" : "Linje rettet til 'Andet arbejde'", "success");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function openResizeSegment(activityId, segIdx) {
+  const a = state.activities.find(x => x.id === activityId);
+  if (!a) return;
+  const seg = a.segments[segIdx];
+  if (!seg) return;
+
+  _resizeSegState = {
+    activityId,
+    segIdx,
+    segStart: seg[0],
+    segEnd: seg[1],
+    nextSeg: a.segments[segIdx + 1] || null,
+  };
+
+  const segLabel = SEGMENT_LABELS[seg[2]] || seg[2];
+  const next = _resizeSegState.nextSeg;
+  const nextInfo = next
+    ? `Næste: ${SEGMENT_LABELS[next[2]] || next[2]} (${next[0].slice(11, 16)}–${next[1].slice(11, 16)})`
+    : "Ingen næste segment";
+  document.getElementById("resize-seg-info").innerHTML =
+    `<strong>${segLabel}</strong> &nbsp; ${_resizeSegState.segStart.slice(11, 16)}–${_resizeSegState.segEnd.slice(11, 16)}<br>` +
+    `<span style="color:var(--text-light);font-size:12px">${nextInfo}</span>`;
+
+  buildDatetimePicker("resize-seg-end", seg[1].slice(0, 16));
+  _stackDatetimePicker("resize-seg-end");
+  document.getElementById("resize-seg-preview").innerHTML = "";
+
+  document.getElementById("resize-seg-end").querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", updateResizePreview);
+    inp.addEventListener("change", updateResizePreview);
+  });
+
+  openModal("modal-resize-segment");
+}
+
+function updateResizePreview() {
+  if (!_resizeSegState) return;
+  const preview = document.getElementById("resize-seg-preview");
+  const newEndIso = readDatetimePicker("resize-seg-end");
+  if (!newEndIso) { preview.innerHTML = ""; return; }
+
+  const newEnd = newEndIso + ":00";
+  const { segStart, segEnd, nextSeg } = _resizeSegState;
+
+  if (newEnd <= segStart) {
+    preview.style.color = "var(--danger)";
+    preview.textContent = `Sluttid skal være efter starttid (${segStart.slice(11, 16)})`;
+    return;
+  }
+  if (newEnd === segEnd) {
+    preview.style.color = "var(--text-light)";
+    preview.textContent = "Ingen ændring";
+    return;
+  }
+
+  const diffMs = new Date(newEnd) - new Date(segEnd);
+  const absDiffMin = Math.round(Math.abs(diffMs) / 60000);
+
+  if (diffMs < 0) {
+    preview.style.color = "var(--primary)";
+    preview.textContent =
+      `Pausen forkortes med ${absDiffMin} min. ` +
+      `De resterende ${absDiffMin} min tilføjes som 'Andet arbejde' (${newEnd.slice(11, 16)}–${segEnd.slice(11, 16)}).`;
+  } else {
+    if (!nextSeg) {
+      preview.style.color = "var(--danger)";
+      preview.textContent = "Der er intet næste segment – pausen kan ikke forlænges.";
+      return;
+    }
+    const nextEnd = nextSeg[1];
+    if (newEnd >= nextEnd) {
+      preview.style.color = "var(--danger)";
+      preview.textContent =
+        `Ny sluttid (${newEnd.slice(11, 16)}) overstiger næste segments sluttid (${nextEnd.slice(11, 16)}).`;
+      return;
+    }
+    preview.style.color = "";
+    const nextLabel = SEGMENT_LABELS[nextSeg[2]] || nextSeg[2];
+    preview.textContent =
+      `Pausen forlænges med ${absDiffMin} min. ` +
+      `Næste segment (${nextLabel}) forkortes: ${nextSeg[0].slice(11, 16)}–${nextSeg[1].slice(11, 16)} → ${newEnd.slice(11, 16)}–${nextEnd.slice(11, 16)}.`;
+  }
+}
+
+async function confirmResizeSegment() {
+  if (!_resizeSegState) return;
+  const newEndIso = readDatetimePicker("resize-seg-end");
+  if (!newEndIso) { toast("Angiv ny sluttid", "error"); return; }
+
+  const newEnd = newEndIso + ":00";
+  const { activityId, segIdx, segStart, segEnd } = _resizeSegState;
+  if (newEnd <= segStart) { toast("Sluttid skal være efter starttid", "error"); return; }
+  if (newEnd === segEnd) { toast("Ingen ændring", "error"); return; }
+
+  try {
+    const updated = await POST(`/api/activities/${activityId}/resize-segment`, {
+      segment_index: segIdx,
+      new_end_iso: newEndIso,
+    });
+    state.activities = state.activities.map(a => a.id === updated.id ? updated : a);
+    closeModal("modal-resize-segment");
+    openActivityDetail(activityId);
+    renderActivitiesTable();
+    toast("Pauselængde tilpasset", "success");
+  } catch (e) { toast(e.message, "error"); }
 }
 
 function splitAtSegment(isoTime) {
