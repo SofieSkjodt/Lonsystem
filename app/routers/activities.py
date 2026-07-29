@@ -158,8 +158,32 @@ class SegmentResizeBody(BaseModel):
     new_end_iso: str  # "YYYY-MM-DDTHH:MM" eller "YYYY-MM-DDTHH:MM:SS"
 
 
+def _day_reaches_4h_with_approved(a: Activity, dur: int) -> bool:
+    """True hvis denne aktivitets varighed sammen med andre godkendte aktiviteter
+    samme dag for medarbejderen når op på mindst 4 timer."""
+    db = Session.object_session(a)
+    if db is None:
+        return False
+    day_start = datetime.combine(a.start_time.date(), datetime.min.time())
+    day_end = day_start + timedelta(days=1)
+    others = (
+        db.query(Activity)
+        .filter(
+            Activity.employee_id == a.employee_id,
+            Activity.id != a.id,
+            Activity.status == ActivityStatus.approved,
+            Activity.start_time >= day_start,
+            Activity.start_time < day_end,
+        )
+        .all()
+    )
+    total = dur + sum(_duration_minutes(o) for o in others)
+    return total >= FOUR_HOURS
+
+
 def _to_response(a: Activity) -> ActivityResponse:
     dur = _duration_minutes(a)
+    under_4h = dur < FOUR_HOURS and not _day_reaches_4h_with_approved(a, dur)
     return ActivityResponse(
         id=a.id,
         employee_id=a.employee_id,
@@ -187,7 +211,7 @@ def _to_response(a: Activity) -> ActivityResponse:
         approved_at=a.approved_at,
         deactivated_by=a.deactivated_by,
         comment=a.comment,
-        is_under_4h=dur < FOUR_HOURS,
+        is_under_4h=under_4h,
         is_over_12h=dur > TWELVE_HOURS,
         is_manual=a.source == ActivitySource.manual,
         created_by=a.created_by,
@@ -442,7 +466,7 @@ def approve_activity(activity_id: int, body: ActivityApprove,
     if a.status == ActivityStatus.deactivated:
         raise HTTPException(400, "Kan ikke godkende en deaktiveret aktivitet")
     dur = _duration_minutes(a)
-    if dur < FOUR_HOURS and not body.comment:
+    if dur < FOUR_HOURS and not _day_reaches_4h_with_approved(a, dur) and not body.comment:
         raise HTTPException(
             400,
             "Aktivitet er under 4 timer – angiv en begrundelse i kommentarfeltet"
