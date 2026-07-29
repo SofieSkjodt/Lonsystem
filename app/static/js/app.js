@@ -351,7 +351,13 @@ function renderCellActivity(a, role = "full") {
       <span class="time-badge absence ${a.status}" data-id="${a.id}" title="${TYPE_LABELS[a.activity_type]} – ${statusLabel(a.status)}">${ABSENCE_LABELS[a.activity_type] || a.activity_type}</span>
     </div>`;
   }
-  const title = `${a.employee_name}: ${formatTime(a.start_time)}–${formatTime(a.end_time)} (${formatDuration(a.duration_minutes)}) – ${statusLabel(a.status)}${a.is_manual ? " – manuel" : ""}`;
+  const pctD = pct(a.driving_pct), pctW = pct(a.other_work_pct), pctAv = pct(a.availability_time_pct);
+  const pctHasData = pctD > 0 || pctW > 0 || pctAv > 0;
+  const pctR = Math.max(0, 100 - pctD - pctW - pctAv);
+  const pctInfo = pctHasData
+    ? ` — Kørsel ${fmtPct(pctD)}% / Andet arbejde ${fmtPct(pctW)}% / Rådighed ${fmtPct(pctAv)}% / Hvil ${fmtPct(pctR)}%`
+    : "";
+  const title = `${a.employee_name}: ${formatTime(a.start_time)}–${formatTime(a.end_time)} (${formatDuration(a.duration_minutes)}) – ${statusLabel(a.status)}${a.is_manual ? " – manuel" : ""}${pctInfo}`;
   const autoCls = (a.status === "approved" && a.auto_approved) ? " auto-approved" : "";
   const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<span class="auto-dot" title="Auto-godkendt"></span>` : "";
   if (role === "start") {
@@ -2085,7 +2091,7 @@ async function deleteVehicle() {
 
 // ── Import ─────────────────────────────────────────────────────────────────
 function _setImportBtnsDisabled(on) {
-  ["btn-import-files", "btn-import-folder"].forEach(id => {
+  ["btn-import-files", "btn-import-folder", "btn-import-ddd-input"].forEach(id => {
     const b = document.getElementById(id);
     if (b) b.disabled = on;
   });
@@ -2193,6 +2199,18 @@ async function importDddPickFolder() {
   document.getElementById("import-result").textContent = `Importerer fra ${folder}...`;
   try {
     const result = await POST("/api/import-ddd-from", { source_folder: folder });
+    _showImportResult(result);
+  } catch (e) {
+    toast(e.message, "error");
+    document.getElementById("import-result").textContent = "Fejl: " + e.message;
+  } finally { _setImportBtnsDisabled(false); }
+}
+
+async function importDddInputFolder() {
+  _setImportBtnsDisabled(true);
+  document.getElementById("import-result").textContent = "Tjekker ddd_input-mappen (inkl. undermapper)...";
+  try {
+    const result = await POST("/api/import-ddd", {});
     _showImportResult(result);
   } catch (e) {
     toast(e.message, "error");
