@@ -96,14 +96,16 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
 
 def scan_ddd_folder(folder_path: Path) -> tuple[list[tuple[Path, list[ParsedActivity]]], list[str]]:
     """
-    Scan folder for .ddd files.
+    Scan folder (inkl. alle undermapper) for .ddd-filer.
     Returns (results, errors) – ikke-parsebare filer rapporteres som fejl i
     stedet for kun at blive printet til serverkonsollen.
     """
     results = []
     errors = []
+    # set(): på filsystemer uden versalfølsomhed (Windows) matcher "*.ddd" og
+    # "*.DDD" de samme filer, og ville ellers behandle hver fil to gange.
     ddd_files = sorted(
-        list(folder_path.glob("*.ddd")) + list(folder_path.glob("*.DDD"))
+        set(folder_path.rglob("*.ddd")) | set(folder_path.rglob("*.DDD"))
     )
     for f in ddd_files:
         try:

@@ -178,7 +178,12 @@
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\test_new_activities_perf.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\test_commit_cost.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\profile_import.py\")",
-      "PowerShell(git add app/static/css/style.css app/static/js/app.js app/templates/index.html)"
+      "PowerShell(git add app/static/css/style.css app/static/js/app.js app/templates/index.html)",
+      "PowerShell(git add app/static/js/app.js)",
+      "PowerShell(cd app; python -m py_compile routers/activities.py; echo \"OK: $LASTEXITCODE\")",
+      "PowerShell(git add app/routers/activities.py)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\test_recursive_scan.py\")",
+      "PowerShell(git add \".claude/settings.local.json\" app/database/lonsystem.db app/database/lonsystem.db-shm app/database/lonsystem.db-wal app/parsers/ddd_parser.py app/templates/index.html)"
     ]
   }
 }

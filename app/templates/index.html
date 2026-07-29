@@ -204,8 +204,9 @@
       <div style="max-width:560px">
         <h2 style="font-size:18px;font-weight:600;margin-bottom:8px">Importer tachografdata</h2>
         <p style="color:var(--text-light);margin-bottom:20px;font-size:14px">
-          Systemet scanner mappen <code style="background:var(--bg);padding:2px 6px;border-radius:4px">ddd_input/</code>
-          og importerer alle nye .ddd-filer.
+          Vælg enkeltfiler eller en mappe, eller tryk "Tjek ddd_input-mappe" for at scanne
+          <code style="background:var(--bg);padding:2px 6px;border-radius:4px">ddd_input/</code>
+          (inkl. alle undermapper) og importere nye .ddd-filer derfra.
         </p>
         <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px;margin-bottom:20px">
           <h3 style="font-size:15px;font-weight:600;margin-bottom:12px">Kør import</h3>
@@ -215,6 +216,9 @@
             </button>
             <button id="btn-import-folder" class="btn btn-secondary" onclick="importDddPickFolder()">
               &#128193; Vælg mappe
+            </button>
+            <button id="btn-import-ddd-input" class="btn btn-secondary" onclick="importDddInputFolder()">
+              &#128260; Tjek ddd_input-mappe
             </button>
           </div>
           <div id="import-result" style="margin-top:12px;font-size:13px;color:var(--text-light)"></div>
