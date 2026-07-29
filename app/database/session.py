@@ -117,6 +117,13 @@ def _migrate():
         if "baseline_start_hour" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN baseline_start_hour REAL")
             conn.commit()
+        existing_indexes = {row[1] for row in conn.execute("PRAGMA index_list(activities)")}
+        if "ix_activities_employee_start_source" not in existing_indexes:
+            conn.execute(
+                "CREATE INDEX ix_activities_employee_start_source "
+                "ON activities(employee_id, start_time, source)"
+            )
+            conn.commit()
 
 
 def _seed_roles():

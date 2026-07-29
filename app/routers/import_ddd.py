@@ -130,12 +130,24 @@ def _process_import_results(
     unknown_cards: set[str] = set()
     zero_activity_files: list[str] = []
 
+    # Alle aktiviteter i én fil deler samme førerkortnummer – cache opslaget
+    # pr. unikt kortnummer i stedet for at forespørge databasen for hver
+    # eneste aktivitet (kan være 100+ pr. fil).
+    employee_cache: dict[str, Employee | None] = {}
+
     for file_path, activities in results:
         if not activities:
             zero_activity_files.append(file_path.name)
         for act in activities:
+            card = act.tachograph_card_number
+            if card not in employee_cache:
+                employee_cache[card] = (
+                    db.query(Employee)
+                    .filter(Employee.tachograph_card_number == card)
+                    .first()
+                )
             try:
-                result = _import_activity(act, db)
+                result = _import_activity(act, db, employee_cache[card])
             except Exception as e:
                 errors.append(f"{file_path.name}: {e}")
                 continue
@@ -187,13 +199,8 @@ def _process_import_results(
     }
 
 
-def _import_activity(act: ParsedActivity, db: Session) -> str:
+def _import_activity(act: ParsedActivity, db: Session, employee: Employee | None) -> str:
     """Import a single parsed activity. Returns 'new', 'updated', 'skipped_unknown_card' or 'skipped_duplicate'."""
-    employee = (
-        db.query(Employee)
-        .filter(Employee.tachograph_card_number == act.tachograph_card_number)
-        .first()
-    )
     if not employee:
         return "skipped_unknown_card"  # Unknown card number – employee must be created first
 
@@ -254,7 +261,7 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
             changed = True
 
         if changed:
-            db.commit()
+            db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
             return "updated"
         return "skipped_duplicate"
 
@@ -290,8 +297,7 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
         is_likely_incomplete=act.is_likely_incomplete,
     )
     db.add(activity)
-    db.commit()
-    db.refresh(activity)
+    db.flush()  # tildeler activity.id uden en fuld transaktions-commit pr. aktivitet
 
     ok, flags = should_auto_approve(activity, db)
     if ok:
@@ -300,10 +306,10 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
         activity.auto_approval_flags = []
         activity.approved_by = "AUTO"
         activity.approved_at = _dt_now.utcnow()
-        db.commit()
+        db.flush()
         update_baseline_from_activity(activity, db)
     else:
         activity.auto_approval_flags = flags
-        db.commit()
+        db.flush()
 
     return "new"

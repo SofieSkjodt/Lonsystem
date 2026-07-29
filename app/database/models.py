@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, DateTime, Numeric,
-    ForeignKey, Text, Enum, JSON
+    ForeignKey, Text, Enum, JSON, Index
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
@@ -156,6 +156,12 @@ class Activity(Base):
     employee = relationship("Employee", back_populates="activities")
     pay_period = relationship("PayPeriod", back_populates="activities")
     split_children = relationship("Activity", foreign_keys=[parent_activity_id])
+
+    __table_args__ = (
+        # Bruges af duplikat-tjek ved ddd-import (employee_id + start_time + source).
+        # Uden dette index scanner SQLite hele tabellen for hver importeret aktivitet.
+        Index("ix_activities_employee_start_source", "employee_id", "start_time", "source"),
+    )
 
 
 class DispatcherGroup(Base):
