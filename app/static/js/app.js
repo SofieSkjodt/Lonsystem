@@ -1209,7 +1209,7 @@ function updateManualTypeVisibility() {
   const isOvernatning  = (type === "overnatning");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom";
+  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom";
 
   document.getElementById("manual-normal-fields").style.display = isAbsence ? "none" : "";
   document.getElementById("manual-end-group").style.display     = isDateOnly ? "none" : "";
@@ -1486,7 +1486,7 @@ async function confirmManualActivity() {
     return;
   }
 
-  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "paragraf_56_syg", "graviditetsbetinget_sygdom"];
+  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom"];
   const isRange = _RANGE_TYPES.includes(actType) && !!tilDato;
 
   if (!start || (!isRange && !end)) {
