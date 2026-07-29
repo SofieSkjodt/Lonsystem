@@ -149,7 +149,21 @@
       "PowerShell(git commit -m $msg)",
       "PowerShell(git commit -F \"$env:TEMP\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\816143c6-9668-4472-b189-22e7385186dc\\\\scratchpad\\\\commit_msg.txt\")",
       "PowerShell(\\(Get-Content \"docs\\\\build_docs.py\" | Measure-Object -Line\\).Lines)",
-      "PowerShell(git commit -m \"chore: daglig backup + DB-tilstand pr. 2026-07-28\")"
+      "PowerShell(git commit -m \"chore: daglig backup + DB-tilstand pr. 2026-07-28\")",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\ea14d6f5-24de-42e3-bbb3-2a2a91c12d93\\\\scratchpad\\\\time_activities_query2.py\")",
+      "PowerShell(Get-Process -Id 16496 -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 16496 -Force -Confirm:$false)",
+      "PowerShell(Invoke-WebRequest -Uri \"http://localhost:8000/health\" -UseBasicParsing -TimeoutSec 3)",
+      "PowerShell(\\(Invoke-WebRequest -Uri \"http://localhost:8000/static/js/app.js\" -UseBasicParsing\\).Content | Select-String -Pattern \"applyActivityLocally\" | Select-Object -First 3)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\check_gervig_emp.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig3.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig4.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig5.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_eriksen_dupe.py\")",
+      "PowerShell(git add app/parsers/ddd_parser.py \".claude/settings.local.json\" app/database/lonsystem.db app/database/lonsystem.db-shm app/database/lonsystem.db-wal backup/backup.log)"
     ]
   }
 }

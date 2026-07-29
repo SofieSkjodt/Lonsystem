@@ -83,12 +83,11 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
     card_number = _extract_card_number(data)
     vehicle_reg = _extract_vehicle_registration(data)
     daily_odometer = _extract_daily_odometer(data)
-    record_start = _find_daily_records_start(data)
+    daily_records = _find_all_daily_records(data)
 
-    if record_start is None:
+    if not daily_records:
         return []
 
-    daily_records = _parse_daily_records(data, record_start)
     return _build_activities(card_number, vehicle_reg, daily_odometer, daily_records, str(file_path))
 
 
@@ -221,54 +220,46 @@ def _lookup_daily_km(expected_ts: int, odometer_table: dict[int, int], tolerance
     return best
 
 
-def _find_daily_records_start(data: bytes) -> int | None:
+def _is_daily_chain_start(data: bytes, pos: int) -> bool:
     """
-    Locate the start of the consecutive daily record array.
-    Heuristic: find first position where a 14-byte record (minimum size) is followed
-    by a valid timestamp and a second record whose previousRecordLength matches the first.
+    Tjekker om `pos` er starten på mindst 2 sammenhængende gyldige dags-records.
+    Heuristik: et record (min. 12 byte header) med gyldigt tidsstempel, hvor det
+    næste record starter umiddelbart derefter, dets previousRecordLength matcher
+    dette records length, og dets tidsstempel er inden for 7 dage af det første.
     """
-    for pos in range(0, len(data) - 28):
-        prev_len = struct.unpack_from(">H", data, pos)[0]
-        rec_len  = struct.unpack_from(">H", data, pos + 2)[0]
-        if rec_len < MIN_RECORD_SIZE or rec_len > 4096:
-            continue
-        if pos + rec_len + 4 > len(data):
-            continue
-        ts = struct.unpack_from(">I", data, pos + 4)[0]
-        if not (TS_MIN <= ts <= TS_MAX):
-            continue
-        # The second record's previousRecordLength should equal this record's length
-        next_pos = pos + rec_len
-        if next_pos + 4 > len(data):
-            continue
-        next_prev_len = struct.unpack_from(">H", data, next_pos)[0]
-        next_rec_len  = struct.unpack_from(">H", data, next_pos + 2)[0]
-        if next_prev_len != rec_len:
-            continue
-        if next_rec_len < MIN_RECORD_SIZE or next_rec_len > 4096:
-            continue
-        next_ts = struct.unpack_from(">I", data, next_pos + 4)[0]
-        if not (TS_MIN <= next_ts <= TS_MAX):
-            continue
-        # Timestamps should be at most 7 days apart (usually 1 day)
-        if abs(int(next_ts) - int(ts)) > 7 * 86400:
-            continue
-        return pos
-    return None
+    if pos + 28 > len(data):
+        return False
+    rec_len = struct.unpack_from(">H", data, pos + 2)[0]
+    if rec_len < MIN_RECORD_SIZE or rec_len > 4096:
+        return False
+    if pos + rec_len + 4 > len(data):
+        return False
+    ts = struct.unpack_from(">I", data, pos + 4)[0]
+    if not (TS_MIN <= ts <= TS_MAX):
+        return False
+    next_pos = pos + rec_len
+    if next_pos + 4 > len(data):
+        return False
+    next_prev_len = struct.unpack_from(">H", data, next_pos)[0]
+    next_rec_len  = struct.unpack_from(">H", data, next_pos + 2)[0]
+    if next_prev_len != rec_len:
+        return False
+    if next_rec_len < MIN_RECORD_SIZE or next_rec_len > 4096:
+        return False
+    next_ts = struct.unpack_from(">I", data, next_pos + 4)[0]
+    if not (TS_MIN <= next_ts <= TS_MAX):
+        return False
+    if abs(int(next_ts) - int(ts)) > 7 * 86400:
+        return False
+    return True
 
 
-def _parse_daily_records(
-    data: bytes, start: int
-) -> list[tuple[datetime, int, bytes]]:
-    """
-    Walk consecutive daily records from start position.
-    Returns list of (date, distance_km, activity_bytes).
-    """
+def _walk_daily_chain(data: bytes, start: int) -> list[tuple[datetime, int, bytes]]:
+    """Walk consecutive daily records fra `start` til kæden brydes. Returns [(date, distance_km, activity_bytes), ...]."""
     records = []
     pos = start
     while pos + MIN_RECORD_SIZE <= len(data):
-        prev_len = struct.unpack_from(">H", data, pos)[0]
-        rec_len  = struct.unpack_from(">H", data, pos + 2)[0]
+        rec_len = struct.unpack_from(">H", data, pos + 2)[0]
         if rec_len < MIN_RECORD_SIZE or rec_len > 4096:
             break
         if pos + rec_len > len(data):
@@ -285,6 +276,49 @@ def _parse_daily_records(
         pos += rec_len
 
     return records
+
+
+def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
+    """
+    Find ALLE dags-records i filen, ikke kun den første sammenhængende kæde.
+
+    Tachograf-kort gemmer aktivitetsdata i en cirkulær buffer, og .ddd-filer kan
+    indeholde flere separate og/eller duplikerede blokke med dags-records – ikke
+    nødvendigvis i kronologisk byte-rækkefølge (bekræftet ved byte-analyse
+    2026-07-26: samme fils data for en periode lå adskilt fra data for en
+    efterfølgende periode, med en helt anden byteposition). En enkelt lineær
+    scanning fra byte 0 (den tidligere `_find_daily_records_start`) kan derfor
+    lande på en kort, ufuldstændig kæde og stoppe alt for tidligt, selvom resten
+    af dagene findes andetsteds i filen.
+
+    Denne funktion scanner hele filen for samtlige gyldige kæde-startpunkter,
+    vandrer hver kæde, og fletter resultaterne pr. dato – ved konflikt (samme
+    dato fundet i flere kæder) beholdes den mest fuldstændige version (flest
+    aktivitetsbytes).
+
+    En gyldig kæde starter typisk ved hvert record i kæden (ikke kun ved
+    kædens første record), så uden optimering ville samme kæde blive
+    genvandret fra hver position i den (O(kædelængde²)). Allerede besøgte
+    record-startpositioner markeres derfor og springes over, så hele filen
+    kun gennemgås én gang (O(filstørrelse)) – samme teknik som i
+    `_extract_daily_odometer`.
+    """
+    merged: dict = {}
+    visited: set[int] = set()
+    n = len(data)
+    pos = 0
+    while pos < n - 28:
+        if pos not in visited and _is_daily_chain_start(data, pos):
+            walk_pos = pos
+            for dt, distance, activity_bytes in _walk_daily_chain(data, pos):
+                visited.add(walk_pos)
+                walk_pos += len(activity_bytes) + 12
+                key = dt.date()
+                existing = merged.get(key)
+                if existing is None or len(activity_bytes) > len(existing[2]):
+                    merged[key] = (dt, distance, activity_bytes)
+        pos += 1
+    return [merged[k] for k in sorted(merged)]
 
 
 def _decode_activity_changes(activity_bytes: bytes) -> list[tuple[int, int]]:
