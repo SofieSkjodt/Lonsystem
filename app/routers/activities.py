@@ -5,7 +5,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException
 from openpyxl import load_workbook
 from sqlalchemy import or_, and_
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from auth import get_current_user, log_action
 from calculators.baseline_updater import update_baseline_from_activity
@@ -176,6 +176,10 @@ def list_activities(
     q = (
         db.query(Activity)
         .join(Activity.employee)
+        .options(
+            selectinload(Activity.employee),
+            selectinload(Activity.split_children),
+        )
         .filter(
             or_(
                 Activity.pay_period_id == period.id,

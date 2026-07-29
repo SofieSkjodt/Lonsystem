@@ -426,6 +426,16 @@ async function refreshActivities() {
   renderActivitiesTable();
 }
 
+// Opdaterer én aktivitet i state og gentegner med det samme, uden at vente på
+// en fuld genindlæsning fra serveren (undgår synlig forsinkelse efter godkend/deaktiver/genåbn).
+function applyActivityLocally(updated) {
+  if (!updated) return;
+  const idx = state.activities.findIndex(x => x.id === updated.id);
+  if (idx !== -1) state.activities[idx] = updated;
+  else state.activities.push(updated);
+  renderActivitiesTable();
+}
+
 // ── Activity detail modal ──────────────────────────────────────────────────
 function openActivityDetail(id) {
   state.selectedActivityId = id;
@@ -614,10 +624,11 @@ function splitAtSegment(isoTime) {
 async function undoEdit() {
   if (!confirm("Fortryd tidsændringer og gendan de oprindelige tider?")) return;
   try {
-    await POST(`/api/activities/${state.selectedActivityId}/undo-edit`);
+    const updated = await POST(`/api/activities/${state.selectedActivityId}/undo-edit`);
     toast("Tidsændringer fortrudt – originale tider gendannet", "success");
     closeAllModals();
-    await refreshActivities();
+    applyActivityLocally(updated);
+    refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -651,7 +662,8 @@ async function saveActivityTimes() {
     });
     toast("Ændringer gemt", "success");
     closeAllModals();
-    await refreshActivities();
+    applyActivityLocally(updated);
+    refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -684,11 +696,12 @@ async function confirmApprove() {
         salt_supplement: saltVal,
       });
     }
-    await POST(`/api/activities/${state.selectedActivityId}/approve`,
+    const updated = await POST(`/api/activities/${state.selectedActivityId}/approve`,
       { comment: comment || null });
     toast("Aktivitet godkendt", "success");
     closeAllModals();
-    await refreshActivities();
+    applyActivityLocally(updated);
+    refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -706,19 +719,21 @@ function openDeactivateModal() {
 async function confirmDeactivate() {
   const comment = document.getElementById("deactivate-comment").value.trim();
   try {
-    await POST(`/api/activities/${state.selectedActivityId}/deactivate`,
+    const updated = await POST(`/api/activities/${state.selectedActivityId}/deactivate`,
       { comment: comment || null });
     toast("Aktivitet deaktiveret");
     closeAllModals();
-    await refreshActivities();
+    applyActivityLocally(updated);
+    refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
 async function modalReopen() {
   try {
-    await POST(`/api/activities/${state.selectedActivityId}/reopen`);
+    const updated = await POST(`/api/activities/${state.selectedActivityId}/reopen`);
     toast("Aktivitet genåbnet");
     closeAllModals();
-    await refreshActivities();
+    applyActivityLocally(updated);
+    refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
 
