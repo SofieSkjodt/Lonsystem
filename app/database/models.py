@@ -149,6 +149,7 @@ class Activity(Base):
     created_at = Column(DateTime, server_default=func.now())
     auto_approved = Column(Boolean, default=False, nullable=False, server_default="0")
     auto_approval_flags = Column(JSON, nullable=False, default=list, server_default='[]')
+    is_likely_incomplete = Column(Boolean, default=False, nullable=False, server_default="0")
     baseline_duration_minutes = Column(Numeric(10, 4), nullable=True)
     baseline_start_hour = Column(Numeric(8, 4), nullable=True)
 

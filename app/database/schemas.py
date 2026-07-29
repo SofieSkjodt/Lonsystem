@@ -135,6 +135,7 @@ class ActivityResponse(BaseModel):
     salt_supplement: bool = False
     auto_approved: bool = False
     auto_approval_flags: list[str] = []
+    is_likely_incomplete: bool = False
 
 
 class ActivityCreate(BaseModel):

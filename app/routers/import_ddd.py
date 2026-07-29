@@ -232,6 +232,10 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
             existing.segments = [
                 [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
             ]
+            # Opdater ufuldstændig-flaget efter den nye, mere komplette fil –
+            # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
+            # den nye fil stadig ser ufuldstændig ud.
+            existing.is_likely_incomplete = act.is_likely_incomplete
             if act.vehicle_registration and not existing.vehicle_registration:
                 existing.vehicle_registration = act.vehicle_registration
                 if not existing.vehicle_number:
@@ -283,6 +287,7 @@ def _import_activity(act: ParsedActivity, db: Session) -> str:
             [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
         ],
         status=ActivityStatus.pending,
+        is_likely_incomplete=act.is_likely_incomplete,
     )
     db.add(activity)
     db.commit()

@@ -157,6 +157,7 @@ def _to_response(a: Activity) -> ActivityResponse:
         salt_supplement=bool(a.salt_supplement),
         auto_approved=bool(a.auto_approved),
         auto_approval_flags=a.auto_approval_flags or [],
+        is_likely_incomplete=bool(a.is_likely_incomplete),
     )
 
 

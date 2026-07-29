@@ -331,6 +331,13 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 }
 .time-badge.deactivated { background: #d93025; }
 .time-badge.absence     { font-size: 11px; letter-spacing: .3px; }
+.incomplete-mark {
+  display: inline-block;
+  margin-left: 4px;
+  color: #fdd835;
+  font-weight: 900;
+  cursor: help;
+}
 .auto-approval-flags {
   background: #fff8e1;
   border: 1px solid #f9a825;

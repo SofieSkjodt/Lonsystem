@@ -163,7 +163,14 @@
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig4.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_gervig5.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_eriksen_dupe.py\")",
-      "PowerShell(git add app/parsers/ddd_parser.py \".claude/settings.local.json\" app/database/lonsystem.db app/database/lonsystem.db-shm app/database/lonsystem.db-wal backup/backup.log)"
+      "PowerShell(git add app/parsers/ddd_parser.py \".claude/settings.local.json\" app/database/lonsystem.db app/database/lonsystem.db-shm app/database/lonsystem.db-wal backup/backup.log)",
+      "PowerShell(git add app/routers/activities.py app/static/js/app.js)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_bejlegaard.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\check_bejlegaard.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\check_bejlegaard2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\debug_hjortholm.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\test_incomplete_flag.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\e6e6b898-c431-4a98-bd8a-b46cbaed4642\\\\scratchpad\\\\test_incomplete_flag2.py\")"
     ]
   }
 }

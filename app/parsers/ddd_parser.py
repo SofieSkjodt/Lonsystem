@@ -70,6 +70,9 @@ class ParsedActivity:
     # Alle hændelsessegmenter: (start, slut, aktivitet) hvor aktivitet er
     # "rest" | "availability" | "work" | "driving"
     segments: list[tuple[datetime, datetime, str]] = None
+    # Filen ser ud til at være hentet midt i vagten (0 km registreret den dag,
+    # og dagen slutter ikke i hvil) – resten af dagen mangler formentlig
+    is_likely_incomplete: bool = False
 
 
 def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
@@ -429,6 +432,12 @@ def _build_activities(
         def pct(m: int) -> Decimal | None:
             return Decimal(str(round(m / total_minutes * 100, 2))) if total_minutes else None
 
+        # Bekræftet på flere reelle filer (2026-07): når kortet udlæses midt i
+        # en vagt, er dagens km-distance endnu ikke skrevet (0), og dagen
+        # slutter ikke tilbage i hvil – begge tegn samtidig er et pålideligt
+        # signal om at resten af dagen mangler i filen.
+        is_likely_incomplete = (distance == 0 and changes[-1][1] != ACTIVITY_REST)
+
         # km_start = km-stand fra den separate dagsstart-tabel (tættest på dagens
         # beregnede startminut). km_end udledes af dagens egen kørte distance
         # (activityDayDistance) i stedet for at antage kontinuitet til næste
@@ -454,6 +463,7 @@ def _build_activities(
                 km_end=km_end,
                 pause_intervals=pause_intervals,
                 segments=segments,
+                is_likely_incomplete=is_likely_incomplete,
             )
         )
 

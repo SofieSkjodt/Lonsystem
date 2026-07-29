@@ -342,6 +342,9 @@ function renderActivitiesTable() {
 function renderCellActivity(a, role = "full") {
   const k = a.is_manual ? "(K) " : "";
   const warn = a.status === "approved" ? "" : (a.is_under_4h ? " ❗" : (a.is_over_12h ? " ⚠️" : ""));
+  const incomplete = a.is_likely_incomplete
+    ? `<span class="incomplete-mark" title="Filen ser ud til at være hentet midt i vagten (0 km registreret og dagen slutter ikke i hvil) – resten af dagen mangler formentlig. Hent en ny fil senere og importér igen.">✕</span>`
+    : "";
   if (a.activity_type !== "normal") {
     return `<div class="badge-group">
       <span class="time-badge absence ${a.status}" data-id="${a.id}" title="${TYPE_LABELS[a.activity_type]} – ${statusLabel(a.status)}">${ABSENCE_LABELS[a.activity_type] || a.activity_type}</span>
@@ -352,23 +355,23 @@ function renderCellActivity(a, role = "full") {
   const autoSuffix = (a.status === "approved" && a.auto_approved) ? `<span class="auto-dot" title="Auto-godkendt"></span>` : "";
   if (role === "start") {
     return `<div class="badge-group">
-      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
+      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}${incomplete}</span>
     </div>`;
   }
   if (role === "end") {
     return `<div class="badge-group">
-      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
+      <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}${incomplete}</span>
     </div>`;
   }
   if (role === "piece") {
     const id = a._orig_id ?? a.id;
     return `<div class="badge-group">
-      <span class="time-badge ${a.status}${autoCls}" data-id="${id}" title="${title}">${k}${formatTime(a.start_time)}–${formatTime(a.end_time)}${warn}${autoSuffix}</span>
+      <span class="time-badge ${a.status}${autoCls}" data-id="${id}" title="${title}">${k}${formatTime(a.start_time)}–${formatTime(a.end_time)}${warn}${autoSuffix}${incomplete}</span>
     </div>`;
   }
   return `<div class="badge-group">
-    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}</span>
-    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}</span>
+    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.start_time)}${warn}${autoSuffix}${incomplete}</span>
+    <span class="time-badge ${a.status}${autoCls}" data-id="${a.id}" title="${title}">${k}${formatTime(a.end_time)}${autoSuffix}${incomplete}</span>
   </div>`;
 }
 
