@@ -93,7 +93,7 @@ def _get_pay_type_data(db: Session) -> dict:
     """Returnerer {code_key: {code, in_csv, qty_type, rate_src, inc_total}} fra stamdata-tabellen."""
     from database.models import MasterPayType
     rows = db.query(MasterPayType).all()
-    return {r.code_key: {
+    return {r.code_key.upper(): {
         "code": r.danloen_code,
         "in_csv": r.include_in_csv,
         "qty_type": r.csv_quantity_type or "hours",
@@ -146,11 +146,50 @@ def _user_pay_type_rows(emp_id: int, start: date, end: date, calc: dict, db: Ses
     return result
 
 
+def _builtin_absence_qty(pt: dict, key: str, activity_type: str, hours_value: float,
+                          emp_id: int, start: date, end: date, db: Session) -> float:
+    """Antal for en indbygget fraværs-løntype – bruger stamdatas csv_quantity_type
+    (fx 'count' for antal dage) i stedet for altid at bruge det akkumulerede
+    timeantal fra _calculate_employee."""
+    qty_type = pt.get(key, {}).get("qty_type", "hours")
+    if qty_type != "count":
+        return hours_value
+    start_str = start.isoformat()
+    end_str = (end + timedelta(days=1)).isoformat()
+    return float(db.query(Activity).filter(
+        Activity.employee_id == emp_id,
+        Activity.activity_type == activity_type,
+        Activity.status == ActivityStatus.approved,
+        Activity.start_time >= start_str,
+        Activity.start_time < end_str,
+    ).count())
+
+
 def _normal_hours_for_day(emp: Employee, d: date) -> Decimal:
     """Normaltid for en given dag fra medarbejderens timefordeling."""
     schedule = emp.work_schedule or {"even": [0] * 7, "odd": [0] * 7}
     key = "even" if is_even_week(d) else "odd"
     return Decimal(str(schedule[key][d.weekday()]))
+
+
+def _afspadsering_hours(emp: Employee, act: Activity) -> Decimal:
+    """Timer for en afspadsering-aktivitet. En periode (aktiviteten strækker sig
+    over flere kalenderdage, jf. 'Til dato' i oprettelsesmodalen) tæller 7,4 t
+    (eller medarbejderens skemalagte timer) pr. hverdag i perioden – uanset de
+    faktiske klokketider på aktiviteten. En enkeltdags-aktivitet bruger stadig
+    den reelle varighed, så en delvis fridag kan registreres korrekt."""
+    start_d = act.start_time.date()
+    end_d = act.end_time.date()
+    if start_d == end_d:
+        return Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+    total = Decimal("0")
+    cur_d = start_d
+    while cur_d <= end_d:
+        if cur_d.weekday() < 5:
+            day_h = _normal_hours_for_day(emp, cur_d)
+            total += day_h if day_h > 0 else Decimal("7.4")
+        cur_d += timedelta(days=1)
+    return total
 
 
 @dataclass
@@ -348,7 +387,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                 label = _ABSENCE_LABELS.get(act.activity_type)
                 if label:
                     if act.activity_type == "afspadsering":
-                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        dur = _afspadsering_hours(emp, act)
                         totals["afspadsering"] += dur
                     elif act.activity_type in ("sygdom", "barn_1sygedag", "graviditetsbetinget_sygdom"):
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
@@ -745,7 +784,8 @@ def export_csv(period_start: Optional[str] = None,
             ("SYGDOM",         calc["sygdom_hours"],                                              calc["hourly_rate"]),
             ("PARAGRAF_56",    calc["paragraf_56_syg_hours"],                                     calc.get("dagpenge_sats", 137.43)),
             ("BARN_1SYGEDAG",  calc["barn_1sygedag_u_loen_hours"],                                calc.get("dagpenge_sats", 137.43)),
-            ("FERIEFRI",       calc["feriefri_hours"],                                            calc["hourly_rate"]),
+            ("FERIEFRI",       _builtin_absence_qty(pt, "FERIEFRI", "feriefri", calc["feriefri_hours"],
+                                                      emp.id, period.start_date, period.end_date, db), calc["hourly_rate"]),
             ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
             ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
         ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
@@ -849,7 +889,8 @@ def export_csv_post(body: ExportCsvRequest,
             ("SYGDOM",         calc["sygdom_hours"],                                              calc["hourly_rate"]),
             ("PARAGRAF_56",    calc["paragraf_56_syg_hours"],                                     calc.get("dagpenge_sats", 137.43)),
             ("BARN_1SYGEDAG",  calc["barn_1sygedag_u_loen_hours"],                                calc.get("dagpenge_sats", 137.43)),
-            ("FERIEFRI",       calc["feriefri_hours"],                                            calc["hourly_rate"]),
+            ("FERIEFRI",       _builtin_absence_qty(pt, "FERIEFRI", "feriefri", calc["feriefri_hours"],
+                                                      emp.id, period.start_date, period.end_date, db), calc["hourly_rate"]),
             ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
             ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
         ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
