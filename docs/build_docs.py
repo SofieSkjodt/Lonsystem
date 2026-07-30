@@ -685,7 +685,7 @@ def build_teknisk():
         "Itererer alle 14 dage i perioden – ikke kun dage med aktiviteter.",
         "Dage uden aktivitet returneres med 0 timer på alle kolonner.",
         "Overnatning (activity_type = 'overnatning'): tæller forekomster som overnight_count og springer dagslinje-logikken over (continue). Eksponeres i resultatet som overnight_count, overnight_rate og overnight_kr (flat sats pr. forekomst fra Salttillæg og overnatning.xlsx).",
-        "Fraværsdage (ferie/fri/afspadsering/skole_kursus): vises med typenavn i stedet for timer; lønberegning for fraværstyper er endnu ikke implementeret og afventer regler.",
+        "Fraværsdage vises med typenavn i stedet for timer i dagsoversigten, men timerne beregnes og summeres stadig separat pr. fraværstype (fx sygdom_hours, afspadsering_hours, feriefri_hours, barsel_hours) og indgår i Danløn CSV'en, hvis løntypen er sat til 'Medtag i CSV' i Stamdata. Ferie er en undtagelse: den tælles, men er som default ekskluderet fra CSV'en.",
         "For normale aktiviteter: kalder calculate_overtime() med aktivitetens start/slut, pauseintervaller og normaltimer for den pågældende dag.",
         "Summerer normal tid, OT_BEFORE, OT_13 og OT_EXTRA timer samt pålæsning/aflæsning.",
         "Beregner kr. = timer × timesats (normal) + tillægstimer × satser.",
@@ -732,7 +732,7 @@ def build_teknisk():
     body(doc,
         "pending → approved (godkendt – approved_by sættes til brugerens initialer) → "
         "deactivated (deaktiveret – deactivated_by sættes til brugerens initialer).\n"
-        "Fraværstyper (ferie/fri/afspadsering/skole_kursus) oprettes direkte som approved med approved_by='System'.\n"
+        "Fraværstyper (ferie, sygdom, afspadsering, skole/kursus mv.) oprettes direkte som approved, med approved_by sat til den opretstende brugers initialer (ikke pending, da de ikke skal manuelt godkendes bagefter).\n"
         "approved_by og deactivated_by er separate felter – approved_by bruges udelukkende til godkendelser."
     )
 
@@ -1394,8 +1394,9 @@ def build_bruger():
     heading(doc, "Fraværstyper og overnatning", 2, "6.2")
     body(doc, "Når du vælger en fraværstype eller overnatning, sker følgende automatisk:")
     bullet(doc, "Felterne for turnummer, pålæsning og aflæsning skjules (ikke relevante).")
-    bullet(doc, "Aktiviteten godkendes automatisk med 'System' som godkender.")
-    bullet(doc, "Ferie: starttidspunktet sættes automatisk til 06:00, og sluttidspunktet beregnes ud fra medarbejderens normaltimer den pågældende dag.")
+    bullet(doc, "Aktiviteten godkendes automatisk (approved_by sættes til din bruger) – kræver ikke separat godkendelse bagefter.")
+    bullet(doc, "Ferie, sygdom, feriefri m.fl.: starttidspunktet sættes automatisk til 06:00, og sluttidspunktet beregnes ud fra medarbejderens normaltimer den pågældende dag. Vælger du 'Til dato' for at oprette en periode, oprettes én aktivitet PR. HVERDAG i perioden (ikke én sammenhængende aktivitet) – hver dag tæller sine egne normaltimer (typisk 7,4 t).")
+    bullet(doc, "Afspadsering som periode ('Til dato' udfyldt) følger samme regel: 7,4 t (eller medarbejderens skemalagte timer) pr. hverdag, uanset klokketid. En enkelt afspadseringsdag (uden 'Til dato') kan derimod redigeres til en delvis dag med selvvalgt start-/sluttid, og den faktiske varighed bruges da i lønberegningen.")
 
     body(doc, (
         "De tilgængelige fraværstyper administreres i Stamdata-modulet under fanen 'Fraværstyper'. "
@@ -1404,8 +1405,8 @@ def build_bruger():
     header_table(doc,
         ["Type", "Beskrivelse"],
         [
-            ["Ferie",          "Registrerer en feriedag. Start: 06:00. Slut: 06:00 + normaltimer for dagen."],
-            ["Afspadsering",   "Registrerer afspadsering."],
+            ["Ferie",          "Registrerer en feriedag. Start: 06:00. Slut: 06:00 + normaltimer for dagen. Tælles i timeoversigten, men er som default IKKE med i Danløn-CSV'en (kan slås til i Stamdata)."],
+            ["Afspadsering",   "Registrerer afspadsering. Som periode ('Til dato') tæller hver hverdag 7,4 t/skemalagte timer; som enkeltdag bruges den faktiske start-/sluttid."],
             ["Fri",            "Registrerer fridag."],
             ["Skole/kursus",   "Registrerer skole- eller kursusdag."],
             ["Overnatning",    "Registrerer en overnatning (flat sats pr. forekomst – ikke timer). Angiv blot datoen. Satsen hentes automatisk fra Stamdata (Tillæg-fanen)."],

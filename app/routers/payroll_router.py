@@ -259,8 +259,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         .filter(
             Activity.employee_id == emp.id,
             Activity.status == ActivityStatus.approved,
-            Activity.start_time >= start.isoformat(),
             Activity.start_time < (end + timedelta(days=1)).isoformat(),
+            Activity.end_time > start.isoformat(),
         )
         .order_by(Activity.start_time)
         .all()

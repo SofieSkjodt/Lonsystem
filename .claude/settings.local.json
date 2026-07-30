@@ -212,7 +212,16 @@
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\calc_days2.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\verify_afspadsering.py\")",
       "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\ot_breakdown.py\")",
-      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\gen_pdf.py\")"
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\gen_pdf.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\check_dfj_1213.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\check_prev_period.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\check_simon_dam_hansen_1112.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\diff_query.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\check_simon_full.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\recheck_dam_hansen_2307.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\debug_2307_v2.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\check_dam_2307_now.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\find_boundary_cases.py\")"
     ]
   }
 }

@@ -63,14 +63,31 @@ og genindlæses ved hvert kald:
 Faste 14-dages perioder, mandag–søndag, anker 1/6-2026
 (dokumentets eksempel: 3/6-2026 → periode 1/6–14/6). Bekræftet af bruger 10/6-2026.
 
-## Fraværstyper
+## Fraværstyper (opdateret 2026-07-30)
 
-Aktiviteter kan have type: normal, ferie, fri, afspadsering, skole/kursus.
-- **Normal**: indgår i timeberegningen.
-- **Afspadsering**: timer summeres og skrives i Danløn-CSV kolonne F.
-- **Ferie/fri/skole-kursus**: registreres, men indgår ikke i timeberegningen (afregning AFKLARES).
+Aktiviteter kan have type: normal, ferie, sygdom (+ sygdom u. 8 uger), §56 syg, barn 1./2-3.
+sygedag (+ u. 8 uger), barsel (+ u. løn), feriefri, graviditetsbetinget sygdom, skole/kursus,
+selvbetalt fridag, afspadsering, overnatning. Den fulde liste konfigureres i
+Stamdata → Fraværstyper (`master_absence_types`).
+
+- **Normal**: indgår i timeberegningen (normal + additive OT-tillæg som ovenfor).
+- **Afspadsering**: timer summeres til `afspadsering_hours`. En **periode** (flere
+  kalenderdage) tæller 7,4 t/skemalagte timer pr. hverdag, ikke rå klokketid – se
+  `_afspadsering_hours()` i `payroll_router.py`. En enkeltdags-registrering bruger den
+  faktiske varighed.
+- **Sygdom, §56 syg, barsel, barn 1.sygedag, feriefri, skole/kursus**: timer summeres hver for
+  sig i `_calculate_employee()`s result-dict og indgår i Danløn CSV'en, hvis den enkelte
+  løntype har `include_in_csv=true` i Stamdata.
+- **Ferie**: registreres og tælles (i timer), men er som default IKKE med i Danløn CSV'en
+  (`include_in_csv=false` for løntypen `ferie`, kode 60) – ferie afregnes uden om dette system,
+  indtil det evt. slås til.
+- **Sygdom u. 8 uger, barn 2-3.sygedag, selvbetalt fridag, barsel u. løn**: registreres, men
+  regnes ikke med i nogen timetotal og kommer aldrig med i CSV'en.
 
 ## Danløn CSV (Kør løn)
 
-Kolonner: A=CVR (13246505), B=medarbejdernummer, C=Danløn-kode (placeholder "1" – rigtige koder mangler),
-D=antal timer, E=time-/tillægssats, F=afspadsering. Én række pr. tillægstype pr. medarbejder.
+Kolonner: A=CVR, B=medarbejdernummer, C=Danløn-kode, D=antal (timer eller antal, afhængig af
+løntypen), E=sats (hvis `csv_include_rate`), F=totalbeløb (hvis `csv_include_total`). Én række
+pr. løntype med antal > 0 og `include_in_csv=true`, pr. medarbejder. Kode, enhed og hvilke af
+E/F der vises konfigureres pr. løntype i Stamdata → Løntypekoder (`master_pay_types`) – se
+CODEREF.md-afsnittet "Danløn CSV-struktur" for den fulde kodeliste.

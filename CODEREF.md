@@ -396,23 +396,64 @@ Filens dato/minutter er **UTC** – konverteres til Europe/Copenhagen (DST-korre
 
 ## Danløn CSV-struktur (payroll_router.py)
 
-Kolonner: `CVR ; medarbejdernr ; Danløn-kode ; timer ; sats`
+Kolonner: `CVR ; medarbejdernr ; Danløn-kode ; timer/antal ; sats ; (total)`
 
-Én række per type der har timer > 0:
+Én række per løntype der har antal > 0 OG `include_in_csv=true` i Stamdata → Løntypekoder
+(`master_pay_types`). Koden, enheden (timer/antal) og om sats/total skal med er alt sammen
+konfigureret pr. type i den tabel – DB er authoritative, ikke hardkodede konstanter:
 
-| Danløn-kode | Indhold |
-|---|---|
-| DANLOEN_CODE_NORMAL | Normal tid |
-| DANLOEN_CODE_OT_BEFORE | Overtid før |
-| DANLOEN_CODE_OT_13 | Overtid 1-3 timer |
-| DANLOEN_CODE_OT_EXTRA | Øvrig overtid |
-| DANLOEN_CODE_SALT | Salttillæg |
-| DANLOEN_CODE_AFSPADSERING | Afspadsering (medarbejderens timesats) |
-| DANLOEN_CODE_SYGDOM | Sygdom med løn (medarbejderens timesats) |
+| code_key | Danløn-kode (default) | Enhed | Bemærkning |
+|---|---|---|---|
+| NORMAL | 1 | timer | |
+| OT_BEFORE | 7 | timer | |
+| OT_13 | 8 | timer | inkl. søgnehelligdags-kode8 |
+| OT_EXTRA | 9 | timer | inkl. søgnehelligdags-kode9 |
+| SALT | 6 | timer | |
+| OVERNATNING | 14 | antal | `csv_quantity_type="count"` |
+| AFSPADSERING | 71 | timer | total (ikke sats) vises |
+| SYGDOM / PARAGRAF_56 / BARSEL | 51 | timer | samme kode for alle tre (§56 bruger dagpengesats, de øvrige medarbejderens timesats) |
+| BARN_1SYGEDAG | 15 | timer | dagpengesats |
+| FERIEFRI | 81 | timer/antal | enhed styres af Stamdata (se `_builtin_absence_qty()` nedenfor) |
+| SKOLE_KURSUS | 2 | timer | total (ikke sats) vises |
+| SH_FULDLOENNET / SH_TIMELOENNET | 4 / 63 | timer | søgnehelligdag |
+| `ferie` (brugerdefineret type) | 60 | timer | `include_in_csv=false` som default – ferie tælles og vises i UI, men skrives IKKE til CSV før det slås til i Stamdata |
 
-**Ekskluderet fra CSV**: `ferie`, `sygdom_u_8uger`, `fri`, `skole_kursus` + alle øvrige fraværstyper.
+**Case-bug rettet (2026-07-30):** `_get_pay_type_data()` slog op med den rå (case-sensitive)
+`code_key` fra DB, mens `_user_pay_type_rows()` slog op med `.upper()`. For alle indbyggede
+typer (som allerede er SKREVET MED STORE BOGSTAVER i DB) gjorde det ingen forskel, men for
+brugerdefinerede typer med små bogstaver (fx `ferie`) matchede opslaget aldrig – koden,
+`include_in_csv`, `csv_include_rate`/`csv_include_total` faldt derfor altid tilbage til
+default (kode "1", altid inkluderet). Konsekvens: ferietimer blev skrevet ud som Normal tid
+(kode 1) i stedet for kode 60, og kunne optræde som en ekstra "kode 1"-linje der lagde sig til
+den rigtige normaltid i Danløn. Rettet ved at normalisere opslaget til store bogstaver.
+
+**`_builtin_absence_qty(pt, key, activity_type, hours_value, emp_id, start, end, db)`:** ny
+hjælpefunktion der lader Stamdatas `csv_quantity_type` ("timer"/"antal") styre antallet også
+for indbyggede fraværstyper (i dag kun brugt til FERIEFRI) – uden den bruges altid det
+akkumulerede timeantal fra `_calculate_employee()`, uanset stamdata-indstillingen.
+
+**`_afspadsering_hours(emp, act)`:** en afspadsering-aktivitet der er lavet som en periode
+("Til dato" udfyldt ved oprettelse, spænder over flere kalenderdage) tæller 7,4 t (eller
+medarbejderens skemalagte timer) **pr. hverdag** i perioden, uanset de faktiske klokketider på
+aktiviteten. En enkeltdags-aktivitet (delvis fridag) bruger stadig den reelle varighed. Uden
+denne skelnen blev en flerdags-periode talt som rå klokketid (kan blive 30-100+ timer for en
+uges fri, hvis aktiviteten fx er registreret som "fredag 06:00 → følgende fredag 14:00").
 
 `_calculate_employee()` returnerer `sygdom_hours` og `afspadsering_hours` separat i result-dict.
+
+**Periodegrænse-bug rettet (2026-07-30):** Aktivitets-forespørgslen i `_calculate_employee()`
+filtrerede tidligere på `Activity.start_time >= start`, dvs. en vagt der starter søndag aften i
+DEN FORRIGE periode og fortsætter forbi midnat ind i den nye periodes mandag blev slet ikke
+hentet for den nye periode – hverken den forrige periodes dagsløkke (som stopper ved sin egen
+`end_date`) eller den nye periodes forespørgsel fangede mandagsdelen, så de timer forsvandt
+fuldstændigt fra lønberegningen i begge perioder. Rettet ved at forespørgslen nu bruger overlap
+(`start_time < periodeslut+1 AND end_time > periodestart`) i stedet for kun `start_time`. Den
+eksisterende søndags-splitning (`_split_into_day_pieces()`) håndterer herefter automatisk at
+fordele timerne korrekt til de to perioders egne dage – ingen dobbelttælling, da hver periodes
+dagsløkke kun summerer datoer inden for sit eget interval. Bekræftet med et konkret tilfælde
+(vagt 12/7 19:00 → 13/7 19:00): før fix talte kun de 5 timer inden midnat (i forrige periode),
+efter fix talte forrige periode stadig kun de 5 timer og den nye periode fik de resterende 19
+timer – i alt 24 timer bevaret, ingen dubletter.
 
 **Kør løn – låsning (2026-07-02):** `export_csv_post()` i `payroll_router.py` afviser med 400, hvis (a) perioden allerede har `status == PayPeriodStatus.closed`, eller (b) der findes `pending`-aktiviteter for aktive medarbejdere i perioden – begge dele skal være håndteret (godkendt/deaktiveret) først. Perioden sættes først til `closed` EFTER at CSV-filen er skrevet succesfuldt (ikke før) – en fejlet fil-skrivning (fx filen åben i Excel → `PermissionError`) fanges og giver en klar fejlbesked i stedet for at låse perioden uden gyldig eksport. Samme `PermissionError`-fangst er i `proevekoersel_gem()` (Excel-prøvekørsel).
 

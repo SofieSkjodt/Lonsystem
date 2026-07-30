@@ -1,5 +1,10 @@
 # Lønberegningsregler – Lønsystem
 
+**Bemærk:** Stamdata (databasen) er den autoritative kilde til satser og løntypekoder –
+denne fil er en menneskelæsbar reference, som kan komme bagud af ændringer gjort direkte i
+Stamdata-UI'en. Tjek altid Stamdata → Overenskomsttyper / Løntypekoder ved tvivl. Sidst
+gennemgået mod koden 2026-07-30.
+
 ## Timesatser pr. 1. marts 2026
 
 | Medarbejdertype | Grundtimeløn | Tillæg | Samlet timeløn |
@@ -45,15 +50,13 @@ Se `OVERTIME_RULES.md` for detaljerede regler.
 
 ---
 
-## Ubekvem arbejdstid
+## Ubekvem arbejdstid – UDGÅET (erstattet 10/6-2026)
 
-Beregnes **time-for-time** baseret på hvornår arbejdet falder:
-
-| Tidsrum | Tillæg |
-|---------|--------|
-| Kl. 18:00–23:00 (hverdage) | +46,93 kr./time |
-| Kl. 23:00–06:00 | +52,65 kr./time |
-| Lørdag kl. 14:00+ og søn-/helligdage | +102,71 kr./time |
+De tre overtidstillæg herover **erstatter fuldstændigt** den tidligere separate
+ubekvemstillæg-model (18-23, 23-06, lørdag 14+/søn-/helligdage), som er bekræftet af bruger og
+fjernet fra beregningen. Denne sektion stod tidligere med de gamle satser (46,93 / 52,65 /
+102,71 kr./time) – de tillæg findes IKKE i den nuværende kode og skal ikke lægges til oveni
+overtidstillæggene. Se `docs/OVERTIME_RULES.md` for den fulde, aktuelle model.
 
 ---
 
@@ -83,14 +86,16 @@ Beregnes **time-for-time** baseret på hvornår arbejdet falder:
 
 | Kolonne | Felt | Eksempel |
 |---------|------|---------|
-| A | CVR-nummer | 13246505 |
-| B | Medarbejdernummer | [medarbejdernr] |
-| C | Danløn-kode | 1 (midlertidig) |
-| D | Antal timer | 7.40 |
-| E | Timesats / tillægssats | 174.15 |
-| F | Afspadsering | [TBD] |
+| A | CVR-nummer | fra Stamdata → CVR-nummer (medarbejderens eget, ellers standard) |
+| B | Medarbejdernummer (lønnummer) | [medarbejdernr] |
+| C | Danløn-kode | 1=Normal, 7=OT før, 8=OT 1-3t, 9=Øvrig OT, 6=Salt, 14=Overnatning, 71=Afspadsering, 51=Sygdom/§56/Barsel, 15=Barn 1.sygedag, 81=Feriefri, 2=Skole/kursus, 4/63=Søgnehelligdag, 60=Ferie (default ekskluderet fra CSV) |
+| D | Antal (timer eller antal, afhænger af løntypen) | 7.40 |
+| E | Timesats / tillægssats (hvis konfigureret til at vises) | 174.15 |
+| F | Totalbeløb (hvis konfigureret til at vises i stedet for/ud over sats) | – |
 
-CVR-nummer: **13246505**
+Én række pr. løntype med antal > 0 og "Medtag i CSV" slået til i Stamdata → Løntypekoder.
+Koder, enhed og hvilke af E/F der vises er alt sammen konfigurérbart pr. løntype der – se
+`CODEREF.md` for den fulde tabel og implementeringsdetaljer.
 
 ---
 
@@ -104,9 +109,11 @@ Følgende markeres i prøvekørsels-Excel:
 
 ## Åbne punkter
 
-- [ ] Præcis beregning af overtid: dagligt vs. ugentligt
-- [ ] Bekræftelse af om ubekvem tid og overtidstillæg kan kombineres på samme time
-- [ ] Danløn-koder (sættes til "1" indtil videre)
-- [ ] Afspadsering (kolonne F) – hvad skal stå her?
-- [ ] Disponentgrupper Excel-sti
-- [ ] Output-mappe stier (CSV, Excel)
+- [x] Præcis beregning af overtid: dagligt (pr. vagt/kalenderdag) – se OVERTIME_RULES.md
+- [x] Ubekvem tid og overtidstillæg kombineres IKKE – ubekvem-modellen er udgået, se ovenfor
+- [x] Danløn-koder – konfigureres nu pr. løntype i Stamdata → Løntypekoder (ikke længere fast "1")
+- [x] Afspadsering – egen kode (71), timer summeres (periode = skemalagte timer/hverdag)
+- [x] Disponentgrupper og output-mappe stier – konfigureres i Stamdata / ved eksport
+- [ ] Verificér om "Øvrigt overtid" (nat/aften) altid stemmer med Danløns egen beregning for
+      medarbejdere med meget tidligt/sent arbejde – mindre afvigelser observeret 2026-07-30
+      ved sammenligning med det gamle Tacho-baserede system, uden en entydig fælles årsag
