@@ -730,10 +730,6 @@ def split_activity(activity_id: int, body: ActivitySplit,
         pay_period_id=a.pay_period_id,
         source=a.source,
         activity_type=a.activity_type,
-        availability_time_pct=a.availability_time_pct,
-        rest_pause_pct=a.rest_pause_pct,
-        other_work_pct=a.other_work_pct,
-        driving_pct=a.driving_pct,
         loading_minutes=a.loading_minutes,
         unloading_minutes=a.unloading_minutes,
         salt_supplement=a.salt_supplement,
@@ -763,6 +759,8 @@ def split_activity(activity_id: int, body: ActivitySplit,
         split_part=2,
         comment="Split: anden del",
     )
+    _recalculate_pcts(part1)
+    _recalculate_pcts(part2)
     db.add(part1)
     db.add(part2)
     db.flush()
