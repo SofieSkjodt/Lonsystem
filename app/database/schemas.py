@@ -167,6 +167,24 @@ class ActivityCreate(BaseModel):
             raise ValueError("km_end skal være større end eller lig med km_start")
         return self
 
+    @model_validator(mode="after")
+    def pauses_within_activity(self):
+        for p in (self.pause_intervals or []):
+            try:
+                ps = datetime.fromisoformat(p[0]) if isinstance(p[0], str) else p[0]
+                pe = datetime.fromisoformat(p[1]) if isinstance(p[1], str) else p[1]
+            except (ValueError, IndexError, TypeError):
+                continue
+            if ps < self.start_time:
+                raise ValueError(
+                    f"Pause ({ps.strftime('%H:%M')}) starter før aktiviteten begynder ({self.start_time.strftime('%H:%M')})"
+                )
+            if pe > self.end_time:
+                raise ValueError(
+                    f"Pause ({pe.strftime('%H:%M')}) slutter efter aktiviteten er slut ({self.end_time.strftime('%H:%M')})"
+                )
+        return self
+
 
 class ActivityUpdate(BaseModel):
     activity_type: Optional[str] = None
@@ -179,6 +197,7 @@ class ActivityUpdate(BaseModel):
     km_start: Optional[int] = Field(default=None, ge=0)
     km_end: Optional[int] = Field(default=None, ge=0)
     salt_supplement: Optional[bool] = None
+    pause_intervals: Optional[list] = None
 
     @model_validator(mode="after")
     def end_after_start(self):

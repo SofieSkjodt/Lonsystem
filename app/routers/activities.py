@@ -394,6 +394,24 @@ def update_activity(activity_id: int, body: ActivityUpdate,
         a.original_end_time = a.end_time
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
+    if body.pause_intervals is not None:
+        flag_modified(a, "pause_intervals")
+        for p in a.pause_intervals:
+            try:
+                ps = datetime.fromisoformat(p[0])
+                pe = datetime.fromisoformat(p[1])
+                if ps < a.start_time:
+                    raise HTTPException(
+                        400, f"Pause ({ps.strftime('%H:%M')}) starter før aktiviteten begynder ({a.start_time.strftime('%H:%M')})"
+                    )
+                if pe > a.end_time:
+                    raise HTTPException(
+                        400, f"Pause ({pe.strftime('%H:%M')}) slutter efter aktiviteten er slut ({a.end_time.strftime('%H:%M')})"
+                    )
+            except HTTPException:
+                raise
+            except (ValueError, IndexError):
+                pass
     # Update pay period if start_time changed
     if body.start_time:
         period = get_billing_period(body.start_time.date(), db)

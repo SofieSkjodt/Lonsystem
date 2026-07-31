@@ -813,20 +813,52 @@ async function saveActivityTimes() {
   const kmStartVal = document.getElementById("edit-km-start")?.value;
   const kmEndVal   = document.getElementById("edit-km-end")?.value;
   const saltVal    = document.getElementById("edit-salt")?.checked ?? false;
+
+  const a = state.activities.find(x => x.id === state.selectedActivityId);
+  const payload = {
+    start_time: start + ":00",
+    end_time: end + ":00",
+    vehicle_number: vehicleNum || null,
+    km_start: kmStartVal !== "" && kmStartVal != null ? parseInt(kmStartVal) : null,
+    km_end:   kmEndVal   !== "" && kmEndVal   != null ? parseInt(kmEndVal)   : null,
+    salt_supplement: saltVal,
+  };
+
+  // Spørg om pausedatoer skal følge med, hvis startdatoen ændres
+  if (a && a.pause_intervals && a.pause_intervals.length) {
+    const oldDateStr = a.start_time.slice(0, 10);
+    const newDateStr = start.slice(0, 10);
+    if (oldDateStr !== newDateStr) {
+      const dayDiff = Math.round(
+        (new Date(newDateStr + "T00:00:00") - new Date(oldDateStr + "T00:00:00"))
+        / 86400000
+      );
+      const svar = confirm(
+        `Startdatoen er ændret fra ${oldDateStr} til ${newDateStr}.\n` +
+        `Vil du også flytte pauserne ${dayDiff > 0 ? "frem" : "tilbage"} med ${Math.abs(dayDiff)} dag${Math.abs(dayDiff) !== 1 ? "e" : ""}?`
+      );
+      if (svar) {
+        payload.pause_intervals = a.pause_intervals.map(([ps, pe]) => [
+          _shiftIsoByDays(ps, dayDiff),
+          _shiftIsoByDays(pe, dayDiff),
+        ]);
+      }
+    }
+  }
+
   try {
-    const updated = await PATCH(`/api/activities/${state.selectedActivityId}`, {
-      start_time: start + ":00",
-      end_time: end + ":00",
-      vehicle_number: vehicleNum || null,
-      km_start: kmStartVal !== "" && kmStartVal != null ? parseInt(kmStartVal) : null,
-      km_end:   kmEndVal   !== "" && kmEndVal   != null ? parseInt(kmEndVal)   : null,
-      salt_supplement: saltVal,
-    });
+    const updated = await PATCH(`/api/activities/${state.selectedActivityId}`, payload);
     toast("Ændringer gemt", "success");
     closeAllModals();
     applyActivityLocally(updated);
     refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
+}
+
+function _shiftIsoByDays(isoStr, days) {
+  const d = new Date(isoStr.slice(0, 10) + "T00:00:00");
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10) + isoStr.slice(10);
 }
 
 function openApproveModal() {
@@ -1378,6 +1410,16 @@ function confirmPause() {
   const endIso   = readDatetimePicker("pause-end");
   if (!startIso || !endIso) { toast("Angiv både start- og sluttidspunkt for pausen", "error"); return; }
   if (endIso <= startIso) { toast("Sluttidspunkt skal være efter starttidspunkt", "error"); return; }
+  const actStart = readDatetimePicker("manual-start");
+  const actEnd   = readDatetimePicker("manual-end");
+  if (actStart && startIso < actStart) {
+    toast(`Pausen starter (${startIso.slice(11, 16)}) før vagten begynder (${actStart.slice(11, 16)})`, "error");
+    return;
+  }
+  if (actEnd && endIso > actEnd) {
+    toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${actEnd.slice(11, 16)})`, "error");
+    return;
+  }
   manualPauses.push([startIso + ":00", endIso + ":00"]);
   renderManualPauses();
   closeModal("modal-pause");
