@@ -48,6 +48,7 @@ const PERMISSION_LABELS = {
 
 let manualPauses = [];
 let _resizeSegState = null;
+let _pauseEditState = null; // { mode: "create"|"activity", idx, activityId? }
 let _absenceConflictConfirmed = false;
 
 const WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
@@ -551,8 +552,14 @@ function openActivityDetail(id) {
     ${(!a.segments || !a.segments.length) && (a.pause_intervals && a.pause_intervals.length) ? `
     <div class="form-group mt-16">
       <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light)">Pauser (fratrækkes i tidsrummet de afholdes)</label>
-      <div style="font-size:13px;padding:8px;background:var(--bg);border-radius:4px">
-        ${a.pause_intervals.map(p => `${formatTime(p[0])} – ${formatTime(p[1])}`).join(" · ")}
+      <div style="font-size:13px;padding:4px 8px;background:var(--bg);border-radius:4px">
+        ${a.pause_intervals.map((p, i) => `
+          <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#e5e7eb)">
+            <span style="flex:1">${formatTime(p[0])} – ${formatTime(p[1])}</span>
+            <button class="act-pause-edit-btn" data-idx="${i}" data-id="${a.id}" style="font-size:11px;padding:2px 7px;cursor:pointer">Ret</button>
+            <button class="act-pause-del-btn" data-idx="${i}" data-id="${a.id}" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">&times;</button>
+          </div>
+        `).join("")}
       </div>
     </div>` : ""}
     ${a.is_under_4h ? `<div class="alert-banner mt-16"><span class="icon">⚠️</span><div class="text"><h4>Under 4 timer</h4>Angiv begrundelse ved godkendelse (overenskomst: minimum 4 timer medmindre andet er aftalt).</div></div>` : ""}
@@ -596,6 +603,12 @@ function openActivityDetail(id) {
   });
   document.querySelectorAll("#modal-activity-body .seg-resize-btn").forEach(btn => {
     btn.addEventListener("click", () => openResizeSegment(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
+  });
+  document.querySelectorAll("#modal-activity-body .act-pause-edit-btn").forEach(btn => {
+    btn.addEventListener("click", () => openActivityPauseEdit(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
+  });
+  document.querySelectorAll("#modal-activity-body .act-pause-del-btn").forEach(btn => {
+    btn.addEventListener("click", () => deleteActivityPause(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
   });
 
   openModal("modal-activity");
@@ -1387,7 +1400,8 @@ function renderManualPauses() {
     <div style="display:flex;align-items:center;gap:8px;padding:6px 10px;background:var(--bg);border-radius:4px;margin-bottom:4px;font-size:13px">
       <span style="font-weight:600;min-width:56px;color:var(--primary)">Pause ${i + 1}</span>
       <span>${p[0].slice(8,10)}.${p[0].slice(5,7)} ${p[0].slice(11,16)} – ${p[1].slice(8,10)}.${p[1].slice(5,7)} ${p[1].slice(11,16)}</span>
-      <button type="button" onclick="deleteManualPause(${i})" style="margin-left:auto;background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;padding:0">&times;</button>
+      <button type="button" onclick="editManualPause(${i})" style="margin-left:auto;font-size:11px;padding:2px 7px;cursor:pointer">Ret</button>
+      <button type="button" onclick="deleteManualPause(${i})" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:18px;line-height:1;padding:0">&times;</button>
     </div>
   `).join("");
 }
@@ -1395,6 +1409,7 @@ function renderManualPauses() {
 function addManualPause() {
   const startIso = readDatetimePicker("manual-start");
   if (!startIso) { toast("Angiv starttidspunkt for aktiviteten først", "error"); return; }
+  _pauseEditState = { mode: "create", idx: null };
   const n = manualPauses.length + 1;
   document.getElementById("pause-modal-title").textContent = "Pause " + n;
   const dateStr = startIso.slice(0, 10);
@@ -1410,6 +1425,10 @@ function confirmPause() {
   const endIso   = readDatetimePicker("pause-end");
   if (!startIso || !endIso) { toast("Angiv både start- og sluttidspunkt for pausen", "error"); return; }
   if (endIso <= startIso) { toast("Sluttidspunkt skal være efter starttidspunkt", "error"); return; }
+  if (_pauseEditState?.mode === "activity") {
+    _confirmActivityPauseEdit(startIso, endIso);
+    return;
+  }
   const actStart = readDatetimePicker("manual-start");
   const actEnd   = readDatetimePicker("manual-end");
   if (actStart && startIso < actStart) {
@@ -1420,7 +1439,12 @@ function confirmPause() {
     toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${actEnd.slice(11, 16)})`, "error");
     return;
   }
-  manualPauses.push([startIso + ":00", endIso + ":00"]);
+  const entry = [startIso + ":00", endIso + ":00"];
+  if (_pauseEditState?.idx != null) {
+    manualPauses[_pauseEditState.idx] = entry;
+  } else {
+    manualPauses.push(entry);
+  }
   renderManualPauses();
   closeModal("modal-pause");
 }
@@ -1428,6 +1452,75 @@ function confirmPause() {
 function deleteManualPause(idx) {
   manualPauses.splice(idx, 1);
   renderManualPauses();
+}
+
+function editManualPause(idx) {
+  _pauseEditState = { mode: "create", idx };
+  const p = manualPauses[idx];
+  document.getElementById("pause-modal-title").textContent = `Ret pause ${idx + 1}`;
+  buildDatetimePicker("pause-start", p[0].slice(0, 16));
+  buildDatetimePicker("pause-end",   p[1].slice(0, 16));
+  _stackDatetimePicker("pause-start");
+  _stackDatetimePicker("pause-end");
+  openModal("modal-pause");
+}
+
+function openActivityPauseEdit(actId, idx) {
+  const a = state.activities.find(x => x.id === actId);
+  if (!a || !a.pause_intervals) return;
+  const p = a.pause_intervals[idx];
+  if (!p) return;
+  _pauseEditState = { mode: "activity", activityId: actId, idx };
+  document.getElementById("pause-modal-title").textContent = `Ret pause ${idx + 1}`;
+  buildDatetimePicker("pause-start", p[0].slice(0, 16));
+  buildDatetimePicker("pause-end",   p[1].slice(0, 16));
+  _stackDatetimePicker("pause-start");
+  _stackDatetimePicker("pause-end");
+  openModal("modal-pause");
+}
+
+async function _confirmActivityPauseEdit(startIso, endIso) {
+  const { activityId, idx } = _pauseEditState;
+  const a = state.activities.find(x => x.id === activityId);
+  if (!a) return;
+  if (startIso < a.start_time.slice(0, 16)) {
+    toast(`Pausen starter (${startIso.slice(11, 16)}) før vagten begynder (${a.start_time.slice(11, 16)})`, "error");
+    return;
+  }
+  if (endIso > a.end_time.slice(0, 16)) {
+    toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${a.end_time.slice(11, 16)})`, "error");
+    return;
+  }
+  const newPauses = a.pause_intervals.map((p, i) =>
+    i === idx ? [startIso + ":00", endIso + ":00"] : p
+  );
+  try {
+    const updated = await PATCH(`/api/activities/${activityId}`, { pause_intervals: newPauses });
+    state.activities = state.activities.map(x => x.id === activityId ? updated : x);
+    closeModal("modal-pause");
+    const body = document.getElementById("modal-activity-body");
+    const scrollTop = body ? body.scrollTop : 0;
+    openActivityDetail(activityId);
+    if (body) body.scrollTop = scrollTop;
+    renderActivitiesTable();
+    toast("Pause opdateret", "success");
+  } catch (e) { toast(e.message || "Fejl ved opdatering af pause", "error"); }
+}
+
+async function deleteActivityPause(actId, idx) {
+  const a = state.activities.find(x => x.id === actId);
+  if (!a) return;
+  const newPauses = a.pause_intervals.filter((_, i) => i !== idx);
+  try {
+    const updated = await PATCH(`/api/activities/${actId}`, { pause_intervals: newPauses });
+    state.activities = state.activities.map(x => x.id === actId ? updated : x);
+    const body = document.getElementById("modal-activity-body");
+    const scrollTop = body ? body.scrollTop : 0;
+    openActivityDetail(actId);
+    if (body) body.scrollTop = scrollTop;
+    renderActivitiesTable();
+    toast("Pause slettet", "success");
+  } catch (e) { toast(e.message || "Fejl ved sletning af pause", "error"); }
 }
 
 function openManualActivityModal(empId = null, dateIso = null) {
