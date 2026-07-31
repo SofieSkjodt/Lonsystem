@@ -377,11 +377,13 @@ ACTIVITY_NAMES = {
 # ud fra konkrete sager (47 min = pause i vagten, ~10 timer = skel mellem vagter).
 LONG_REST_THRESHOLD_MINUTES = 4 * 60
 
-# Øvre grænse for hvor lang en "indledende pause" (se _split_on_long_rests) må
-# være for at blive vist som en del af den næste vagt. Alle bekræftede
-# eksempler er 1-11 minutter (chaufføren gør klar til at køre) – 60 minutter
-# giver rigelig margin uden at risikere at vise en hel dags egen (uafhængige)
-# hvileperiode som var det en kort pause.
+# Øvre grænse for hvor lang en "grænse-pause" (se _split_on_long_rests) må
+# være for at blive vist som en del af en tilstødende vagt i stedet for at
+# indgå i den udeladte lange hvileperiode. Alle bekræftede eksempler er
+# 1-11 minutter (chaufføren gør klar til at køre, eller slår over til hvil
+# lige før kortet tages ud) – 60 minutter giver rigelig margin uden at
+# risikere at vise en hel dags egen (uafhængige) hvileperiode som var det
+# en kort pause.
 MAX_LEADING_PAUSE_MINUTES = 60
 
 
@@ -393,14 +395,19 @@ def _split_on_long_rests(
     flere kalenderdage – se _build_activities) i separate vagter ved enhver
     sammenhængende hvile-køre på mindst LONG_REST_THRESHOLD_MINUTES.
 
-    En hvile-køre kan bestå af flere rå segmenter (fx dagsskiftets
-    videreførte "hvil"-markør efterfulgt af en kort, reelt registreret pause
-    lige inden arbejdet genoptages). Når køren samlet når tærsklen, udelades
-    den – MEN hvis køren består af mere end ét segment, og resten (uden det
-    allersidste) stadig når tærsklen, bevares det allersidste segment som
-    den næste vagts indledende pause (chaufførens faktiske "klar til
-    vagt"-tidspunkt). Er hele køren under tærsklen, er det blot en almindelig
-    pause i vagten og forbliver en del af den samme vagt.
+    En hvile-køre kan bestå af flere rå segmenter, og den udelades som
+    helhed (hullet mellem to vagter) – MEN har køren mere end ét segment,
+    kan et kort segment i hver ende blive stående som del af den vagt, den
+    grænser op til, i stedet for at indgå i det udeladte hul:
+      - det ALLERFØRSTE segment i køren kan bevares som den AFSLUTTENDE
+        vagts sidste (trailing) pause, hvis resten af køren stadig når
+        tærsklen uden det (fx et enkelt minuts hvil, lige inden kortet
+        tages ud, før den lange natlige hviletid for alvor begynder).
+      - det ALLERSIDSTE segment i køren kan bevares som den PÅFØLGENDE
+        vagts indledende pause (chaufførens faktiske "klar til vagt"
+        tidspunkt), på samme vilkår.
+    Er hele køren under tærsklen, er det blot en almindelig pause i vagten
+    og forbliver en del af den samme vagt.
     """
     shifts: list[list[tuple[datetime, datetime, int]]] = []
     current: list[tuple[datetime, datetime, int]] = []
@@ -421,18 +428,33 @@ def _split_on_long_rests(
         if run_total < LONG_REST_THRESHOLD_MINUTES:
             current.extend(run)
         else:
-            last_duration = (run[-1][1] - run[-1][0]).total_seconds() / 60
+            # Bevar evt. et kort allerførste segment som den afsluttende vagts
+            # trailing pause – kun hvis der overhovedet er en vagt at hænge det
+            # på, og resten af køren stadig er en reel lang hvileperiode uden det.
+            first_duration = (run[0][1] - run[0][0]).total_seconds() / 60
+            peeled_first = 0
             if (
-                len(run) > 1
-                and last_duration <= MAX_LEADING_PAUSE_MINUTES
-                and (run_total - last_duration) >= LONG_REST_THRESHOLD_MINUTES
+                current
+                and len(run) > 1
+                and first_duration <= MAX_LEADING_PAUSE_MINUTES
+                and (run_total - first_duration) >= LONG_REST_THRESHOLD_MINUTES
             ):
-                if current:
-                    shifts.append(current)
-                current = [run[-1]]
+                current.append(run[0])
+                peeled_first = 1
+
+            if current:
+                shifts.append(current)
+
+            tail = run[peeled_first:]
+            tail_total = run_total - (first_duration if peeled_first else 0)
+            last_duration = (tail[-1][1] - tail[-1][0]).total_seconds() / 60
+            if (
+                len(tail) > 1
+                and last_duration <= MAX_LEADING_PAUSE_MINUTES
+                and (tail_total - last_duration) >= LONG_REST_THRESHOLD_MINUTES
+            ):
+                current = [tail[-1]]
             else:
-                if current:
-                    shifts.append(current)
                 current = []
         i = j
     if current:

@@ -13,6 +13,7 @@ from database.session import get_db
 from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, Vehicle
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
+from routers.activities import _recalculate_pcts
 
 router = APIRouter(prefix="/api", tags=["import"])
 
@@ -224,51 +225,75 @@ def _import_activity(act: ParsedActivity, db: Session, employee: Employee | None
             existing.km_end = act.km_end
             changed = True
 
-        # En senere kortudlæsning – eller en rettelse i parseren – kan give andet
-        # indhold (segmenter, pauser, procenter) end det, der blev gemt tidligere,
-        # selvom start- og sluttidspunkt er uændrede (fx en pause der fejlagtigt
-        # var registreret som kørsel og nu rettes til hvil). Sammenlign det
-        # faktisk gemte indhold i stedet for kun at kigge på om sluttidspunktet
-        # er blevet længere, ellers går rettelsen tabt ved genimport.
         new_segments = [
             [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
         ]
         new_pause_intervals = [
             [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
         ]
-        content_changed = (
-            act.end_time != existing.end_time
-            or new_segments != (existing.segments or [])
-            or new_pause_intervals != (existing.pause_intervals or [])
-        )
-        if content_changed:
-            existing.end_time = act.end_time
-            existing.availability_time_pct = act.availability_time_pct
-            existing.rest_pause_pct = act.rest_pause_pct
-            existing.other_work_pct = act.other_work_pct
-            existing.driving_pct = act.driving_pct
-            existing.pause_intervals = new_pause_intervals
-            existing.segments = new_segments
-            # Opdater ufuldstændig-flaget efter den nye fil – rydder flaget hvis
-            # dagen nu er komplet, eller sætter det hvis den nye fil stadig ser
-            # ufuldstændig ud.
-            existing.is_likely_incomplete = act.is_likely_incomplete
+
+        def _sync_vehicle():
             if act.vehicle_registration and not existing.vehicle_registration:
                 existing.vehicle_registration = act.vehicle_registration
                 if not existing.vehicle_number:
                     v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
                     if v:
                         existing.vehicle_number = v.vehicle_number
+
+        def _reopen_for_review():
             if existing.status != ActivityStatus.pending:
-                # Godkendt/deaktiveret aktivitet er nu blevet ændret i forhold til
-                # det, der blev taget stilling til – genåbnes til afventende, så
-                # tiden skal godkendes igen.
                 existing.status = ActivityStatus.pending
                 existing.approved_by = None
                 existing.approved_at = None
                 existing.deactivated_by = None
                 existing.auto_approved = False
                 existing.auto_approval_flags = []
+
+        if act.end_time > existing.end_time:
+            # En senere kortudlæsning kan dække en mere komplet dag (senere
+            # sluttidspunkt) end den tidligere importerede. Tilføj kun den NYE
+            # tid efter det hidtidige sluttidspunkt – allerede gemte segmenter
+            # røres ikke, da en bruger kan have rettet/tilpasset dem manuelt
+            # (fx via "Ret linje" eller "Tilpas pause"), og den slags må ikke
+            # gå tabt ved en simpel genimport.
+            cutoff = existing.end_time
+            existing.segments = (existing.segments or []) + [
+                s for s in new_segments if _dt_now.fromisoformat(s[0]) >= cutoff
+            ]
+            existing.pause_intervals = (existing.pause_intervals or []) + [
+                p for p in new_pause_intervals if _dt_now.fromisoformat(p[0]) >= cutoff
+            ]
+            existing.end_time = act.end_time
+            _recalculate_pcts(existing)
+            # Opdater ufuldstændig-flaget efter den nye, mere komplette fil –
+            # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
+            # den nye fil stadig ser ufuldstændig ud.
+            existing.is_likely_incomplete = act.is_likely_incomplete
+            _sync_vehicle()
+            # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der
+            # blev taget stilling til – genåbnes til afventende, så tiden skal
+            # godkendes igen.
+            _reopen_for_review()
+            changed = True
+        elif existing.status == ActivityStatus.pending and (
+            new_segments != (existing.segments or [])
+            or new_pause_intervals != (existing.pause_intervals or [])
+        ):
+            # Aktiviteten er endnu ikke godkendt/gennemgået af en bruger, så det
+            # er trygt at synkronisere fuldt ind, hvis en rettelse i parseren
+            # giver andet segment-indhold end sidst (fx en pause der fejlagtigt
+            # var registreret som kørsel). Er aktiviteten allerede godkendt
+            # eller deaktiveret, rører vi den IKKE her – den kan indeholde
+            # manuelle rettelser en bruger har lavet, som ikke må overskrives
+            # stille og roligt af en genimport.
+            existing.segments = new_segments
+            existing.pause_intervals = new_pause_intervals
+            existing.availability_time_pct = act.availability_time_pct
+            existing.rest_pause_pct = act.rest_pause_pct
+            existing.other_work_pct = act.other_work_pct
+            existing.driving_pct = act.driving_pct
+            existing.is_likely_incomplete = act.is_likely_incomplete
+            _sync_vehicle()
             changed = True
 
         if changed:
