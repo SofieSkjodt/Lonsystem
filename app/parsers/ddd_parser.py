@@ -473,6 +473,11 @@ def _build_activities(
     distance_by_date: dict = {}
     final_shifts: list[list[tuple[datetime, datetime, int]]] = []
     pending: list[tuple[datetime, datetime, int]] = []
+    # Aktiviteten ved den seneste dags allersidste registrering – IKKE
+    # nødvendigvis samme som pending's sidste SEGMENT (som slutter lige FØR
+    # denne registrering). Det er denne værdi, der gælder i hullet ind i
+    # næste dag, da den sidste registrering ikke selv får et segment.
+    prev_day_last_activity: int | None = None
 
     def finalize_pending():
         nonlocal pending
@@ -537,16 +542,21 @@ def _build_activities(
             gap_minutes = (day_own_start_dt - pending[-1][1]).total_seconds() / 60
             if gap_minutes < LONG_REST_THRESHOLD_MINUTES:
                 if day_own_start_dt > pending[-1][1]:
-                    # Bro over hullet mellem forrige vagts sidste registrering og
-                    # denne dags egen start – samme aktivitet som forrige vagt
-                    # sluttede med (den tilstand der reelt fortsætter i hullet).
-                    pending.append((pending[-1][1], day_own_start_dt, pending[-1][2]))
+                    # Bro over hullet mellem forrige dags allersidste registrering
+                    # og denne dags egen start. Den sidste registrering i en dag
+                    # får aldrig sit eget segment (den er kun et slutmærke), så
+                    # dens aktivitet skal hentes fra prev_day_last_activity – IKKE
+                    # fra pending's sidste SEGMENT, som gælder tiden FØR den
+                    # sidste registrering, ikke tilstanden efter den.
+                    pending.append((pending[-1][1], day_own_start_dt, prev_day_last_activity))
                 pending.extend(day_segments)
             else:
                 finalize_pending()
                 pending = day_segments
         else:
             pending = day_segments
+
+        prev_day_last_activity = changes[-1][1]
 
     finalize_pending()
 
