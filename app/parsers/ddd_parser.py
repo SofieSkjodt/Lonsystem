@@ -26,7 +26,7 @@ konverteres til dansk lokal tid (Europe/Copenhagen, DST-korrekt) i _build_activi
 import re
 import struct
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from decimal import Decimal
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -297,9 +297,14 @@ def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
     af dagene findes andetsteds i filen.
 
     Denne funktion scanner hele filen for samtlige gyldige kæde-startpunkter,
-    vandrer hver kæde, og fletter resultaterne pr. dato – ved konflikt (samme
-    dato fundet i flere kæder) beholdes den mest fuldstændige version (flest
-    aktivitetsbytes).
+    vandrer hver kæde, og fletter resultaterne pr. dato. Ved konflikt (samme
+    dato fundet i flere kæder) foretrækkes en post med tidsstempel præcis ved
+    midnat (som en gyldig dags-record altid har per spec) frem for en der
+    ikke er – bekræftet ved byte-analyse 2026-07-29: to overlappende kæder
+    kan give samme dato med hhv. en gyldig midnatspost og en fejlfortolket
+    post (forkert tidsstempel og urealistisk stor distance), og "flest
+    aktivitetsbytes" alene kan fejlagtigt foretrække den forkerte. Er begge
+    (eller ingen af dem) ved midnat, afgøres det stadig af flest bytes.
 
     En gyldig kæde starter typisk ved hvert record i kæden (ikke kun ved
     kædens første record), så uden optimering ville samme kæde blive
@@ -320,7 +325,14 @@ def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
                 walk_pos += len(activity_bytes) + 12
                 key = dt.date()
                 existing = merged.get(key)
-                if existing is None or len(activity_bytes) > len(existing[2]):
+                if existing is None:
+                    merged[key] = (dt, distance, activity_bytes)
+                    continue
+                new_is_midnight = dt.time() == time(0, 0, 0)
+                existing_is_midnight = existing[0].time() == time(0, 0, 0)
+                if new_is_midnight and not existing_is_midnight:
+                    merged[key] = (dt, distance, activity_bytes)
+                elif new_is_midnight == existing_is_midnight and len(activity_bytes) > len(existing[2]):
                     merged[key] = (dt, distance, activity_bytes)
         pos += 1
     return [merged[k] for k in sorted(merged)]
@@ -365,81 +377,64 @@ ACTIVITY_NAMES = {
 # ud fra konkrete sager (47 min = pause i vagten, ~10 timer = skel mellem vagter).
 LONG_REST_THRESHOLD_MINUTES = 4 * 60
 
-
-def _day_own_segments(
-    day_dt: datetime, changes: list[tuple[int, int]]
-) -> tuple[list[tuple[datetime, datetime, int]], bool] | None:
-    """
-    Bygger en dags egne segmenter (start, slut, aktivitet) i UTC, fra dagens
-    beregnede startminut til sidste registrering. Returnerer også om dagen er
-    en fortsættelse af gårsdagens vagt (dagens allerførste registrering er
-    IKKE hvil – chaufføren var stadig i gang, da uret rundede midnat).
-
-    Returnerer None hvis dagen reelt ikke indeholder noget arbejde.
-    """
-    first_nonrest_minute = next(
-        (m for m, a in changes if a != ACTIVITY_REST), None
-    )
-    if first_nonrest_minute is None:
-        return None
-
-    is_continuation = changes[0][1] != ACTIVITY_REST
-
-    # changes[0] er altid en "rest"-post ved minut 0 (videreført status fra
-    # forrige dag, ikke en reel pause) – MEDMINDRE dagen er en fortsættelse
-    # (is_continuation), hvor minut 0 rent faktisk er en reel igangværende
-    # aktivitet. Er der (ved en almindelig ny dag) en ekstra hvil-post lige
-    # efter minut 0, er det chaufførens faktiske dagsstart (kort pause inden
-    # arbejdet begynder).
-    if is_continuation:
-        day_start_minute = 0
-    else:
-        day_start_minute = first_nonrest_minute
-        if len(changes) > 1 and changes[0][0] == 0 and changes[1][1] == ACTIVITY_REST:
-            day_start_minute = changes[1][0]
-
-    last_minute = changes[-1][0]
-    if last_minute <= day_start_minute:
-        return None
-
-    segments: list[tuple[datetime, datetime, int]] = []
-    for i, (minute, activity) in enumerate(changes):
-        if minute < day_start_minute:
-            continue
-        next_minute = changes[i + 1][0] if i + 1 < len(changes) else last_minute
-        seg_start = max(minute, day_start_minute)
-        seg_end = min(next_minute, last_minute)
-        duration = max(0, seg_end - seg_start)
-        if duration > 0:
-            segments.append((
-                day_dt + timedelta(minutes=seg_start),
-                day_dt + timedelta(minutes=seg_end),
-                activity,
-            ))
-
-    if not segments:
-        return None
-    return segments, is_continuation
+# Øvre grænse for hvor lang en "indledende pause" (se _split_on_long_rests) må
+# være for at blive vist som en del af den næste vagt. Alle bekræftede
+# eksempler er 1-11 minutter (chaufføren gør klar til at køre) – 60 minutter
+# giver rigelig margin uden at risikere at vise en hel dags egen (uafhængige)
+# hvileperiode som var det en kort pause.
+MAX_LEADING_PAUSE_MINUTES = 60
 
 
 def _split_on_long_rests(
     segments: list[tuple[datetime, datetime, int]],
 ) -> list[list[tuple[datetime, datetime, int]]]:
     """
-    Splitter en (evt. flerdags) segmentliste i separate vagter ved enhver
-    sammenhængende hvileperiode på mindst LONG_REST_THRESHOLD_MINUTES.
-    Selve hvileperioden hører ikke til nogen af de to vagter.
+    Splitter en global, sammenhængende segmentliste (kan strække sig over
+    flere kalenderdage – se _build_activities) i separate vagter ved enhver
+    sammenhængende hvile-køre på mindst LONG_REST_THRESHOLD_MINUTES.
+
+    En hvile-køre kan bestå af flere rå segmenter (fx dagsskiftets
+    videreførte "hvil"-markør efterfulgt af en kort, reelt registreret pause
+    lige inden arbejdet genoptages). Når køren samlet når tærsklen, udelades
+    den – MEN hvis køren består af mere end ét segment, og resten (uden det
+    allersidste) stadig når tærsklen, bevares det allersidste segment som
+    den næste vagts indledende pause (chaufførens faktiske "klar til
+    vagt"-tidspunkt). Er hele køren under tærsklen, er det blot en almindelig
+    pause i vagten og forbliver en del af den samme vagt.
     """
     shifts: list[list[tuple[datetime, datetime, int]]] = []
     current: list[tuple[datetime, datetime, int]] = []
-    for seg_start, seg_end, activity in segments:
-        duration_minutes = (seg_end - seg_start).total_seconds() / 60
-        if activity == ACTIVITY_REST and duration_minutes >= LONG_REST_THRESHOLD_MINUTES:
-            if current:
-                shifts.append(current)
-                current = []
+    i = 0
+    n = len(segments)
+    while i < n:
+        if segments[i][2] != ACTIVITY_REST:
+            current.append(segments[i])
+            i += 1
             continue
-        current.append((seg_start, seg_end, activity))
+
+        j = i
+        while j < n and segments[j][2] == ACTIVITY_REST:
+            j += 1
+        run = segments[i:j]
+        run_total = sum((s[1] - s[0]).total_seconds() / 60 for s in run)
+
+        if run_total < LONG_REST_THRESHOLD_MINUTES:
+            current.extend(run)
+        else:
+            last_duration = (run[-1][1] - run[-1][0]).total_seconds() / 60
+            if (
+                len(run) > 1
+                and last_duration <= MAX_LEADING_PAUSE_MINUTES
+                and (run_total - last_duration) >= LONG_REST_THRESHOLD_MINUTES
+            ):
+                if current:
+                    shifts.append(current)
+                current = [run[-1]]
+            else:
+                if current:
+                    shifts.append(current)
+                current = []
+        i = j
     if current:
         shifts.append(current)
     return shifts
@@ -454,62 +449,106 @@ def _build_activities(
 ) -> list[ParsedActivity]:
     """
     Konverterer dags-records til ParsedActivity-objekter pr. VAGT, ikke pr.
-    kalenderdag. En vagt kan strække sig over midnat (hvis dagens første
-    registrering ikke er hvil – chaufføren var stadig i gang), og én
-    kalenderdags data kan indeholde flere separate vagter adskilt af en lang
-    hvileperiode (se _split_on_long_rests).
+    kalenderdag.
+
+    For hver dag beregnes dagens egen reelle startpunkt (day_start_minute)
+    med samme regel som hidtil: changes[0] er altid en videreført status ved
+    minut 0 – enten en reel igangværende aktivitet (dagen fortsætter blot
+    gårsdagens vagt) eller blot en "hvil"-markør, i så fald ekskluderes den
+    (og en efterfølgende kort hvil-post lige inden arbejdet begynder regnes
+    som chaufførens faktiske dagsstart).
+
+    Om denne dags data skal SAMMENKÆDES med den foregående (åbne) vagt
+    afgøres ikke af dagsskiftet i sig selv, men af hvor lang den samlede
+    pause reelt er, fra forrige vagts sidste registrering til denne dags
+    egen beregnede start – er den under LONG_REST_THRESHOLD_MINUTES,
+    fortsætter det som én vagt (bygger bro over det mellemliggende hul).
+    Ellers afsluttes den forrige vagt, og denne dag starter en ny.
+
+    En allerede sammenkædet vagt (evt. flerdags) splittes desuden ved enhver
+    sammenhængende hvileperiode på mindst LONG_REST_THRESHOLD_MINUTES MIDT i
+    forløbet (_split_on_long_rests) – det fanger flere separate vagter samme
+    kalenderdag, adskilt af en lang hvileperiode.
     """
-    # ── Trin 1: hver dags egne segmenter + om dagen fortsætter forrige dag ──
     distance_by_date: dict = {}
-    raw_shift_groups: list[list[tuple[datetime, datetime, int]]] = []
-    current_group: list[tuple[datetime, datetime, int]] = []
+    final_shifts: list[list[tuple[datetime, datetime, int]]] = []
+    pending: list[tuple[datetime, datetime, int]] = []
+
+    def finalize_pending():
+        nonlocal pending
+        if pending:
+            final_shifts.extend(_split_on_long_rests(pending))
+        pending = []
 
     for day_dt, distance, activity_bytes in daily_records:
         distance_by_date[day_dt.date()] = distance
 
         if distance == 0 and len(activity_bytes) <= 2:
-            if current_group:
-                raw_shift_groups.append(current_group)
-                current_group = []
+            finalize_pending()
             continue
 
         changes = _decode_activity_changes(activity_bytes)
         if not changes:
-            if current_group:
-                raw_shift_groups.append(current_group)
-                current_group = []
+            finalize_pending()
             continue
 
-        result = _day_own_segments(day_dt, changes)
-        if result is None:
-            if current_group:
-                raw_shift_groups.append(current_group)
-                current_group = []
+        first_nonrest_minute = next(
+            (m for m, a in changes if a != ACTIVITY_REST), None
+        )
+        if first_nonrest_minute is None:
+            finalize_pending()
             continue
 
-        day_segments, is_continuation = result
-        if is_continuation and current_group:
-            # Bro over det lille "hul" mellem forrige dags sidste registrering
-            # og midnat (dagens egne segmenter starter først ved minut 0) –
-            # ellers mangler de mellemliggende minutter i procentberegningen.
-            # Aktiviteten i hullet er den samme som dagens allerførste post
-            # (den igangværende tilstand, der fortsætter over midnat).
-            gap_start = current_group[-1][1]
-            gap_end = day_segments[0][0]
-            if gap_end > gap_start:
-                current_group.append((gap_start, gap_end, changes[0][1]))
-            current_group.extend(day_segments)
+        if changes[0][1] != ACTIVITY_REST:
+            # Normalt starter dagens record altid ved minut 0, men det er set
+            # ikke at holde stik (fx et ufuldstændigt record) – brug den
+            # faktiske første registrering, ikke en antaget minut 0.
+            day_start_minute = changes[0][0]
         else:
-            if current_group:
-                raw_shift_groups.append(current_group)
-            current_group = day_segments
-    if current_group:
-        raw_shift_groups.append(current_group)
+            day_start_minute = first_nonrest_minute
+            if len(changes) > 1 and changes[0][0] == 0 and changes[1][1] == ACTIVITY_REST:
+                day_start_minute = changes[1][0]
 
-    # ── Trin 2: split hver gruppe ved lange hvileperioder ──
-    final_shifts: list[list[tuple[datetime, datetime, int]]] = []
-    for group in raw_shift_groups:
-        final_shifts.extend(_split_on_long_rests(group))
+        last_minute = changes[-1][0]
+        if last_minute <= day_start_minute:
+            finalize_pending()
+            continue
+
+        day_segments: list[tuple[datetime, datetime, int]] = []
+        for i, (minute, activity) in enumerate(changes):
+            if minute < day_start_minute:
+                continue
+            next_minute = changes[i + 1][0] if i + 1 < len(changes) else last_minute
+            seg_start = max(minute, day_start_minute)
+            seg_end = min(next_minute, last_minute)
+            duration = max(0, seg_end - seg_start)
+            if duration > 0:
+                day_segments.append((
+                    day_dt + timedelta(minutes=seg_start),
+                    day_dt + timedelta(minutes=seg_end),
+                    activity,
+                ))
+        if not day_segments:
+            finalize_pending()
+            continue
+
+        day_own_start_dt = day_dt + timedelta(minutes=day_start_minute)
+        if pending:
+            gap_minutes = (day_own_start_dt - pending[-1][1]).total_seconds() / 60
+            if gap_minutes < LONG_REST_THRESHOLD_MINUTES:
+                if day_own_start_dt > pending[-1][1]:
+                    # Bro over hullet mellem forrige vagts sidste registrering og
+                    # denne dags egen start – samme aktivitet som forrige vagt
+                    # sluttede med (den tilstand der reelt fortsætter i hullet).
+                    pending.append((pending[-1][1], day_own_start_dt, pending[-1][2]))
+                pending.extend(day_segments)
+            else:
+                finalize_pending()
+                pending = day_segments
+        else:
+            pending = day_segments
+
+    finalize_pending()
 
     last_file_date = max(distance_by_date) if distance_by_date else None
 
