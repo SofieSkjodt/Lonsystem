@@ -379,12 +379,12 @@ LONG_REST_THRESHOLD_MINUTES = 4 * 60
 
 # Øvre grænse for hvor lang en "grænse-pause" (se _split_on_long_rests) må
 # være for at blive vist som en del af en tilstødende vagt i stedet for at
-# indgå i den udeladte lange hvileperiode. Alle bekræftede eksempler er
-# 1-11 minutter (chaufføren gør klar til at køre, eller slår over til hvil
-# lige før kortet tages ud) – 60 minutter giver rigelig margin uden at
-# risikere at vise en hel dags egen (uafhængige) hvileperiode som var det
-# en kort pause.
-MAX_LEADING_PAUSE_MINUTES = 60
+# indgå i den udeladte lange hvileperiode. Bekræftede eksempler spænder fra
+# 1-11 minutter (chaufføren gør klar til at køre) til 61 minutter (Steen
+# John Nielsen 19/7->20/7, slår over til hvil et stykke tid før kortet
+# tages ud) – 90 minutter giver margin til den slags uden at risikere at
+# vise en hel dags egen (uafhængige) hvileperiode som var det en kort pause.
+MAX_LEADING_PAUSE_MINUTES = 90
 
 
 def _split_on_long_rests(
