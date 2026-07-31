@@ -113,3 +113,10 @@
 2026-07-29 08:00:02  INFO        + Afdelinger.xlsx
 2026-07-29 08:00:02  INFO      Backup gemt: lonsystem_2026-07-29_08-00.zip (978.2 KB)
 2026-07-29 08:00:02  INFO      === Backup færdig. 3 backup(s) i arkivet. ===
+2026-07-31 08:00:02  INFO      === Backup starter -> lonsystem_2026-07-31_08-00.zip ===
+2026-07-31 08:00:04  INFO        + lonsystem.db (19352.0 KB)
+2026-07-31 08:00:04  INFO        + Overtid satser.xlsx
+2026-07-31 08:00:04  INFO        + Overenskomsttyper og timesatser.xlsx
+2026-07-31 08:00:04  INFO        + Afdelinger.xlsx
+2026-07-31 08:00:04  INFO      Backup gemt: lonsystem_2026-07-31_08-00.zip (2022.7 KB)
+2026-07-31 08:00:04  INFO      === Backup færdig. 4 backup(s) i arkivet. ===

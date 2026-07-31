@@ -464,10 +464,10 @@ function openActivityDetail(id) {
   let d = pct(a.driving_pct), w = pct(a.other_work_pct), av = pct(a.availability_time_pct);
   let r, effektivLabel = "Kørsel";
   const hasSegmentData = d > 0 || w > 0 || av > 0;
-  if (!hasSegmentData && a.pause_intervals && a.pause_intervals.length) {
+  if (!hasSegmentData) {
     const totalMs = new Date(a.end_time) - new Date(a.start_time);
     let pauseMs = 0;
-    for (const [ps, pe] of a.pause_intervals) {
+    for (const [ps, pe] of (a.pause_intervals || [])) {
       const s = Math.max(new Date(a.start_time).getTime(), new Date(ps).getTime());
       const e = Math.min(new Date(a.end_time).getTime(), new Date(pe).getTime());
       if (e > s) pauseMs += (e - s);
