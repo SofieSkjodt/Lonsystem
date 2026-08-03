@@ -939,6 +939,29 @@ def reopen_period(period_start: Optional[str] = None,
     period.status = PayPeriodStatus.open
     period.closed_at = None
     period.closed_by = None
+
+    # Aktiviteter der blev oprettet manuelt mens perioden var lukket, ruller automatisk
+    # frem til næste åbne periode (se get_billing_period i calculators/pay_period.py).
+    # Nu hvor perioden genåbnes, skal de aktiviteter der reelt hører til denne periodes
+    # datointerval, men fejlagtigt peger på en senere periode, flyttes tilbage - ellers
+    # bliver de usynlige i Aktiviteter-fanen for begge perioder.
+    start_str = period.start_date.isoformat()
+    end_str = (period.end_date + timedelta(days=1)).isoformat()
+    stray = (
+        db.query(Activity)
+        .filter(
+            Activity.pay_period_id != period.id,
+            Activity.start_time >= start_str,
+            Activity.start_time < end_str,
+        )
+        .all()
+    )
+    for a in stray:
+        a.pay_period_id = period.id
+    if stray:
+        log_action(db, current_user, "reassign_pay_period_id", "pay_period", period.id,
+                   f"{len(stray)} aktivitet(er) flyttet tilbage til periode {period.start_date} – {period.end_date} ved genåbning")
+
     log_action(db, current_user, "reopen_period", "pay_period", period.id,
                f"Lønperiode genåbnet: {period.start_date} – {period.end_date}")
     db.commit()
