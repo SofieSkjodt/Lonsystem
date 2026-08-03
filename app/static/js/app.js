@@ -1357,28 +1357,15 @@ function applySygdomDefaults() {
 }
 
 function applyAfspadseringDefaults() {
-  const empId = parseInt(document.getElementById("manual-employee").value);
   const dateStr = document.getElementById("manual-start")?.querySelector(".dt-date")?.value;
-  if (!empId || !dateStr) return;
+  if (!dateStr) return;
 
-  const emp = state.employees.find(e => e.id === empId);
-  if (!emp || !emp.work_schedule) return;
-
-  const d = new Date(dateStr + "T12:00:00");
-  const weekNum = isoWeekNumber(d);
-  const key = weekNum % 2 === 0 ? "even" : "odd";
-  const weekdayIdx = (d.getDay() + 6) % 7;
-  const hours = emp.work_schedule[key]?.[weekdayIdx] ?? 0;
-
-  // Fallback til 7,4 timer hvis ingen normaltid på dagen
-  const effectiveHours = hours > 0 ? hours : 7.4;
-  const totalMinutes = Math.round(effectiveHours * 60);
-  const endH = 6 + Math.floor(totalMinutes / 60);
-  const endM = totalMinutes % 60;
-  const endHH = String(endH).padStart(2, "0") + ":" + String(endM).padStart(2, "0");
+  const totalMinutes = Math.round(7.4 * 60);
+  const endH = String(6 + Math.floor(totalMinutes / 60)).padStart(2, "0");
+  const endM = String(totalMinutes % 60).padStart(2, "0");
 
   setDatetimePicker("manual-start", dateStr + "T06:00");
-  setDatetimePicker("manual-end",   dateStr + "T" + endHH);
+  setDatetimePicker("manual-end",   dateStr + "T" + endH + ":" + endM);
 }
 
 function applyFeriefriDefaults() {
@@ -1717,7 +1704,7 @@ async function confirmManualActivity() {
     try {
       for (const iso of dates) {
         let hours = 7.4;
-        if (actType !== "feriefri" && emp?.work_schedule) {
+        if (actType !== "feriefri" && actType !== "afspadsering" && emp?.work_schedule) {
           const d = new Date(iso + "T12:00:00");
           const key = isoWeekNumber(d) % 2 === 0 ? "even" : "odd";
           const idx = (d.getDay() + 6) % 7;
