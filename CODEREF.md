@@ -457,6 +457,8 @@ timer – i alt 24 timer bevaret, ingen dubletter.
 
 **Kør løn – låsning (2026-07-02):** `export_csv_post()` i `payroll_router.py` afviser med 400, hvis (a) perioden allerede har `status == PayPeriodStatus.closed`, eller (b) der findes `pending`-aktiviteter for aktive medarbejdere i perioden – begge dele skal være håndteret (godkendt/deaktiveret) først. Perioden sættes først til `closed` EFTER at CSV-filen er skrevet succesfuldt (ikke før) – en fejlet fil-skrivning (fx filen åben i Excel → `PermissionError`) fanges og giver en klar fejlbesked i stedet for at låse perioden uden gyldig eksport. Samme `PermissionError`-fangst er i `proevekoersel_gem()` (Excel-prøvekørsel).
 
+**OBS – to forskellige "hvilken periode hører aktiviteten til"-kilder:** `pay_period_id` (sat ved oprettelse via `get_billing_period()`) styrer hvad Aktiviteter-fanen og tælleren (`period-info`) viser. Den faktiske lønberegning (`_calculate_employee()`, og dermed også pending-tjekket i `export_csv_post()`) bruger derimod `start_time`-datointervallet, UAFHÆNGIGT af `pay_period_id`. De to kan gå ud af sync: `get_billing_period()` ruller en aktivitet frem til NÆSTE åbne periode, hvis dens naturlige periode er `closed` på oprettelsestidspunktet ("sen registrering"). Genåbnes perioden senere, flytter `reopen_period()` (2026-07-02) automatisk sådanne aktiviteter tilbage (matchet på `start_time`), så de ikke bliver usynlige/fanget mellem to perioder.
+
 ---
 
 ## Overtidsberegning (calculators/overtime.py)
