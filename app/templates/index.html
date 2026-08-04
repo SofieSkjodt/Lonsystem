@@ -900,6 +900,28 @@
   </div>
 </div>
 
+<!-- DDD-import: bekræftelse af vagter i lukket lønperiode -->
+<div id="modal-closed-period-confirm" class="modal-overlay">
+  <div class="modal" style="width:520px">
+    <div class="modal-header">
+      <h2>Vagter i lukket lønperiode</h2>
+      <button class="modal-close" onclick="confirmImportClosedPeriod(false)">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:12px">
+        <b><span id="closed-period-count"></span> vagt(er)</b> hører til en allerede lukket lønperiode.
+        Skal de importeres alligevel? De vil blive tilknyttet næste åbne periode, indtil den
+        lukkede periode evt. genåbnes.
+      </p>
+      <div id="closed-period-list" style="max-height:280px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius);padding:10px"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="confirmImportClosedPeriod(false)">Nej, spring over</button>
+      <button class="btn btn-primary" onclick="confirmImportClosedPeriod(true)">Ja, importér alligevel</button>
+    </div>
+  </div>
+</div>
+
 <!-- Administration modal -->
 <div id="modal-admin" class="modal-overlay">
   <div class="modal" style="width:720px;max-height:90vh;display:flex;flex-direction:column">

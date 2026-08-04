@@ -2219,14 +2219,61 @@ function _setImportBtnsDisabled(on) {
   });
 }
 
+// Vagte der afventer bekræftelse (lukket lønperiode) – opbevarer den funktion,
+// der genimporterer med allow_closed_period=true, indtil brugeren har svaret.
+let _pendingClosedPeriod = null;
+
+async function _handleImportResult(result, reimportWithClosedPeriod) {
+  if (result.closed_period_candidates?.length) {
+    const rows = result.closed_period_candidates.map(c => `
+      <div style="margin-bottom:10px;font-size:13px;line-height:1.5">
+        <b>${h(c.employee)}</b>: ${formatDateTime(c.start_time)} &rarr; ${formatDateTime(c.end_time)}<br>
+        <span style="color:var(--text-light)">Lukket periode: ${formatDate(c.period_start)} – ${formatDate(c.period_end)}</span>
+      </div>`).join("");
+    document.getElementById("closed-period-count").textContent = result.closed_period_candidates.length;
+    document.getElementById("closed-period-list").innerHTML = rows;
+    _pendingClosedPeriod = { result, reimportWithClosedPeriod };
+    openModal("modal-closed-period-confirm");
+    return;
+  }
+  _showImportResult(result);
+}
+
+async function confirmImportClosedPeriod(allow) {
+  const pending = _pendingClosedPeriod;
+  _pendingClosedPeriod = null;
+  closeModal("modal-closed-period-confirm");
+  if (!pending) return;
+
+  if (!allow) {
+    // Nej: vagterne importeres ikke – vis det oprindelige resultat (som
+    // allerede ikke indeholder dem), med et tydeligt tal for hvor mange der
+    // blev sprunget over.
+    _showImportResult({ ...pending.result, declined_closed_period: pending.result.closed_period_candidates.length });
+    return;
+  }
+
+  _setImportBtnsDisabled(true);
+  try {
+    const result = await pending.reimportWithClosedPeriod();
+    _showImportResult(result);
+  } catch (e) {
+    toast(e.message, "error");
+  } finally {
+    _setImportBtnsDisabled(false);
+  }
+}
+
 function _showImportResult(result) {
   const msg = `Importeret: ${result.imported} aktivitet${result.imported !== 1 ? "er" : ""}.` +
     (result.skipped ? ` Sprunget over: ${result.skipped}.` : "") +
+    (result.declined_closed_period ? ` Afvist (lukket periode): ${result.declined_closed_period}.` : "") +
     (result.files_processed !== undefined ? ` Filer behandlet: ${result.files_processed}.` : "") +
     (result.errors?.length ? ` Fejl: ${result.errors.join("; ")}` : "");
   document.getElementById("import-result").textContent = msg;
 
-  const allClean = !result.skipped && !result.errors?.length && !result.zero_activity_files?.length;
+  const allClean = !result.skipped && !result.errors?.length && !result.zero_activity_files?.length
+    && !result.declined_closed_period;
   const body = document.getElementById("import-result-modal-body");
 
   if (allClean) {
@@ -2256,6 +2303,9 @@ function _showImportResult(result) {
     }
     if (result.skipped_duplicate) {
       rows.push(`<div style="${rowStyle}"><b>Sprunget over – allerede importeret:</b> ${result.skipped_duplicate}</div>`);
+    }
+    if (result.declined_closed_period) {
+      rows.push(`<div style="${rowStyle}"><b>Ikke importeret – lukket lønperiode (afvist):</b> ${result.declined_closed_period}</div>`);
     }
     if (result.zero_activity_files?.length) {
       rows.push(`<div style="${rowStyle}">
@@ -2294,7 +2344,8 @@ async function importDddPickFiles() {
   document.getElementById("import-result").textContent = `Importerer ${paths.length} fil(er)...`;
   try {
     const result = await POST("/api/import-ddd-from", { source_files: paths });
-    _showImportResult(result);
+    await _handleImportResult(result, () =>
+      POST("/api/import-ddd-from", { source_files: paths, allow_closed_period: true }));
   } catch (e) {
     toast(e.message, "error");
     document.getElementById("import-result").textContent = "Fejl: " + e.message;
@@ -2321,7 +2372,8 @@ async function importDddPickFolder() {
   document.getElementById("import-result").textContent = `Importerer fra ${folder}...`;
   try {
     const result = await POST("/api/import-ddd-from", { source_folder: folder });
-    _showImportResult(result);
+    await _handleImportResult(result, () =>
+      POST("/api/import-ddd-from", { source_folder: folder, allow_closed_period: true }));
   } catch (e) {
     toast(e.message, "error");
     document.getElementById("import-result").textContent = "Fejl: " + e.message;
@@ -2333,7 +2385,8 @@ async function importDddInputFolder() {
   document.getElementById("import-result").textContent = "Tjekker ddd_input-mappen (inkl. undermapper)...";
   try {
     const result = await POST("/api/import-ddd", {});
-    _showImportResult(result);
+    await _handleImportResult(result, () =>
+      POST("/api/import-ddd?allow_closed_period=true", {}));
   } catch (e) {
     toast(e.message, "error");
     document.getElementById("import-result").textContent = "Fejl: " + e.message;

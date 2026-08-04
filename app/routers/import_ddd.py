@@ -10,7 +10,7 @@ from auth import require_permission, log_action
 from calculators.auto_approval import should_auto_approve
 from calculators.baseline_updater import update_baseline_from_activity
 from database.session import get_db
-from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, Vehicle
+from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, PayPeriodStatus, Vehicle
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
 from routers.activities import _recalculate_pcts
@@ -59,6 +59,7 @@ def browse_ddd_files(initial: str = "",
 class ImportFromRequest(BaseModel):
     source_folder: Optional[str] = None
     source_files: Optional[List[str]] = None
+    allow_closed_period: bool = False
 
 
 @router.post("/import-ddd-from")
@@ -100,11 +101,12 @@ def import_ddd_from(body: ImportFromRequest,
     else:
         raise HTTPException(400, "Angiv enten source_folder eller source_files")
 
-    return _process_import_results(results, errors, current_user, db)
+    return _process_import_results(results, errors, current_user, db, body.allow_closed_period)
 
 
 @router.post("/import-ddd")
-def import_ddd_folder(current_user: AppUser = Depends(_ddd_access),
+def import_ddd_folder(allow_closed_period: bool = False,
+                      current_user: AppUser = Depends(_ddd_access),
                       db: Session = Depends(get_db)):
     """
     Scan ddd_input/ folder and import all .ddd files.
@@ -114,11 +116,12 @@ def import_ddd_folder(current_user: AppUser = Depends(_ddd_access),
         raise HTTPException(status_code=404, detail="ddd_input mappe ikke fundet")
 
     results, errors = scan_ddd_folder(DDD_INPUT_DIR)
-    return _process_import_results(results, errors, current_user, db)
+    return _process_import_results(results, errors, current_user, db, allow_closed_period)
 
 
 def _process_import_results(
-    results: list, errors: list, current_user: AppUser, db: Session
+    results: list, errors: list, current_user: AppUser, db: Session,
+    allow_closed_period: bool = False,
 ) -> dict:
     """
     Importerer de fundne aktiviteter, sammentæller resultat pr. årsag og
@@ -130,6 +133,7 @@ def _process_import_results(
     skipped_duplicate = 0
     unknown_cards: set[str] = set()
     zero_activity_files: list[str] = []
+    closed_period_candidates: list[dict] = []
 
     # Alle aktiviteter i én fil deler samme førerkortnummer – cache opslaget
     # pr. unikt kortnummer i stedet for at forespørge databasen for hver
@@ -148,7 +152,9 @@ def _process_import_results(
                     .first()
                 )
             try:
-                result = _import_activity(act, db, employee_cache[card])
+                result, detail = _import_activity(
+                    act, db, employee_cache[card], allow_closed_period
+                )
             except Exception as e:
                 errors.append(f"{file_path.name}: {e}")
                 continue
@@ -161,6 +167,8 @@ def _process_import_results(
                 unknown_cards.add(act.tachograph_card_number)
             elif result == "skipped_duplicate":
                 skipped_duplicate += 1
+            elif result == "pending_closed_period":
+                closed_period_candidates.append(detail)
 
     skipped = skipped_unknown_card + skipped_duplicate
 
@@ -176,6 +184,10 @@ def _process_import_results(
         )
     if skipped_duplicate:
         summary_parts.append(f"{skipped_duplicate} sprunget over (allerede importeret)")
+    if closed_period_candidates:
+        summary_parts.append(
+            f"{len(closed_period_candidates)} vagt(er) afventer bekræftelse (lukket lønperiode)"
+        )
     if zero_activity_files:
         summary_parts.append(
             f"{len(zero_activity_files)} fil(er) uden aktiviteter: "
@@ -197,13 +209,19 @@ def _process_import_results(
         "zero_activity_files": zero_activity_files,
         "errors": errors,
         "files_processed": len(results),
+        "closed_period_candidates": closed_period_candidates,
     }
 
 
-def _import_activity(act: ParsedActivity, db: Session, employee: Employee | None) -> str:
-    """Import a single parsed activity. Returns 'new', 'updated', 'skipped_unknown_card' or 'skipped_duplicate'."""
+def _import_activity(
+    act: ParsedActivity, db: Session, employee: Employee | None,
+    allow_closed_period: bool = False,
+) -> tuple[str, dict | None]:
+    """Import a single parsed activity. Returns (status, detail) where status is
+    'new', 'updated', 'skipped_unknown_card', 'skipped_duplicate' or
+    'pending_closed_period' (detail is only set for the latter)."""
     if not employee:
-        return "skipped_unknown_card"  # Unknown card number – employee must be created first
+        return "skipped_unknown_card", None  # Unknown card number – employee must be created first
 
     # Check for existing activity
     existing = (
@@ -298,8 +316,22 @@ def _import_activity(act: ParsedActivity, db: Session, employee: Employee | None
 
         if changed:
             db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
-            return "updated"
-        return "skipped_duplicate"
+            return "updated", None
+        return "skipped_duplicate", None
+
+    natural_period = get_or_create_period_for_date(act.start_time.date(), db)
+    if natural_period.status == PayPeriodStatus.closed and not allow_closed_period:
+        # Vagten hører til en allerede lukket lønperiode ("sen registrering") –
+        # opret den IKKE endnu. Brugeren skal først bekræfte i en pop-up om
+        # vagten skal importeres (og dermed rulles frem til næste åbne periode,
+        # se get_billing_period) eller helt springes over.
+        return "pending_closed_period", {
+            "employee": f"{employee.first_name} {employee.last_name}",
+            "start_time": act.start_time.isoformat(),
+            "end_time": act.end_time.isoformat(),
+            "period_start": natural_period.start_date.isoformat(),
+            "period_end": natural_period.end_date.isoformat(),
+        }
 
     pay_period = get_billing_period(act.start_time.date(), db)
 
@@ -348,4 +380,4 @@ def _import_activity(act: ParsedActivity, db: Session, employee: Employee | None
         activity.auto_approval_flags = flags
         db.flush()
 
-    return "new"
+    return "new", None
