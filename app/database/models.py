@@ -317,6 +317,24 @@ class Holiday(Base):
     is_auto_generated = Column(Boolean, default=True, nullable=False)
 
 
+class DeclinedImport(Base):
+    """Vagte en bruger eksplicit har valgt IKKE at importere (fx en vagt i en
+    allerede lukket lønperiode) – huskes så de ikke bliver foreslået igen ved
+    en senere genimport af samme .ddd-fil."""
+    __tablename__ = "declined_imports"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    start_time = Column(DateTime, nullable=False)
+    end_time = Column(DateTime, nullable=False)
+    declined_by = Column(String, nullable=True)
+    declined_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        Index("ix_declined_imports_employee_start", "employee_id", "start_time", unique=True),
+    )
+
+
 class EmployeeBaseline(Base):
     __tablename__ = "employee_baselines"
 

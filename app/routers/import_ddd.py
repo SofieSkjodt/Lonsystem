@@ -10,7 +10,10 @@ from auth import require_permission, log_action
 from calculators.auto_approval import should_auto_approve
 from calculators.baseline_updater import update_baseline_from_activity
 from database.session import get_db
-from database.models import AppUser, Employee, Activity, ActivitySource, ActivityStatus, PayPeriodStatus, Vehicle
+from database.models import (
+    AppUser, Employee, Activity, ActivitySource, ActivityStatus, PayPeriodStatus, Vehicle,
+    DeclinedImport,
+)
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
 from routers.activities import _recalculate_pcts
@@ -119,6 +122,50 @@ def import_ddd_folder(allow_closed_period: bool = False,
     return _process_import_results(results, errors, current_user, db, allow_closed_period)
 
 
+class DeclinedCandidate(BaseModel):
+    employee_id: int
+    start_time: str
+    end_time: str
+
+
+class DeclineClosedPeriodRequest(BaseModel):
+    items: List[DeclinedCandidate]
+
+
+@router.post("/decline-closed-period-import")
+def decline_closed_period_import(
+    body: DeclineClosedPeriodRequest,
+    current_user: AppUser = Depends(_ddd_access),
+    db: Session = Depends(get_db),
+):
+    """
+    Husker at brugeren har valgt IKKE at importere disse vagter (lukket
+    lønperiode) – de springes automatisk over uden ny bekræftelse ved
+    fremtidige genimporter af samme fil(er).
+    """
+    added = 0
+    for item in body.items:
+        start = _dt_now.fromisoformat(item.start_time)
+        exists = (
+            db.query(DeclinedImport)
+            .filter(DeclinedImport.employee_id == item.employee_id, DeclinedImport.start_time == start)
+            .first()
+        )
+        if exists:
+            continue
+        db.add(DeclinedImport(
+            employee_id=item.employee_id,
+            start_time=start,
+            end_time=_dt_now.fromisoformat(item.end_time),
+            declined_by=current_user.initials,
+        ))
+        added += 1
+    log_action(db, current_user, "decline_closed_period_import", "import", None,
+               f"{added} vagt(er) markeret til altid at springes over (lukket lønperiode)")
+    db.commit()
+    return {"declined": added}
+
+
 def _process_import_results(
     results: list, errors: list, current_user: AppUser, db: Session,
     allow_closed_period: bool = False,
@@ -131,6 +178,7 @@ def _process_import_results(
     updated = 0
     skipped_unknown_card = 0
     skipped_duplicate = 0
+    skipped_declined = 0
     unknown_cards: set[str] = set()
     zero_activity_files: list[str] = []
     closed_period_candidates: list[dict] = []
@@ -167,10 +215,12 @@ def _process_import_results(
                 unknown_cards.add(act.tachograph_card_number)
             elif result == "skipped_duplicate":
                 skipped_duplicate += 1
+            elif result == "skipped_declined":
+                skipped_declined += 1
             elif result == "pending_closed_period":
                 closed_period_candidates.append(detail)
 
-    skipped = skipped_unknown_card + skipped_duplicate
+    skipped = skipped_unknown_card + skipped_duplicate + skipped_declined
 
     summary_parts = [
         f"{len(results)} fil(er) behandlet",
@@ -184,6 +234,8 @@ def _process_import_results(
         )
     if skipped_duplicate:
         summary_parts.append(f"{skipped_duplicate} sprunget over (allerede importeret)")
+    if skipped_declined:
+        summary_parts.append(f"{skipped_declined} sprunget over (tidligere afvist – lukket periode)")
     if closed_period_candidates:
         summary_parts.append(
             f"{len(closed_period_candidates)} vagt(er) afventer bekræftelse (lukket lønperiode)"
@@ -205,6 +257,7 @@ def _process_import_results(
         "skipped": skipped,
         "skipped_unknown_card": skipped_unknown_card,
         "skipped_duplicate": skipped_duplicate,
+        "skipped_declined": skipped_declined,
         "unknown_cards": sorted(unknown_cards),
         "zero_activity_files": zero_activity_files,
         "errors": errors,
@@ -218,10 +271,22 @@ def _import_activity(
     allow_closed_period: bool = False,
 ) -> tuple[str, dict | None]:
     """Import a single parsed activity. Returns (status, detail) where status is
-    'new', 'updated', 'skipped_unknown_card', 'skipped_duplicate' or
-    'pending_closed_period' (detail is only set for the latter)."""
+    'new', 'updated', 'skipped_unknown_card', 'skipped_duplicate',
+    'skipped_declined' or 'pending_closed_period' (detail is only set for the
+    latter)."""
     if not employee:
         return "skipped_unknown_card", None  # Unknown card number – employee must be created first
+
+    # Brugeren har tidligere eksplicit valgt IKKE at importere denne vagt
+    # (typisk: afvist en lukket-periode-bekræftelse) – husk det, så den ikke
+    # bliver foreslået/importeret igen ved en senere genimport af filen.
+    declined = (
+        db.query(DeclinedImport)
+        .filter(DeclinedImport.employee_id == employee.id, DeclinedImport.start_time == act.start_time)
+        .first()
+    )
+    if declined:
+        return "skipped_declined", None
 
     # Check for existing activity
     existing = (
@@ -327,6 +392,7 @@ def _import_activity(
         # se get_billing_period) eller helt springes over.
         return "pending_closed_period", {
             "employee": f"{employee.first_name} {employee.last_name}",
+            "employee_id": employee.id,
             "start_time": act.start_time.isoformat(),
             "end_time": act.end_time.isoformat(),
             "period_start": natural_period.start_date.isoformat(),

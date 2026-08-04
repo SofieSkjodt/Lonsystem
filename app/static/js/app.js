@@ -2246,9 +2246,17 @@ async function confirmImportClosedPeriod(allow) {
   if (!pending) return;
 
   if (!allow) {
-    // Nej: vagterne importeres ikke – vis det oprindelige resultat (som
-    // allerede ikke indeholder dem), med et tydeligt tal for hvor mange der
-    // blev sprunget over.
+    // Nej: vagterne importeres ikke – husk afvisningen, så de springes over
+    // automatisk (uden ny bekræftelse) ved fremtidige genimporter af filen.
+    try {
+      await POST("/api/decline-closed-period-import", {
+        items: pending.result.closed_period_candidates.map(c => ({
+          employee_id: c.employee_id, start_time: c.start_time, end_time: c.end_time,
+        })),
+      });
+    } catch (e) {
+      toast("Kunne ikke gemme afvisningen: " + e.message, "error");
+    }
     _showImportResult({ ...pending.result, declined_closed_period: pending.result.closed_period_candidates.length });
     return;
   }
@@ -2303,6 +2311,9 @@ function _showImportResult(result) {
     }
     if (result.skipped_duplicate) {
       rows.push(`<div style="${rowStyle}"><b>Sprunget over – allerede importeret:</b> ${result.skipped_duplicate}</div>`);
+    }
+    if (result.skipped_declined) {
+      rows.push(`<div style="${rowStyle}"><b>Sprunget over – tidligere afvist (lukket periode):</b> ${result.skipped_declined}</div>`);
     }
     if (result.declined_closed_period) {
       rows.push(`<div style="${rowStyle}"><b>Ikke importeret – lukket lønperiode (afvist):</b> ${result.declined_closed_period}</div>`);
