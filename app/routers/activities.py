@@ -158,9 +158,35 @@ class SegmentResizeBody(BaseModel):
     new_end_iso: str  # "YYYY-MM-DDTHH:MM" eller "YYYY-MM-DDTHH:MM:SS"
 
 
+def _duration_minutes_in_window(a: Activity, window_start: datetime, window_end: datetime) -> int:
+    """Antal arbejdsminutter (pauser fratrukket) af aktiviteten der overlapper [window_start, window_end)."""
+    start = max(a.start_time, window_start)
+    end = min(a.end_time, window_end)
+    if end <= start:
+        return 0
+    total = int((end - start).total_seconds() // 60)
+    if a.segments:
+        pauses = [[seg[0], seg[1]] for seg in a.segments if len(seg) >= 3 and seg[2] == "rest"]
+    else:
+        pauses = list(a.pause_intervals or [])
+    for p in pauses:
+        try:
+            ps = datetime.fromisoformat(p[0])
+            pe = datetime.fromisoformat(p[1])
+            actual_start = max(start, ps)
+            actual_end = min(end, pe)
+            if actual_end > actual_start:
+                total -= int((actual_end - actual_start).total_seconds() // 60)
+        except (ValueError, IndexError):
+            pass
+    return max(0, total)
+
+
 def _day_reaches_4h_with_approved(a: Activity, dur: int) -> bool:
-    """True hvis denne aktivitets varighed sammen med andre godkendte aktiviteter
-    samme dag for medarbejderen når op på mindst 4 timer."""
+    """True hvis denne aktivitets varighed sammen med andre godkendte aktiviteters
+    overlap med samme kalenderdag for medarbejderen når op på mindst 4 timer.
+    En natvagt der starter dagen før men fortsætter ind på denne dag tæller
+    kun med de minutter der reelt ligger på denne kalenderdag."""
     db = Session.object_session(a)
     if db is None:
         return False
@@ -172,12 +198,12 @@ def _day_reaches_4h_with_approved(a: Activity, dur: int) -> bool:
             Activity.employee_id == a.employee_id,
             Activity.id != a.id,
             Activity.status == ActivityStatus.approved,
-            Activity.start_time >= day_start,
             Activity.start_time < day_end,
+            Activity.end_time > day_start,
         )
         .all()
     )
-    total = dur + sum(_duration_minutes(o) for o in others)
+    total = dur + sum(_duration_minutes_in_window(o, day_start, day_end) for o in others)
     return total >= FOUR_HOURS
 
 
