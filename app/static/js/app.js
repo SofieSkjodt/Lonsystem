@@ -1263,7 +1263,7 @@ function updateManualTypeVisibility() {
   const isOvernatning  = (type === "overnatning");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || isAfspadseringPeriode;
+  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode;
   const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
   document.getElementById("manual-normal-fields").style.display = isAbsence ? "none" : "";
@@ -1551,7 +1551,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
   document.getElementById("manual-employee").onchange = () => {
     const t = document.getElementById("manual-type").value;
     if (t === "ferie" || t === "selvbetalt_fridag") applyFerieDefaults();
-    if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "barsel") applySygdomDefaults();
+    if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "skole_kursus" || t === "barsel") applySygdomDefaults();
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
   };
@@ -1559,7 +1559,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
   document.getElementById("manual-start").addEventListener("change", () => {
     const t = document.getElementById("manual-type").value;
     if (t === "ferie" || t === "selvbetalt_fridag") applyFerieDefaults();
-    if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "barsel") applySygdomDefaults();
+    if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "skole_kursus" || t === "barsel") applySygdomDefaults();
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
     if (t === "normal") {
@@ -1619,7 +1619,7 @@ async function confirmManualActivity() {
     return;
   }
 
-  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "afspadsering"];
+  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "skole_kursus", "afspadsering"];
   const isRange = _RANGE_TYPES.includes(actType) && !!tilDato;
 
   if (!start || (!isRange && !end)) {
