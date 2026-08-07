@@ -93,6 +93,7 @@ class EmployeeResponse(BaseModel):
     dispatcher_groups: list[DispatcherGroupResponse] = Field(default_factory=list)
     cvr_number: Optional[str] = None
     anciennitet_dismissed_at: Optional[datetime] = None
+    terminsdato: Optional[date] = None
 
     model_config = {"from_attributes": True}
 

@@ -61,6 +61,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         dispatcher_groups=[DispatcherGroupResponse.model_validate(g) for g in emp.dispatcher_groups],
         cvr_number=emp.cvr_number,
         anciennitet_dismissed_at=emp.anciennitet_dismissed_at,
+        terminsdato=emp.terminsdato,
     )
 
 

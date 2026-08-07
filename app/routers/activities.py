@@ -359,6 +359,8 @@ def create_manual_activity(body: ActivityCreate,
             raise HTTPException(400, "Terminsdato er påkrævet for barsel")
         if _months_between(emp.hire_date, body.terminsdato) < _NINE_MONTHS:
             activity_type = "barsel_u_loen"
+        # Husk seneste terminsdato på medarbejderen, så den foreslås ved næste barsel-oprettelse
+        emp.terminsdato = body.terminsdato
 
     period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"

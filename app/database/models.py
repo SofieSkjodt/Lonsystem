@@ -77,6 +77,7 @@ class Employee(Base):
     work_schedule = Column(JSON, nullable=False, default=default_work_schedule)
     cvr_number = Column(String(20), nullable=True)          # Tilknyttet CVR-nummer (None = standard)
     anciennitet_dismissed_at = Column(DateTime, nullable=True)  # Tidspunkt for afvist anciennitetsadvarsel
+    terminsdato = Column(Date, nullable=True)  # Seneste terminsdato angivet ved oprettelse af en barsel-aktivitet
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 

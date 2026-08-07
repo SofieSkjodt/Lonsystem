@@ -1304,7 +1304,21 @@ function updateManualTypeVisibility() {
   if (isSygdom)       applySygdomDefaults();
   if (isAfspadsering) applyAfspadseringDefaults();
   if (isFeriefri)     applyFeriefriDefaults();
-  if (isBarsel)       applySygdomDefaults();
+  if (isBarsel) {
+    applySygdomDefaults();
+    applyBarselTerminsdatoDefault();
+  }
+}
+
+// Foreslår medarbejderens seneste registrerede terminsdato ved oprettelse af en ny barsel-aktivitet.
+// force=true overskriver et allerede udfyldt felt (bruges ved skift af medarbejder).
+function applyBarselTerminsdatoDefault(force = false) {
+  const field = document.getElementById("manual-terminsdato");
+  if (!field) return;
+  if (!force && field.value) return;
+  const empId = parseInt(document.getElementById("manual-employee").value);
+  const emp = state.employees.find(e => e.id === empId);
+  field.value = (emp && emp.terminsdato) || "";
 }
 
 function applyFerieDefaults() {
@@ -1554,6 +1568,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
     if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "skole_kursus" || t === "barsel") applySygdomDefaults();
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
+    if (t === "barsel")                             applyBarselTerminsdatoDefault(true);
   };
   // Lyt på dato-ændring inde i dt-picker containeren
   document.getElementById("manual-start").addEventListener("change", () => {
@@ -1723,6 +1738,7 @@ async function confirmManualActivity() {
         });
         created++;
       }
+      if (actType === "barsel" && terminsdato && emp) emp.terminsdato = terminsdato;
       toast(`${created} ${created === 1 ? "aktivitet oprettet" : "aktiviteter oprettet"}`, "success");
       closeModal("modal-manual-activity");
       await refreshActivities();
@@ -1762,6 +1778,10 @@ async function confirmManualActivity() {
       salt_supplement: document.getElementById("manual-salt").checked,
       pause_intervals: manualPauses,
     });
+    if (actType === "barsel" && terminsdato) {
+      const emp = state.employees.find(e => e.id === empId);
+      if (emp) emp.terminsdato = terminsdato;
+    }
     toast("Aktivitet oprettet", "success");
     closeModal("modal-manual-activity");
     await refreshActivities();

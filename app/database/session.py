@@ -98,6 +98,9 @@ def _migrate():
         if "anciennitet_dismissed_at" not in emp_cols:
             conn.execute("ALTER TABLE employees ADD COLUMN anciennitet_dismissed_at DATETIME")
             conn.commit()
+        if "terminsdato" not in emp_cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN terminsdato DATE")
+            conn.commit()
         act_cols2 = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
         if "deactivated_by" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN deactivated_by VARCHAR")
