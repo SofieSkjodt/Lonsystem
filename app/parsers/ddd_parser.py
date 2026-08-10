@@ -500,6 +500,10 @@ def _build_activities(
     # denne registrering). Det er denne værdi, der gælder i hullet ind i
     # næste dag, da den sidste registrering ikke selv får et segment.
     prev_day_last_activity: int | None = None
+    # Tidspunktet for samme registrering – bruges til at afgøre om en
+    # videreført ikke-hvil-status ved næste dags minut 0 er en reel
+    # fortsættelse eller bare en hængende status (se nedenfor).
+    prev_real_end_dt: datetime | None = None
 
     def finalize_pending():
         nonlocal pending
@@ -531,6 +535,25 @@ def _build_activities(
             # ikke at holde stik (fx et ufuldstændigt record) – brug den
             # faktiske første registrering, ikke en antaget minut 0.
             day_start_minute = changes[0][0]
+            # Minut 0 er en videreført status fra dagen inden – er der gået
+            # mindst LONG_REST_THRESHOLD_MINUTES siden forrige dags sidste
+            # rigtige registrering uden at noget er logget i mellemtiden, er
+            # den videreførte ikke-hvil-status højst sandsynligt bare
+            # "hængende" (chaufføren fik ikke skiftet kortet til hvil), ikke
+            # en reel igangværende aktivitet. Spring den over ligesom en
+            # indledende hvil-markør, og lad vagten starte ved den næste
+            # rigtige registrering i stedet (bekræftet 2026-08-10: Peter
+            # Mike Rasmussen 28/7 – "arbejde" stod uændret fra minut 0 kl.
+            # 02 lokal til kl. 05:07, over 8 timer efter forrige vagts
+            # afslutning kl. 17:39 den 27/7, hvorefter den rigtige vagt
+            # startede).
+            if (
+                changes[0][0] == 0
+                and len(changes) > 1
+                and prev_real_end_dt is not None
+                and (day_dt - prev_real_end_dt).total_seconds() / 60 >= LONG_REST_THRESHOLD_MINUTES
+            ):
+                day_start_minute = changes[1][0]
         else:
             day_start_minute = first_nonrest_minute
             if len(changes) > 1 and changes[0][0] == 0 and changes[1][1] == ACTIVITY_REST:
@@ -579,6 +602,7 @@ def _build_activities(
             pending = day_segments
 
         prev_day_last_activity = changes[-1][1]
+        prev_real_end_dt = day_dt + timedelta(minutes=last_minute)
 
     finalize_pending()
 
@@ -619,15 +643,29 @@ def _build_activities(
             return Decimal(str(round(m / total_minutes * 100, 2))) if total_minutes else None
 
         # Bekræftet på flere reelle filer (2026-07): når kortet udlæses midt i
-        # en vagt, er dagens km-distance endnu ikke skrevet (0), og vagten
+        # en vagt, er dagens km-distance ofte endnu ikke skrevet (0), og vagten
         # slutter ikke i hvil – begge tegn samtidig er et pålideligt signal om
         # at resten mangler i filen. Gælder kun den allersidste vagt i filen.
+        #
+        # Km-distancen kan dog IKKE altid bruges alene: nogle kort skriver den
+        # løbende gennem dagen i stedet for kun ved dagens afslutning, så en
+        # udlæsning midt i vagten kan allerede vise et ikke-nul km-tal
+        # (bekræftet 2026-08-10: Anders Jersild Nielsen 31/7 – kortet viste
+        # 114 km ved en udlæsning kl. ca. 06, selvom vagten fortsatte til
+        # 15:06). Derfor accepteres varigheden hidtil som et alternativt
+        # signal: er den registrerede vagt markant kortere end
+        # LONG_REST_THRESHOLD_MINUTES (samme grænse som skelner en pause i
+        # vagten fra et skel mellem vagter et andet sted i filen), er det
+        # usandsynligt at være en hel vagt, uanset km-tallet.
         last_date = end_dt.date()
         is_last_shift_in_file = (shift_idx == len(final_shifts) - 1) and last_date == last_file_date
         is_likely_incomplete = (
             is_last_shift_in_file
-            and distance_by_date.get(last_date, 0) == 0
             and shift[-1][2] != ACTIVITY_REST
+            and (
+                distance_by_date.get(last_date, 0) == 0
+                or total_minutes < LONG_REST_THRESHOLD_MINUTES
+            )
         )
 
         day_start_ts = int(start_dt.replace(tzinfo=timezone.utc).timestamp())

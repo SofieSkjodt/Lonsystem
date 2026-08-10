@@ -306,7 +306,14 @@
       "Bash(cp /tmp/import_ddd_backup.py routers/import_ddd.py)",
       "Bash(python -m pytest test_import_ddd.py test_auto_approval.py test_baseline_updater.py -v)",
       "Bash(cp /tmp/import_ddd_backup.py ../app/routers/import_ddd.py && sed -n '361p' ../app/routers/import_ddd.py && python -m pytest test_import_ddd.py test_auto_approval.py test_baseline_updater.py -v 2>&1 | tail -40)",
-      "Bash(git add *)"
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git show *)",
+      "Read(//tmp/**)",
+      "Bash(python -m pytest test_ddd_parser.py -v)",
+      "Bash(python -m pytest ../tests -v)",
+      "Bash(python)",
+      "Bash(python -m pytest . -v)"
     ]
   }
 }
