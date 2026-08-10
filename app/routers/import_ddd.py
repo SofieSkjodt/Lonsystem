@@ -358,7 +358,7 @@ def _import_activity(
             # godkendes igen.
             _reopen_for_review()
             changed = True
-        elif existing.status == ActivityStatus.pending and (
+        elif act.end_time >= existing.end_time and existing.status == ActivityStatus.pending and (
             new_segments != (existing.segments or [])
             or new_pause_intervals != (existing.pause_intervals or [])
         ):
@@ -369,6 +369,17 @@ def _import_activity(
             # eller deaktiveret, rører vi den IKKE her – den kan indeholde
             # manuelle rettelser en bruger har lavet, som ikke må overskrives
             # stille og roligt af en genimport.
+            #
+            # act.end_time >= existing.end_time: filer importeres ikke
+            # nødvendigvis i kronologisk kortudlæsnings-orden (mappenavne
+            # sorteres alfabetisk, ikke efter udlæsningsdato) – en SENERE
+            # importeret fil kan derfor være en ÆLDRE, mere ufuldstændig
+            # kortudlæsning end den vi allerede har gemt. Uden dette tjek vil
+            # den ufuldstændige fils (kortere) segmenter/pauser overskrive de
+            # allerede korrekte, fulde data, selvom sluttidspunktet ikke ændres
+            # (bekræftet 2026-08-10: Alexander B. Knudsen 3/8 – rigtig
+            # start/sluttid, men pauser forsvandt fordi en tidligere
+            # kortudlæsning blev importeret efter den komplette).
             existing.segments = new_segments
             existing.pause_intervals = new_pause_intervals
             existing.availability_time_pct = act.availability_time_pct
