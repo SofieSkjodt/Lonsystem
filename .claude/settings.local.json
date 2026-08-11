@@ -313,7 +313,8 @@
       "Bash(python -m pytest test_ddd_parser.py -v)",
       "Bash(python -m pytest ../tests -v)",
       "Bash(python)",
-      "Bash(python -m pytest . -v)"
+      "Bash(python -m pytest . -v)",
+      "Bash(python -m pytest test_import_ddd.py::test_decline_closed_period_import_handles_duplicate_items_in_same_request -v)"
     ]
   }
 }

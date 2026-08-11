@@ -144,8 +144,19 @@ def decline_closed_period_import(
     fremtidige genimporter af samme fil(er).
     """
     added = 0
+    # DB-sessionen bruger autoflush=False, så et tidligere db.add() i denne
+    # samme request ikke er synligt for et efterfølgende db.query() – uden
+    # dette lokale sæt ville den samme vagt optrædende to gange i body.items
+    # (fx fundet i to forskellige .ddd-filer) blive tilføjet to gange og
+    # ramme det unikke index (employee_id, start_time) ved commit, hvilket
+    # fejlede HELE afvisningen (bekræftet 2026-08-11).
+    seen: set[tuple[int, _dt_now]] = set()
     for item in body.items:
         start = _dt_now.fromisoformat(item.start_time)
+        key = (item.employee_id, start)
+        if key in seen:
+            continue
+        seen.add(key)
         exists = (
             db.query(DeclinedImport)
             .filter(DeclinedImport.employee_id == item.employee_id, DeclinedImport.start_time == start)
@@ -181,7 +192,12 @@ def _process_import_results(
     skipped_declined = 0
     unknown_cards: set[str] = set()
     zero_activity_files: list[str] = []
-    closed_period_candidates: list[dict] = []
+    # Samme vagt findes ofte i flere .ddd-filer (nye kortudlæsninger dækker
+    # gerne de samme dage som en tidligere) – dedupliker pr. (medarbejder,
+    # starttid), så brugeren ikke ser/afviser den samme vagt flere gange i
+    # bekræftelses-popup'en (bekræftet 2026-08-11: dubletter fik "Nej,
+    # spring over" til at fejle med en unik-indeks-fejl i afvisnings-tabellen).
+    closed_period_candidates_by_key: dict[tuple[int, str], dict] = {}
 
     # Alle aktiviteter i én fil deler samme førerkortnummer – cache opslaget
     # pr. unikt kortnummer i stedet for at forespørge databasen for hver
@@ -218,8 +234,12 @@ def _process_import_results(
             elif result == "skipped_declined":
                 skipped_declined += 1
             elif result == "pending_closed_period":
-                closed_period_candidates.append(detail)
+                key = (detail["employee_id"], detail["start_time"])
+                existing_candidate = closed_period_candidates_by_key.get(key)
+                if existing_candidate is None or detail["end_time"] > existing_candidate["end_time"]:
+                    closed_period_candidates_by_key[key] = detail
 
+    closed_period_candidates = list(closed_period_candidates_by_key.values())
     skipped = skipped_unknown_card + skipped_duplicate + skipped_declined
 
     summary_parts = [
