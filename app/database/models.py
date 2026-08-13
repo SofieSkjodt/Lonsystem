@@ -351,3 +351,18 @@ class EmployeeBaseline(Base):
     last_updated = Column(DateTime, nullable=True)
 
     employee = relationship("Employee", back_populates="baselines")
+
+
+class EmployeeSupplement(Base):
+    __tablename__ = "employee_supplements"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    name = Column(String(200), nullable=False, default="Ikke overenskomstmæssigt tillæg")
+    type = Column(String(50), nullable=False, default="Timebaseret")
+    value = Column(Numeric(10, 2), nullable=False)
+    start_date = Column(Date, nullable=False)
+    end_date = Column(Date, nullable=False, default=date(9999, 12, 31))
+    created_at = Column(DateTime, server_default=func.now())
+
+    employee = relationship("Employee")

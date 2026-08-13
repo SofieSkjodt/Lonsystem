@@ -17,6 +17,7 @@ ALL_PERMISSIONS = {
     "manage_employees":    "Tilføj medarbejdere",
     "view_vehicles":       "Se vognpark",
     "manage_vehicles":     "Tilføj vogn",
+    "manage_employee_supplements": "Administrér medarbejdertillæg",
     "manage_holidays":     "Administrér helligdage",
     "anciennitet_alert":   "Anciennitetsvarsel",
     "approve_activities":  "Godkend aktiviteter",

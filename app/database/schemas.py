@@ -244,3 +244,24 @@ class VehicleResponse(BaseModel):
     vehicle_number: str
 
     model_config = {"from_attributes": True}
+
+
+class EmployeeSupplementCreate(BaseModel):
+    employee_id: int
+    start_date: date = Field(default_factory=date.today)
+    value: Annotated[float, Field(gt=0)]
+
+
+class EmployeeSupplementResponse(BaseModel):
+    id: int
+    employee_id: int
+    employee_number: str
+    employee_name: str
+    name: str
+    type: str
+    value: float
+    start_date: date
+    end_date: date
+    is_active: bool
+
+    model_config = {"from_attributes": True}

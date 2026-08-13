@@ -51,6 +51,7 @@ def init_db():
     _ensure_anciennitet_alert_permission()
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
+    _ensure_employee_supplements_permission()
     _migrate_dispatcher_groups()
 
 
@@ -472,5 +473,24 @@ def _ensure_activity_permissions():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af aktivitetsrettigheder: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_employee_supplements_permission():
+    """Tilføjer manage_employee_supplements til lonbogholder-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "lonbogholder").first()
+        if role and not role.is_system:
+            perms = list(role.permissions or [])
+            if "manage_employee_supplements" not in perms:
+                perms.append("manage_employee_supplements")
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af manage_employee_supplements-tilladelse: {e}")
     finally:
         db.close()
