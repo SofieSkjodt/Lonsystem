@@ -4,9 +4,11 @@ from decimal import Decimal
 import pytest
 from fastapi import HTTPException
 
-from database.models import EmployeeSupplement
+from database.models import EmployeeSupplement, MasterAgreementType, MasterOvertimeRate
 from database.schemas import EmployeeSupplementCreate
 from routers.employee_supplements import get_active_supplement_for_period, _create_supplement
+from calculators.overtime import OT_BEFORE_KEY, OT_13_KEY, OT_EXTRA_KEY
+from routers.payroll_router import _calculate_employee
 
 
 def test_supplement_defaults_to_open_ended_with_hardcoded_name_and_type(db, employee):
@@ -76,3 +78,28 @@ def test_create_rejects_start_date_not_after_open_row(db, employee):
 def test_create_rejects_unknown_employee(db):
     with pytest.raises(HTTPException):
         _create_supplement(db, 999999, date(2026, 1, 1), Decimal("10.00"))
+
+
+def test_calculate_employee_includes_supplement_in_hourly_rate(db, employee):
+    db.add(MasterAgreementType(name=employee.agreement_type, hourly_rate=Decimal("150.00")))
+    db.add(MasterOvertimeRate(label=OT_BEFORE_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_13_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_EXTRA_KEY, rate=Decimal("0")))
+    db.commit()
+    _create_supplement(db, employee.id, date(2026, 1, 1), Decimal("12.50"))
+
+    calc = _calculate_employee(employee, date(2026, 1, 1), date(2026, 1, 31), db)
+
+    assert calc["hourly_rate"] == pytest.approx(162.50)
+
+
+def test_calculate_employee_unaffected_when_no_supplement(db, employee):
+    db.add(MasterAgreementType(name=employee.agreement_type, hourly_rate=Decimal("150.00")))
+    db.add(MasterOvertimeRate(label=OT_BEFORE_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_13_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_EXTRA_KEY, rate=Decimal("0")))
+    db.commit()
+
+    calc = _calculate_employee(employee, date(2026, 1, 1), date(2026, 1, 31), db)
+
+    assert calc["hourly_rate"] == pytest.approx(150.00)
