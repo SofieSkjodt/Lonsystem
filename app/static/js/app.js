@@ -4350,11 +4350,13 @@ function renderSupplementEmployeeList() {
 
 function selectSupplementEmployee(employeeId, employeeName) {
   state.selectedSupplementEmployeeId = employeeId;
-  document.getElementById("supplement-detail").style.display = "";
+  const detail = document.getElementById("supplement-detail");
+  detail.style.display = "";
   document.getElementById("supplement-detail-name").textContent = employeeName;
   buildDatePicker("supplement-from-dp", "");
   buildDatePicker("supplement-to-dp", "");
   loadSupplementDetail();
+  detail.scrollIntoView({ behavior: "auto", block: "start" });
 }
 
 async function loadSupplementDetail() {
