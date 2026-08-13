@@ -273,39 +273,6 @@
         <button class="btn btn-primary" data-perm-require="manage_employee_supplements" onclick="openAddSupplementModal()">+ Tilføj</button>
       </div>
       <div id="supplement-employee-list"></div>
-
-      <div id="supplement-detail" style="display:none;margin-top:20px">
-        <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
-          <h3 id="supplement-detail-name" style="font-size:15px;font-weight:600;white-space:nowrap"></h3>
-          <div style="display:flex;align-items:center;gap:10px;font-size:13px">
-            <label style="display:flex;align-items:center;gap:5px">Fra:
-              <div id="supplement-from-dp" style="width:150px"></div>
-            </label>
-            <label style="display:flex;align-items:center;gap:5px">Til:
-              <div id="supplement-to-dp" style="width:150px"></div>
-            </label>
-          </div>
-          <div class="spacer"></div>
-          <button class="btn btn-secondary" onclick="loadSupplementDetail()">&#128260; Opdater</button>
-        </div>
-        <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
-          <thead>
-            <tr style="background:var(--primary);color:#fff">
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Status</th>
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Lønnummer</th>
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Tillægsnavn</th>
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Type</th>
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode start</th>
-              <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode slut</th>
-              <th style="padding:11px 14px;text-align:right;font-weight:600">Værdi (kr)</th>
-              <th style="padding:11px 14px;text-align:center;font-weight:600">Handling</th>
-            </tr>
-          </thead>
-          <tbody id="supplement-detail-tbody">
-            <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
-          </tbody>
-        </table>
-      </div>
     </div>
 
     <!-- ══════════════ USERS ADMIN VIEW ══════════════ -->
@@ -1320,6 +1287,50 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-supplement')">Annuller</button>
       <button class="btn btn-primary" onclick="confirmAddSupplement()">Opret</button>
+    </div>
+  </div>
+</div>
+
+<!-- Employee supplement detail modal -->
+<div id="modal-supplement-detail" class="modal-overlay">
+  <div class="modal" style="width:900px">
+    <div class="modal-header">
+      <h2 id="supplement-detail-name"></h2>
+      <button class="modal-close" onclick="closeModal('modal-supplement-detail')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center;padding:0 0 12px 0">
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:5px">Fra:
+            <div id="supplement-from-dp" style="width:150px"></div>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px">Til:
+            <div id="supplement-to-dp" style="width:150px"></div>
+          </label>
+        </div>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="loadSupplementDetail()">&#128260; Opdater</button>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+        <thead>
+          <tr style="background:var(--primary);color:#fff">
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Status</th>
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Lønnummer</th>
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Tillægsnavn</th>
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Type</th>
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode start</th>
+            <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode slut</th>
+            <th style="padding:11px 14px;text-align:right;font-weight:600">Værdi (kr)</th>
+            <th style="padding:11px 14px;text-align:center;font-weight:600">Handling</th>
+          </tr>
+        </thead>
+        <tbody id="supplement-detail-tbody">
+          <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-supplement-detail')">Luk</button>
     </div>
   </div>
 </div>
