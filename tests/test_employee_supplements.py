@@ -155,7 +155,10 @@ def test_end_supplement_rejects_unknown_id(db):
 # ── Punkt D: race condition / unikt constraint ──────────────────────────────
 
 
-def test_create_supplement_conflict_returns_409(db, employee):
+def test_unique_constraint_prevents_two_open_rows_for_same_employee(db, employee):
+    """Tester DB-laget direkte (det partielle unikke indeks), ikke HTTP-laget
+    eller 409-oversættelsen i endpointet – filen bruger ikke TestClient nogen
+    steder, se øvrige tests i denne fil."""
     _create_supplement(db, employee.id, date(2026, 1, 1), Decimal("10.00"))
     # Simulér race condition: indsæt manuelt en anden åbentstående række for samme
     # medarbejder direkte i DB'en (uden om _create_supplement's egen lukke-logik)
@@ -164,6 +167,20 @@ def test_create_supplement_conflict_returns_409(db, employee):
     with pytest.raises(Exception):  # IntegrityError fra det unikke constraint
         db.commit()
     db.rollback()
+
+
+def test_two_closed_rows_can_share_end_date_for_same_employee(db, employee):
+    """Det partielle unikke indeks beskytter kun mod flere ÅBENTSTÅENDE rækker
+    (end_date = '9999-12-31') – lukkede rækker må gerne dele samme end_date,
+    fx når 'afslut ved periodegrænse' lukker to forskellige tillæg samme dag."""
+    shared_end = date(2026, 8, 23)
+    row1 = EmployeeSupplement(employee_id=employee.id, value=Decimal("10"),
+                               start_date=date(2026, 1, 1), end_date=shared_end)
+    row2 = EmployeeSupplement(employee_id=employee.id, value=Decimal("20"),
+                               start_date=date(2026, 8, 24), end_date=shared_end)
+    db.add(row1)
+    db.add(row2)
+    db.commit()  # skal IKKE kaste IntegrityError
 
 
 # ── Punkt F: værdi-præcision ─────────────────────────────────────────────────

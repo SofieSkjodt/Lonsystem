@@ -249,7 +249,7 @@ class VehicleResponse(BaseModel):
 class EmployeeSupplementCreate(BaseModel):
     employee_id: int
     start_date: date = Field(default_factory=date.today)
-    value: Annotated[float, Field(gt=0)]
+    value: Annotated[float, Field(gt=0, le=10000)]
 
 
 class EmployeeSupplementResponse(BaseModel):

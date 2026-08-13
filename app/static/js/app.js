@@ -4382,7 +4382,7 @@ async function loadSupplementDetail() {
         <td style="padding:10px 14px">${formatDateShort(r.start_date)}</td>
         <td style="padding:10px 14px">${r.end_date === "9999-12-31" ? "–" : formatDateShort(r.end_date)}</td>
         <td style="padding:10px 14px;text-align:right">${r.value.toFixed(2)} kr</td>
-        <td style="padding:10px 14px;text-align:center">${r.is_active ? `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px" onclick="endSupplement(${r.id})">Afslut</button>` : ""}</td>
+        <td style="padding:10px 14px;text-align:center">${r.end_date === "9999-12-31" ? `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px" onclick="endSupplement(${r.id})">Afslut</button>` : ""}</td>
       </tr>`).join("");
   } catch (e) { toast(e.message, "error"); }
 }

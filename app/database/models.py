@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, DateTime, Numeric,
-    ForeignKey, Text, Enum, JSON, Index, UniqueConstraint
+    ForeignKey, Text, Enum, JSON, Index, text
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
@@ -368,5 +368,10 @@ class EmployeeSupplement(Base):
     employee = relationship("Employee")
 
     __table_args__ = (
-        UniqueConstraint("employee_id", "end_date", name="uq_employee_supplements_employee_end"),
+        Index(
+            "uq_employee_supplements_one_open_row",
+            "employee_id",
+            unique=True,
+            sqlite_where=text("end_date = '9999-12-31'"),
+        ),
     )

@@ -128,6 +128,15 @@ def _migrate():
                 "ON activities(employee_id, start_time, source)"
             )
             conn.commit()
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_supplements_one_open_row "
+            "ON employee_supplements(employee_id) WHERE end_date = '9999-12-31'"
+        )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS ix_employee_supplements_employee_id "
+            "ON employee_supplements(employee_id)"
+        )
+        conn.commit()
 
 
 def _seed_roles():
