@@ -2027,11 +2027,13 @@ async function openEditEmployee(id) {
   document.getElementById("emp-fuldloennet").checked = e.fuldloennet;
   buildScheduleTable(e.work_schedule);
   await _loadEmpCvrDropdown(e.cvr_number || null);
-  try {
-    const supplement = await GET(`/api/employee-supplements/active/${id}`);
-    document.getElementById("emp-active-supplement").value = supplement ? `${supplement.value.toFixed(2)} kr/t` : "";
-  } catch (_) {
-    document.getElementById("emp-active-supplement").value = "";
+  if (state.currentUser?.permissions?.includes("manage_employee_supplements")) {
+    try {
+      const supplement = await GET(`/api/employee-supplements/active/${id}`);
+      document.getElementById("emp-active-supplement").value = supplement ? `${supplement.value.toFixed(2)} kr/t` : "";
+    } catch (_) {
+      document.getElementById("emp-active-supplement").value = "";
+    }
   }
   openModal("modal-employee");
 }
@@ -4053,6 +4055,8 @@ const ACTION_LABELS = {
   stamdata_update: { label: "Stamdata opdateret",       color: "#424242", bg: "#f5f5f5" },
   stamdata_delete: { label: "Stamdata slettet",         color: "#b71c1c", bg: "#fee2e2" },
   ddd_import:      { label: "DDD-import",               color: "#317423", bg: "#d4edcc" },
+  employee_supplement_create: { label: "Tillæg oprettet", color: "#00695c", bg: "#e0f2f1" },
+  employee_supplement_end:    { label: "Tillæg afsluttet", color: "#b71c1c", bg: "#fee2e2" },
 };
 
 let _auditLogEntries = [];
@@ -4357,7 +4361,7 @@ async function loadSupplementDetail() {
   const employeeId = state.selectedSupplementEmployeeId;
   if (!employeeId) return;
   const tbody = document.getElementById("supplement-detail-tbody");
-  tbody.innerHTML = `<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>`;
+  tbody.innerHTML = `<tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>`;
   const from = readDatePicker("supplement-from-dp");
   const to = readDatePicker("supplement-to-dp");
   let qs = `employee_id=${employeeId}`;
@@ -4366,7 +4370,7 @@ async function loadSupplementDetail() {
   try {
     const rows = await GET(`/api/employee-supplements?${qs}`);
     if (rows.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text-light)">Ingen tillæg fundet</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="8" style="padding:24px;text-align:center;color:var(--text-light)">Ingen tillæg fundet</td></tr>`;
       return;
     }
     tbody.innerHTML = rows.map(r => `
@@ -4378,7 +4382,17 @@ async function loadSupplementDetail() {
         <td style="padding:10px 14px">${formatDateShort(r.start_date)}</td>
         <td style="padding:10px 14px">${r.end_date === "9999-12-31" ? "–" : formatDateShort(r.end_date)}</td>
         <td style="padding:10px 14px;text-align:right">${r.value.toFixed(2)} kr</td>
+        <td style="padding:10px 14px;text-align:center">${r.is_active ? `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px" onclick="endSupplement(${r.id})">Afslut</button>` : ""}</td>
       </tr>`).join("");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function endSupplement(id) {
+  if (!confirm("Afslut dette tillæg? Det gælder stadig resten af den nuværende lønperiode og stopper først fra næste periode.")) return;
+  try {
+    await POST(`/api/employee-supplements/${id}/end`, {});
+    toast("Tillæg afsluttet", "success");
+    await loadSupplementDetail();
   } catch (e) { toast(e.message, "error"); }
 }
 

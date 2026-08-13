@@ -44,6 +44,7 @@ from calculators.rates_loader import (
     load_salt_supplement_rate_from_db,
     load_overnight_rate_from_db,
     load_dagpenge_rate_from_db,
+    get_active_supplement_for_period,
 )
 from database.models import Activity, ActivityStatus, Employee, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
 from database.session import get_db
@@ -270,7 +271,6 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         hourly_rate = load_agreement_types_from_db(db).get(emp.agreement_type, Decimal("0"))
     except Exception:
         hourly_rate = Decimal("0")
-    from routers.employee_supplements import get_active_supplement_for_period
     supplement = get_active_supplement_for_period(db, emp.id, start, end)
     if supplement:
         hourly_rate += supplement.value

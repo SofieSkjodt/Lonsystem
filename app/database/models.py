@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, DateTime, Numeric,
-    ForeignKey, Text, Enum, JSON, Index
+    ForeignKey, Text, Enum, JSON, Index, UniqueConstraint
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
@@ -357,7 +357,7 @@ class EmployeeSupplement(Base):
     __tablename__ = "employee_supplements"
 
     id = Column(Integer, primary_key=True)
-    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
     name = Column(String(200), nullable=False, default="Ikke overenskomstmæssigt tillæg")
     type = Column(String(50), nullable=False, default="Timebaseret")
     value = Column(Numeric(10, 2), nullable=False)
@@ -366,3 +366,7 @@ class EmployeeSupplement(Base):
     created_at = Column(DateTime, server_default=func.now())
 
     employee = relationship("Employee")
+
+    __table_args__ = (
+        UniqueConstraint("employee_id", "end_date", name="uq_employee_supplements_employee_end"),
+    )

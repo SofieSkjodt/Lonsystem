@@ -8,8 +8,10 @@ så ændringer slår igennem uden genstart.
 """
 import shutil
 import tempfile
+from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Optional
 
 import openpyxl
 
@@ -176,3 +178,22 @@ def seniority_variant_exists_from_db(db, agreement_type: str) -> str | None:
     types = load_agreement_types_from_db(db)
     candidate = f"{agreement_type}. 9 mdr anciennitet"
     return candidate if candidate in types else None
+
+
+def get_active_supplement_for_period(
+    db, employee_id: int, period_start: date, period_end: date
+) -> Optional["EmployeeSupplement"]:
+    """Finder tillægget hvis gyldighedsperiode overlapper [period_start, period_end].
+    Overlapper flere rækker (nyt tillæg oprettet midt i perioden), vinder den
+    med nyeste start_date, for hele perioden."""
+    from database.models import EmployeeSupplement
+    return (
+        db.query(EmployeeSupplement)
+        .filter(
+            EmployeeSupplement.employee_id == employee_id,
+            EmployeeSupplement.end_date >= period_start,
+            EmployeeSupplement.start_date <= period_end,
+        )
+        .order_by(EmployeeSupplement.start_date.desc())
+        .first()
+    )

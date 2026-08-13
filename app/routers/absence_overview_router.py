@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 from typing import List, Optional
 import io
@@ -11,7 +12,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_permission
 from calculators.pay_period import get_or_create_period_for_date
-from calculators.rates_loader import load_agreement_types_from_db
+from calculators.rates_loader import load_agreement_types_from_db, get_active_supplement_for_period
 from database.models import Activity, ActivityStatus, AppUser, DispatcherGroup, Employee
 from database.session import get_db
 
@@ -109,7 +110,11 @@ def _compute_data(d_from: date, d_to: date, db: Session) -> dict:
     for act in activities:
         emp = act.employee
         if emp.id not in emp_map:
-            hourly_rate = float(agreement_rates.get(emp.agreement_type, 0))
+            hourly_rate = Decimal(str(agreement_rates.get(emp.agreement_type, 0)))
+            supplement = get_active_supplement_for_period(db, emp.id, d_from, d_to)
+            if supplement:
+                hourly_rate += supplement.value
+            hourly_rate = float(hourly_rate)
             emp_map[emp.id] = {
                 "employee_id":     emp.id,
                 "employee_name":   emp.name,

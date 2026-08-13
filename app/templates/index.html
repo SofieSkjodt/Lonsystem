@@ -298,10 +298,11 @@
               <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode start</th>
               <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode slut</th>
               <th style="padding:11px 14px;text-align:right;font-weight:600">Værdi (kr)</th>
+              <th style="padding:11px 14px;text-align:center;font-weight:600">Handling</th>
             </tr>
           </thead>
           <tbody id="supplement-detail-tbody">
-            <tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            <tr><td colspan="8" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
           </tbody>
         </table>
       </div>
@@ -1172,7 +1173,7 @@
         </div>
       </div>
 
-      <div class="form-row">
+      <div class="form-row" data-perm-require="manage_employee_supplements">
         <div class="form-group">
           <label>Tillæg (kr/t)</label>
           <input type="text" id="emp-active-supplement" disabled style="background:var(--bg);color:var(--text-light)">
