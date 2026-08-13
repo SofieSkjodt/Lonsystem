@@ -1371,10 +1371,22 @@ function applySygdomDefaults() {
 }
 
 function applyAfspadseringDefaults() {
+  const empId = parseInt(document.getElementById("manual-employee").value);
   const dateStr = document.getElementById("manual-start")?.querySelector(".dt-date")?.value;
-  if (!dateStr) return;
+  if (!empId || !dateStr) return;
 
-  const totalMinutes = Math.round(7.4 * 60);
+  const emp = state.employees.find(e => e.id === empId);
+  const d = new Date(dateStr + "T12:00:00");
+  const key = isoWeekNumber(d) % 2 === 0 ? "even" : "odd";
+  const weekdayIdx = (d.getDay() + 6) % 7;
+  const hours = emp?.work_schedule?.[key]?.[weekdayIdx] ?? 0;
+
+  if (hours <= 0) {
+    toast("Ingen garanterede timer på denne dag – angiv tid manuelt", "warning");
+    return;
+  }
+
+  const totalMinutes = Math.round(hours * 60);
   const endH = String(6 + Math.floor(totalMinutes / 60)).padStart(2, "0");
   const endM = String(totalMinutes % 60).padStart(2, "0");
 
@@ -1716,10 +1728,17 @@ async function confirmManualActivity() {
 
     const emp = state.employees.find(e => e.id === empId);
     let created = 0;
+    const skippedNoHours = [];
     try {
       for (const iso of dates) {
         let hours = 7.4;
-        if (actType !== "feriefri" && actType !== "afspadsering" && emp?.work_schedule) {
+        if (actType === "afspadsering") {
+          const d = new Date(iso + "T12:00:00");
+          const key = isoWeekNumber(d) % 2 === 0 ? "even" : "odd";
+          const idx = (d.getDay() + 6) % 7;
+          hours = emp?.work_schedule?.[key]?.[idx] ?? 0;
+          if (hours <= 0) { skippedNoHours.push(iso); continue; }
+        } else if (actType !== "feriefri" && emp?.work_schedule) {
           const d = new Date(iso + "T12:00:00");
           const key = isoWeekNumber(d) % 2 === 0 ? "even" : "odd";
           const idx = (d.getDay() + 6) % 7;
@@ -1739,7 +1758,13 @@ async function confirmManualActivity() {
         created++;
       }
       if (actType === "barsel" && terminsdato && emp) emp.terminsdato = terminsdato;
-      toast(`${created} ${created === 1 ? "aktivitet oprettet" : "aktiviteter oprettet"}`, "success");
+      if (created > 0)
+        toast(`${created} ${created === 1 ? "aktivitet oprettet" : "aktiviteter oprettet"}`, "success");
+      if (skippedNoHours.length > 0) {
+        const labels = skippedNoHours.map(d => { const [y,m,day]=d.split("-"); return `${day}-${m}-${y}`; }).join(", ");
+        toast(`${skippedNoHours.length} dag${skippedNoHours.length>1?"e":""} sprunget over – ingen garanterede timer: ${labels}`, "warning");
+      }
+      if (created === 0 && skippedNoHours.length === 0) toast("Ingen aktiviteter oprettet", "warning");
       closeModal("modal-manual-activity");
       await refreshActivities();
     } catch (e) { toast(e.message, "error"); }
