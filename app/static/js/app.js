@@ -4300,9 +4300,7 @@ document.addEventListener("DOMContentLoaded", init);
 state.selectedSupplementEmployeeId = null;
 
 async function loadEmployeeSupplementsView() {
-  if (!state.employees.length) {
-    state.employees = await GET("/api/employees?active_only=false");
-  }
+  state.employees = await GET("/api/employees?active_only=false");
   renderSupplementEmployeeList();
 }
 
