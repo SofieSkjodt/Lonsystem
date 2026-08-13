@@ -1998,6 +1998,7 @@ async function openNewEmployeeModal() {
   document.getElementById("emp-fuldloennet").checked = true;
   buildScheduleTable(null);
   await _loadEmpCvrDropdown(null);
+  document.getElementById("emp-active-supplement").value = "";
   openModal("modal-employee");
 }
 
@@ -2026,6 +2027,12 @@ async function openEditEmployee(id) {
   document.getElementById("emp-fuldloennet").checked = e.fuldloennet;
   buildScheduleTable(e.work_schedule);
   await _loadEmpCvrDropdown(e.cvr_number || null);
+  try {
+    const supplement = await GET(`/api/employee-supplements/active/${id}`);
+    document.getElementById("emp-active-supplement").value = supplement ? `${supplement.value.toFixed(2)} kr/t` : "";
+  } catch (_) {
+    document.getElementById("emp-active-supplement").value = "";
+  }
   openModal("modal-employee");
 }
 
