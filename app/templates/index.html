@@ -1293,7 +1293,7 @@
 
 <!-- Employee supplement detail modal -->
 <div id="modal-supplement-detail" class="modal-overlay">
-  <div class="modal" style="width:900px">
+  <div class="modal" style="width:96vw;max-width:1400px">
     <div class="modal-header">
       <h2 id="supplement-detail-name"></h2>
       <button class="modal-close" onclick="closeModal('modal-supplement-detail')">&#215;</button>
@@ -1311,17 +1311,17 @@
         <div class="spacer"></div>
         <button class="btn btn-secondary" onclick="loadSupplementDetail()">&#128260; Opdater</button>
       </div>
-      <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;background:#fff;border-radius:8px;table-layout:fixed;box-shadow:0 1px 4px rgba(0,0,0,.08)">
         <thead>
           <tr style="background:var(--primary);color:#fff">
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Status</th>
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Lønnummer</th>
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Tillægsnavn</th>
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Type</th>
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode start</th>
-            <th style="padding:11px 14px;text-align:left;font-weight:600">Gyldighedsperiode slut</th>
-            <th style="padding:11px 14px;text-align:right;font-weight:600">Værdi (kr)</th>
-            <th style="padding:11px 14px;text-align:center;font-weight:600">Handling</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:9%">Status</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:10%">Lønnummer</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:24%">Tillægsnavn</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:10%">Type</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:14%">Gyldighedsperiode start</th>
+            <th style="padding:8px 8px;text-align:left;font-weight:600;width:14%">Gyldighedsperiode slut</th>
+            <th style="padding:8px 8px;text-align:right;font-weight:600;width:10%">Værdi (kr)</th>
+            <th style="padding:8px 8px;text-align:center;font-weight:600;width:9%">Handling</th>
           </tr>
         </thead>
         <tbody id="supplement-detail-tbody">
