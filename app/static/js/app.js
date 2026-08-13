@@ -4407,6 +4407,11 @@ function openAddSupplementModal() {
   openModal("modal-supplement");
 }
 
+function openAddSupplementFromDetail() {
+  closeModal("modal-supplement-detail");
+  openAddSupplementModal();
+}
+
 async function confirmAddSupplement() {
   const employeeId = parseInt(document.getElementById("supplement-employee-select").value);
   const startDate = readDatePicker("supplement-start-dp");
@@ -4419,6 +4424,9 @@ async function confirmAddSupplement() {
     await POST("/api/employee-supplements", { employee_id: employeeId, start_date: startDate, value });
     toast("Tillæg oprettet", "success");
     closeModal("modal-supplement");
-    if (state.selectedSupplementEmployeeId === employeeId) await loadSupplementDetail();
+    if (state.selectedSupplementEmployeeId === employeeId) {
+      await loadSupplementDetail();
+      openModal("modal-supplement-detail");
+    }
   } catch (e) { toast(e.message, "error"); }
 }
