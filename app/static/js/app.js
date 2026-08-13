@@ -114,6 +114,7 @@ function setView(view) {
   if (view === "payroll")           loadPayrollPreview();
   if (view === "absence-overview")  loadAbsenceOverview();
   if (view === "vehicles")          loadVehicles();
+  if (view === "employee-supplements") loadEmployeeSupplementsView();
   if (view === "users-admin")       loadUsersAdminView();
   if (view === "stamdata")          loadStamdata();
 }
@@ -4281,6 +4282,7 @@ async function init() {
   document.getElementById("show-inactive")?.addEventListener("change", loadEmployees);
   document.getElementById("employee-search")?.addEventListener("input", renderEmployeeList);
   document.getElementById("vehicle-search")?.addEventListener("input", renderVehicleList);
+  document.getElementById("supplement-employee-search")?.addEventListener("input", renderSupplementEmployeeList);
 
   document.querySelectorAll(".modal-overlay").forEach(overlay => {
     overlay.addEventListener("click", e => {
@@ -4293,3 +4295,111 @@ async function init() {
 }
 
 document.addEventListener("DOMContentLoaded", init);
+
+// ── Employee supplements ────────────────────────────────────────────────────
+state.selectedSupplementEmployeeId = null;
+
+async function loadEmployeeSupplementsView() {
+  if (!state.employees.length) {
+    state.employees = await GET("/api/employees?active_only=false");
+  }
+  renderSupplementEmployeeList();
+}
+
+function renderSupplementEmployeeList() {
+  const query = (document.getElementById("supplement-employee-search")?.value || "").toLowerCase().trim();
+  const container = document.getElementById("supplement-employee-list");
+  container.innerHTML = "";
+  let emps = state.employees;
+  if (query) {
+    emps = emps.filter(e =>
+      e.name.toLowerCase().includes(query) ||
+      String(e.employee_number).toLowerCase().includes(query)
+    );
+  }
+  emps = emps.slice().sort((a, b) => a.name.localeCompare(b.name, "da"));
+  if (emps.length === 0) {
+    container.innerHTML = `<div class="empty-state"><div class="icon">👤</div><h3>Ingen medarbejdere</h3></div>`;
+    return;
+  }
+  for (const e of emps) {
+    const initials = `${e.first_name[0] || ""}${e.last_name[0] || ""}`.toUpperCase();
+    const div = document.createElement("div");
+    div.className = "emp-card";
+    div.style.cursor = "pointer";
+    div.innerHTML = `
+      <div class="emp-avatar">${h(initials)}</div>
+      <div class="emp-info">
+        <div class="emp-name">${h(e.name)}</div>
+        <div class="emp-sub">Lønnr. ${h(e.employee_number)}</div>
+      </div>
+    `;
+    div.addEventListener("click", () => selectSupplementEmployee(e.id, e.name));
+    container.appendChild(div);
+  }
+}
+
+function selectSupplementEmployee(employeeId, employeeName) {
+  state.selectedSupplementEmployeeId = employeeId;
+  document.getElementById("supplement-detail").style.display = "";
+  document.getElementById("supplement-detail-name").textContent = employeeName;
+  buildDatePicker("supplement-from-dp", "");
+  buildDatePicker("supplement-to-dp", "");
+  loadSupplementDetail();
+}
+
+async function loadSupplementDetail() {
+  const employeeId = state.selectedSupplementEmployeeId;
+  if (!employeeId) return;
+  const tbody = document.getElementById("supplement-detail-tbody");
+  tbody.innerHTML = `<tr><td colspan="7" style="padding:30px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>`;
+  const from = readDatePicker("supplement-from-dp");
+  const to = readDatePicker("supplement-to-dp");
+  let qs = `employee_id=${employeeId}`;
+  if (from) qs += `&from=${from}`;
+  if (to) qs += `&to=${to}`;
+  try {
+    const rows = await GET(`/api/employee-supplements?${qs}`);
+    if (rows.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="padding:24px;text-align:center;color:var(--text-light)">Ingen tillæg fundet</td></tr>`;
+      return;
+    }
+    tbody.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid var(--border);background:#fff">
+        <td style="padding:10px 14px;font-weight:600;color:${r.is_active ? "var(--approved)" : "var(--danger)"}">${r.is_active ? "Aktiv" : "Inaktiv"}</td>
+        <td style="padding:10px 14px">${h(r.employee_number)}</td>
+        <td style="padding:10px 14px">${h(r.name)}</td>
+        <td style="padding:10px 14px">${h(r.type)}</td>
+        <td style="padding:10px 14px">${formatDateShort(r.start_date)}</td>
+        <td style="padding:10px 14px">${r.end_date === "9999-12-31" ? "–" : formatDateShort(r.end_date)}</td>
+        <td style="padding:10px 14px;text-align:right">${r.value.toFixed(2)} kr</td>
+      </tr>`).join("");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function openAddSupplementModal() {
+  const sel = document.getElementById("supplement-employee-select");
+  sel.innerHTML = state.employees
+    .slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
+    .map(e => `<option value="${e.id}">${h(e.name)} (Lønnr. ${h(e.employee_number)})</option>`).join("");
+  if (state.selectedSupplementEmployeeId) sel.value = state.selectedSupplementEmployeeId;
+  document.getElementById("supplement-value").value = "";
+  buildDatePicker("supplement-start-dp", new Date().toISOString().slice(0, 10));
+  openModal("modal-supplement");
+}
+
+async function confirmAddSupplement() {
+  const employeeId = parseInt(document.getElementById("supplement-employee-select").value);
+  const startDate = readDatePicker("supplement-start-dp");
+  const value = parseFloat(document.getElementById("supplement-value").value);
+  if (!employeeId || !startDate || !value || value <= 0) {
+    toast("Udfyld medarbejder, startdato og en positiv værdi", "error");
+    return;
+  }
+  try {
+    await POST("/api/employee-supplements", { employee_id: employeeId, start_date: startDate, value });
+    toast("Tillæg oprettet", "success");
+    closeModal("modal-supplement");
+    if (state.selectedSupplementEmployeeId === employeeId) await loadSupplementDetail();
+  } catch (e) { toast(e.message, "error"); }
+}
