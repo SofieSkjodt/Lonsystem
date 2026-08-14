@@ -47,7 +47,7 @@ from calculators.rates_loader import (
     load_springer_rate_from_db,
     get_active_supplement_for_period,
 )
-from database.models import Activity, ActivityStatus, Employee, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
+from database.models import Activity, ActivityStatus, Employee, EmployeeSpringerFlag, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
 from database.session import get_db
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -281,6 +281,13 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     salt_rate = load_salt_supplement_rate_from_db(db)
     overnight_rate = load_overnight_rate_from_db(db)
     dagpenge_sats = load_dagpenge_rate_from_db(db)
+    springer_rate = load_springer_rate_from_db(db)
+    _springer_period = get_or_create_period_for_date(start, db)
+    springer_enabled = db.query(EmployeeSpringerFlag).filter(
+        EmployeeSpringerFlag.employee_id == emp.id,
+        EmployeeSpringerFlag.pay_period_id == _springer_period.id,
+        EmployeeSpringerFlag.enabled == True,
+    ).first() is not None
 
     _ABSENCE_LABELS = {
         "ferie":        "Ferie",
@@ -528,6 +535,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         "overnight_count":    totals["overnight_count"],
         "overnight_rate":     float(overnight_rate),
         "overnight_kr":       float(_round2(Decimal(str(totals["overnight_count"])) * overnight_rate)),
+        "springer_rate":      float(springer_rate),
+        "springer_enabled":   springer_enabled,
         "afspadsering_hours":   float(_round2(totals["afspadsering"])),
         "sygdom_hours":         float(_round2(totals["sygdom"])),
         "paragraf_56_syg_hours":  float(_round2(totals["paragraf_56_syg"])),

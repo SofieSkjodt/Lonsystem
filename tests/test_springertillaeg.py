@@ -111,3 +111,47 @@ def test_resolve_rate_springer_defaults_to_zero_when_missing():
     from routers.payroll_router import _resolve_rate
     calc = {"hourly_rate": 150.0}
     assert _resolve_rate("springer", calc) == 0
+
+
+def _setup_rates(db, employee, hourly=Decimal("150.00")):
+    from database.models import MasterAgreementType, MasterOvertimeRate
+    from calculators.overtime import OT_BEFORE_KEY, OT_13_KEY, OT_EXTRA_KEY
+    db.add(MasterAgreementType(name=employee.agreement_type, hourly_rate=hourly))
+    db.add(MasterOvertimeRate(label=OT_BEFORE_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_13_KEY, rate=Decimal("0")))
+    db.add(MasterOvertimeRate(label=OT_EXTRA_KEY, rate=Decimal("0")))
+    db.commit()
+
+
+def test_calculate_employee_springer_disabled_by_default(db, employee):
+    from routers.payroll_router import _calculate_employee
+    _setup_rates(db, employee)
+    calc = _calculate_employee(employee, date(2026, 1, 1), date(2026, 1, 14), db)
+    assert calc["springer_enabled"] is False
+
+
+def test_calculate_employee_springer_enabled_when_flag_set(db, employee):
+    from database.models import EmployeeSpringerFlag, MasterSupplementRate
+    from routers.payroll_router import _calculate_employee
+    _setup_rates(db, employee)
+    db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("20.00")))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    db.add(EmployeeSpringerFlag(employee_id=employee.id, pay_period_id=period.id, enabled=True))
+    db.commit()
+
+    calc = _calculate_employee(employee, period.start_date, period.end_date, db)
+    assert calc["springer_enabled"] is True
+    assert calc["springer_rate"] == pytest.approx(20.00)
+
+
+def test_calculate_employee_springer_flag_does_not_carry_to_next_period(db, employee):
+    from database.models import EmployeeSpringerFlag
+    from routers.payroll_router import _calculate_employee
+    _setup_rates(db, employee)
+    period1 = get_or_create_period_for_date(date(2026, 1, 1), db)
+    db.add(EmployeeSpringerFlag(employee_id=employee.id, pay_period_id=period1.id, enabled=True))
+    db.commit()
+
+    period2 = get_or_create_period_for_date(date(2026, 1, 15), db)
+    calc = _calculate_employee(employee, period2.start_date, period2.end_date, db)
+    assert calc["springer_enabled"] is False
