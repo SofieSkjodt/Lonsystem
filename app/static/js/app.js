@@ -45,6 +45,7 @@ const PERMISSION_LABELS = {
   approve_activities:  "Godkend aktiviteter",
   view_calendar:       "Se aktivitetskalender",
   manage_employee_supplements: "Administrér medarbejdertillæg",
+  toggle_springer:     "Sæt springertillæg",
 };
 
 let manualPauses = [];

@@ -52,6 +52,7 @@ def init_db():
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
     _ensure_employee_supplements_permission()
+    _ensure_toggle_springer_permission()
     _migrate_dispatcher_groups()
 
 
@@ -501,5 +502,23 @@ def _ensure_employee_supplements_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af manage_employee_supplements-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_toggle_springer_permission():
+    """Tilføjer toggle_springer til ALLE roller (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        for role in db.query(Role).all():
+            perms = list(role.permissions or [])
+            if "toggle_springer" not in perms:
+                perms.append("toggle_springer")
+                role.permissions = perms
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af toggle_springer-tilladelse: {e}")
     finally:
         db.close()

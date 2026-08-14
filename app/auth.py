@@ -22,6 +22,7 @@ ALL_PERMISSIONS = {
     "anciennitet_alert":   "Anciennitetsvarsel",
     "approve_activities":  "Godkend aktiviteter",
     "view_calendar":       "Se aktivitetskalender",
+    "toggle_springer":     "Sæt springertillæg",
 }
 
 
