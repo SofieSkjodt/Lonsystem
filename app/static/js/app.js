@@ -3558,6 +3558,7 @@ async function loadStamdataSupplements() {
 const _RATE_SRC_LABELS = {
   hourly: "Timesats", ot_before: "OT 1t før", ot_13: "OT 1-3t",
   ot_extra: "Øvrig OT", salt: "Salt", overnight: "Overnatning", dagpenge: "Dagpenge §56",
+  springer: "Springertillæg",
 };
 
 async function loadStamdataPayTypes() {
