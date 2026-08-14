@@ -53,6 +53,7 @@ def init_db():
     _ensure_activity_permissions()
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
+    _ensure_springer_pay_type()
     _migrate_dispatcher_groups()
 
 
@@ -368,6 +369,31 @@ def _ensure_sh_pay_types():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved seeding af SH-løntypekoder: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_springer_pay_type():
+    """Seeder Springertillæg-sats og -løntypekode til eksisterende databaser (idempotent)."""
+    from decimal import Decimal
+    from database.models import MasterSupplementRate, MasterPayType
+    from calculators.pay_rates import DANLOEN_CODE_SPRINGERTILLAEG
+    db = SessionLocal()
+    try:
+        if not db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "Springertillæg").first():
+            db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("0")))
+        if not db.query(MasterPayType).filter(MasterPayType.code_key == "SPRINGERTILLAEG").first():
+            db.add(MasterPayType(
+                code_key="SPRINGERTILLAEG", label="Springertillæg",
+                danloen_code=DANLOEN_CODE_SPRINGERTILLAEG,
+                include_in_csv=True, sort_order=16,
+                csv_quantity_type="hours", csv_rate_source="springer",
+                csv_include_rate=True, csv_include_total=False,
+            ))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved seeding af Springertillæg: {e}")
     finally:
         db.close()
 

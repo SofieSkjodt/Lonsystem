@@ -59,3 +59,28 @@ def test_ensure_toggle_springer_permission_adds_to_all_roles(db, monkeypatch):
     for role in db.query(Role).all():
         db.refresh(role)
         assert role.permissions.count("toggle_springer") == 1
+
+
+def test_ensure_springer_pay_type_seeds_rate_and_paytype(db, monkeypatch):
+    from database.models import MasterSupplementRate, MasterPayType
+    from database.session import _ensure_springer_pay_type
+    import database.session as session_module
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(session_module, "SessionLocal", sessionmaker(bind=db.get_bind()))
+
+    _ensure_springer_pay_type()
+
+    rate_row = db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "Springertillæg").first()
+    assert rate_row is not None
+    assert rate_row.rate == 0
+
+    pt_row = db.query(MasterPayType).filter(MasterPayType.code_key == "SPRINGERTILLAEG").first()
+    assert pt_row is not None
+    assert pt_row.csv_quantity_type == "hours"
+    assert pt_row.csv_rate_source == "springer"
+    assert pt_row.include_in_csv is True
+
+    # Idempotent
+    _ensure_springer_pay_type()
+    assert db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "Springertillæg").count() == 1
+    assert db.query(MasterPayType).filter(MasterPayType.code_key == "SPRINGERTILLAEG").count() == 1

@@ -22,6 +22,7 @@ DANLOEN_CODE_SKOLE_KURSUS  = "1"    # Danløn-kode for kursus/skole – oplyses 
 DANLOEN_CODE_OVERNATNING   = "1"    # Danløn-kode for overnatning – oplyses af lønafdelingen
 DANLOEN_CODE_PARAGRAF_56   = "1"    # Danløn-kode for §56 syg – oplyses af lønafdelingen
 DANLOEN_CODE_BARN_1SYGEDAG = "1"    # Danløn-kode for barn 1.sygedag – oplyses af lønafdelingen
+DANLOEN_CODE_SPRINGERTILLAEG = "1"  # Danløn-kode for springertillæg – oplyses af lønafdelingen
 DANLOEN_CODE_SH_FULDLOENNET = "4"    # SH-betaling fuldlønnet
 DANLOEN_CODE_SH_TIMELOENNET = "63"   # SH-udbetaling timelønnet
 
