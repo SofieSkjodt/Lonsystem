@@ -417,6 +417,7 @@ konfigureret pr. type i den tabel – DB er authoritative, ikke hardkodede konst
 | code_key | Danløn-kode (default) | Enhed | Bemærkning |
 |---|---|---|---|
 | NORMAL | 1 | timer | |
+| SPRINGERTILLAEG | 1 | timer | kun med hvis flueben sat for medarbejder+periode, se afsnit nedenfor |
 | OT_BEFORE | 7 | timer | |
 | OT_13 | 8 | timer | inkl. søgnehelligdags-kode8 |
 | OT_EXTRA | 9 | timer | inkl. søgnehelligdags-kode9 |
@@ -513,6 +514,20 @@ Individuelt kr/time-tillæg pr. medarbejder oveni overenskomsttypens grundsats, 
 **API**: `GET /api/employee-supplements` (filtre `employee_id`/`from`/`to`), `GET /active/{employee_id}` (null hvis intet aktivt), `POST ""` (opret), `POST /{id}/end` (afslut). Alle kræver `manage_employee_supplements`.
 
 **Frontend**: sidebar-punkt "Tillæg" → søgeliste (samme mønster som `employee-search`) → klik åbner `modal-supplement-detail` (IKKE en inline-boks – med ~79 medarbejdere ville en inline-visning lande langt uden for skærmen uden auto-scroll, rettet 2026-08-13) med historik-tabel (`table-layout:fixed`, procent-kolonnebredder, `width:96vw;max-width:1400px` – undgår horisontal scroll uanset antal medarbejdere/kolonneindhold). "+ Tilføj" findes både i sidens toolbar og i detaljemodalens footer (`openAddSupplementFromDetail()` lukker detaljemodalen midlertidigt for at undgå to overlappende `.modal-overlay` med samme z-index, genåbner den efter succesfuld oprettelse). Read-only felt (`emp-active-supplement`) i `modal-employee` under Overenskomsttype, gated bag `data-perm-require="manage_employee_supplements"` og et JS-permission-tjek før fetch (undgår unødvendige 403'ere for brugere uden rettigheden).
+
+---
+
+## Springertillæg (2026-08-14, activities.py + payroll_router.py + session.py)
+
+Ny løntypekode `SPRINGERTILLAEG` (kr/time-sats fra `MasterSupplementRate`, label "Springertillæg") der giver samme timetal som løntypekode 1 (`calc["normal_hours"]`) — men KUN for de medarbejdere, der i den enkelte lønperiode har et flueben sat i aktivitetsoversigten (under navnet, samme række). Mønsteret følger Overnatning: hardcodet i `_resolve_rate()`/`_calculate_employee()`/CSV-raw_rows, ikke den generiske `_user_pay_type_rows()`-mekanisme (springertillæg er ikke knyttet til en `Activity`).
+
+**Datamodel:** ny tabel `employee_springer_flags` (`employee_id`, `pay_period_id`, `enabled`), unikt indeks på `(employee_id, pay_period_id)`. Ingen række = ikke sat — nulstilles derfor automatisk hver ny periode uden seeding.
+
+**Periodeopslag i `_calculate_employee()`:** perioden slås op internt via `get_or_create_period_for_date(start, db)` i stedet for at tilføje en `period_id`-parameter — funktionen har 8 kaldssteder, nogle med frie datointervaller (tidssedler/preview) uden noget naturligt periode-begreb.
+
+**Endpoints** (`activities.py`): `GET /api/activities/springer-flags?pay_period_id=` (login, ingen særskilt permission — samme niveau som resten af aktivitetsoversigten), `POST /api/activities/springer-flag` (kræver `toggle_springer`, upsert, afvises med 400 hvis perioden er `closed`).
+
+**Permission `toggle_springer`:** gives til ALLE roller (system og ikke-system) ved migrering, jf. beslutning om at åbne den for alle roller for nu.
 
 ---
 
