@@ -202,6 +202,7 @@ async function loadActivities() {
     await Promise.all([
       GET(`/api/activities?period_start=${state.currentPeriodStart}`).then(a => { state.activities = a; }),
       loadHolidaysForPeriod(p.start_date, p.end_date),
+      GET(`/api/activities/springer-flags?pay_period_id=${p.id}`).then(r => { state.springerFlags = r; }),
     ]);
     renderActivitiesTable();
   } catch (e) { toast(e.message, "error"); }
@@ -312,9 +313,20 @@ function renderActivitiesTable() {
     return;
   }
 
+  const canToggleSpringer = state.currentUser?.permissions?.includes("toggle_springer");
+  const periodLocked = p.status === "closed";
+
   for (const emp of emps) {
     const tr = document.createElement("tr");
-    let cells = `<td class="emp-cell" title="${h(emp.name)}">${h(emp.name)}</td>`;
+    const springerChecked = state.springerFlags?.[emp.id] === true;
+    const springerDisabledAttr = (!canToggleSpringer || periodLocked) ? "disabled" : "";
+    let cells = `<td class="emp-cell" title="${h(emp.name)}">
+      ${h(emp.name)}
+      <label class="springer-flag-label">
+        <input type="checkbox" class="springer-flag-checkbox" data-emp-id="${emp.id}"
+          ${springerChecked ? "checked" : ""} ${springerDisabledAttr}> Springertillæg
+      </label>
+    </td>`;
     for (const d of days) {
       const iso = isoOf(d);
       const acts = (byEmpDay[emp.id]?.[iso] || [])
@@ -341,6 +353,25 @@ function renderActivitiesTable() {
       if (e.target.closest(".time-badge")) return;
       openManualActivityModal(parseInt(td.dataset.empId), td.dataset.date);
     });
+  });
+
+  // Springertillæg-flueben
+  body.querySelectorAll(".springer-flag-checkbox").forEach(el => {
+    el.addEventListener("change", async e => {
+      e.stopPropagation();
+      const checked = el.checked;
+      try {
+        await POST("/api/activities/springer-flag", {
+          employee_id: parseInt(el.dataset.empId),
+          pay_period_id: p.id,
+          enabled: checked,
+        });
+      } catch (err) {
+        el.checked = !checked;
+        toast(err.message, "error");
+      }
+    });
+    el.addEventListener("click", e => e.stopPropagation());
   });
 }
 

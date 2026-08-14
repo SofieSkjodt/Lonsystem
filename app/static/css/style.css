@@ -301,6 +301,18 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
   text-overflow: ellipsis;
 }
 .grid-table tbody td.weekend { background: rgba(0,0,0,.03); }
+.springer-flag-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--text-light);
+  margin-top: 2px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.springer-flag-label input[disabled] { cursor: not-allowed; }
 
 .time-badge {
   display: block;
