@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
@@ -155,3 +155,78 @@ def test_calculate_employee_springer_flag_does_not_carry_to_next_period(db, empl
     period2 = get_or_create_period_for_date(date(2026, 1, 15), db)
     calc = _calculate_employee(employee, period2.start_date, period2.end_date, db)
     assert calc["springer_enabled"] is False
+
+
+def test_springer_row_uses_normal_hours_when_enabled():
+    from routers.payroll_router import _springer_row
+    calc = {"normal_hours": 74.0, "springer_enabled": True, "springer_rate": 20.0}
+    assert _springer_row(calc) == ("SPRINGERTILLAEG", 74.0, 20.0)
+
+
+def test_springer_row_zero_when_disabled():
+    from routers.payroll_router import _springer_row
+    calc = {"normal_hours": 74.0, "springer_enabled": False, "springer_rate": 20.0}
+    assert _springer_row(calc) == ("SPRINGERTILLAEG", 0, 20.0)
+
+
+def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_path):
+    from database.models import EmployeeSpringerFlag, MasterSupplementRate, MasterPayType, ActivityStatus
+    from calculators.pay_rates import DANLOEN_CODE_SPRINGERTILLAEG
+    from routers.payroll_router import export_csv_post, ExportCsvRequest
+    from conftest import make_activity
+
+    employee.cvr_number = "13246505"
+    _setup_rates(db, employee)
+    db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("20.00")))
+    db.add(MasterPayType(
+        code_key="SPRINGERTILLAEG", label="Springertillæg", danloen_code=DANLOEN_CODE_SPRINGERTILLAEG,
+        include_in_csv=True, sort_order=16, csv_quantity_type="hours", csv_rate_source="springer",
+        csv_include_rate=True, csv_include_total=False,
+    ))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    db.add(EmployeeSpringerFlag(employee_id=employee.id, pay_period_id=period.id, enabled=True))
+    db.commit()
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    body = ExportCsvRequest(period_start="2026-01-01", output_folder=str(tmp_path))
+    export_csv_post(body, current_user=_dummy_user(), db=db)
+
+    csv_files = list(tmp_path.glob("danloen_*.csv"))
+    assert len(csv_files) == 1
+    content = csv_files[0].read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    # Medarbejderen har kun én aktivitet (8 arbejdstimer, ingen overtid/salt/fravær) – med
+    # flueben sat giver det præcis 2 linjer (NORMAL + SPRINGERTILLAEG), begge med kvantitet 800
+    # (8 timer * 100, jf. fmt()). NORMAL og SPRINGERTILLAEG deler samme placeholder Danløn-kode
+    # ("1"), så linjerne kan ikke skelnes på kolonne C – antallet af linjer er det robuste tjek.
+    assert len(lines) == 2
+    assert all(line.split(";")[3] == "800" for line in lines)
+
+
+def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_path):
+    from database.models import MasterSupplementRate, MasterPayType, ActivityStatus
+    from calculators.pay_rates import DANLOEN_CODE_SPRINGERTILLAEG
+    from routers.payroll_router import export_csv_post, ExportCsvRequest
+    from conftest import make_activity
+
+    employee.cvr_number = "13246505"
+    _setup_rates(db, employee)
+    db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("20.00")))
+    db.add(MasterPayType(
+        code_key="SPRINGERTILLAEG", label="Springertillæg", danloen_code=DANLOEN_CODE_SPRINGERTILLAEG,
+        include_in_csv=True, sort_order=16, csv_quantity_type="hours", csv_rate_source="springer",
+        csv_include_rate=True, csv_include_total=False,
+    ))
+    # Ingen EmployeeSpringerFlag-række oprettet — fluebenet er IKKE sat
+    db.commit()
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    body = ExportCsvRequest(period_start="2026-01-01", output_folder=str(tmp_path))
+    export_csv_post(body, current_user=_dummy_user(), db=db)
+
+    csv_files = list(tmp_path.glob("danloen_*.csv"))
+    content = csv_files[0].read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    assert len(lines) == 1  # kun NORMAL – ingen SPRINGERTILLAEG-linje uden flueben

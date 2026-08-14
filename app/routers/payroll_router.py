@@ -150,6 +150,13 @@ def _user_pay_type_rows(emp_id: int, start: date, end: date, calc: dict, db: Ses
     return result
 
 
+def _springer_row(calc: dict) -> tuple:
+    """CSV-tuple for springertillæg: samme timetal som løntypekode 1 (Normal tid),
+    men kun hvis flaget er sat for medarbejderens periode (calc['springer_enabled'])."""
+    qty = calc["normal_hours"] if calc.get("springer_enabled") else 0
+    return ("SPRINGERTILLAEG", qty, calc.get("springer_rate", 0))
+
+
 def _builtin_absence_qty(pt: dict, key: str, activity_type: str, hours_value: float,
                           emp_id: int, start: date, end: date, db: Session) -> float:
     """Antal for en indbygget fraværs-løntype – bruger stamdatas csv_quantity_type
@@ -789,6 +796,7 @@ def export_csv(period_start: Optional[str] = None,
 
         raw_rows = [
             ("NORMAL",         calc["normal_hours"],                                               calc["hourly_rate"]),
+            _springer_row(calc),
             ("OT_BEFORE",      calc["ot_before_hours"],                                            calc["ot_rates"][OT_BEFORE_KEY]),
             ("OT_13",          calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),               calc["ot_rates"][OT_13_KEY]),
             ("OT_EXTRA",       calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),            calc["ot_rates"][OT_EXTRA_KEY]),
@@ -894,6 +902,7 @@ def export_csv_post(body: ExportCsvRequest,
             continue
         raw_rows = [
             ("NORMAL",         calc["normal_hours"],                                               calc["hourly_rate"]),
+            _springer_row(calc),
             ("OT_BEFORE",      calc["ot_before_hours"],                                            calc["ot_rates"][OT_BEFORE_KEY]),
             ("OT_13",          calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),               calc["ot_rates"][OT_13_KEY]),
             ("OT_EXTRA",       calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),            calc["ot_rates"][OT_EXTRA_KEY]),
