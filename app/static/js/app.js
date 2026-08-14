@@ -44,6 +44,7 @@ const PERMISSION_LABELS = {
   anciennitet_alert:   "Anciennitetsvarsel",
   approve_activities:  "Godkend aktiviteter",
   view_calendar:       "Se aktivitetskalender",
+  manage_employee_supplements: "Administrér medarbejdertillæg",
 };
 
 let manualPauses = [];
