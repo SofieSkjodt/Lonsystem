@@ -230,3 +230,60 @@ def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_pat
     content = csv_files[0].read_text(encoding="utf-8-sig")
     lines = [l for l in content.splitlines() if l]
     assert len(lines) == 1  # kun NORMAL – ingen SPRINGERTILLAEG-linje uden flueben
+
+
+def test_set_springer_flag_creates_row(db, employee):
+    from routers.activities import set_springer_flag, SpringerFlagUpdate
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    body = SpringerFlagUpdate(employee_id=employee.id, pay_period_id=period.id, enabled=True)
+    result = set_springer_flag(body, current_user=_dummy_user(), db=db)
+    assert result["enabled"] is True
+
+    row = db.query(EmployeeSpringerFlag).filter(
+        EmployeeSpringerFlag.employee_id == employee.id,
+        EmployeeSpringerFlag.pay_period_id == period.id,
+    ).first()
+    assert row.enabled is True
+
+
+def test_set_springer_flag_toggles_existing_row(db, employee):
+    from routers.activities import set_springer_flag, SpringerFlagUpdate
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    set_springer_flag(SpringerFlagUpdate(employee_id=employee.id, pay_period_id=period.id, enabled=True),
+                       current_user=_dummy_user(), db=db)
+    result = set_springer_flag(SpringerFlagUpdate(employee_id=employee.id, pay_period_id=period.id, enabled=False),
+                                current_user=_dummy_user(), db=db)
+    assert result["enabled"] is False
+
+    count = db.query(EmployeeSpringerFlag).filter(
+        EmployeeSpringerFlag.employee_id == employee.id,
+        EmployeeSpringerFlag.pay_period_id == period.id,
+    ).count()
+    assert count == 1  # upsert, ikke en ny række
+
+
+def test_set_springer_flag_rejects_closed_period(db, employee):
+    from database.models import PayPeriodStatus
+    from routers.activities import set_springer_flag, SpringerFlagUpdate
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    period.status = PayPeriodStatus.closed
+    db.commit()
+    with pytest.raises(HTTPException):
+        set_springer_flag(SpringerFlagUpdate(employee_id=employee.id, pay_period_id=period.id, enabled=True),
+                           current_user=_dummy_user(), db=db)
+
+
+def test_set_springer_flag_rejects_unknown_period(db, employee):
+    from routers.activities import set_springer_flag, SpringerFlagUpdate
+    with pytest.raises(HTTPException):
+        set_springer_flag(SpringerFlagUpdate(employee_id=employee.id, pay_period_id=999999, enabled=True),
+                           current_user=_dummy_user(), db=db)
+
+
+def test_get_springer_flags_returns_only_enabled(db, employee):
+    from routers.activities import set_springer_flag, get_springer_flags, SpringerFlagUpdate
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    set_springer_flag(SpringerFlagUpdate(employee_id=employee.id, pay_period_id=period.id, enabled=True),
+                       current_user=_dummy_user(), db=db)
+    result = get_springer_flags(pay_period_id=period.id, current_user=_dummy_user(), db=db)
+    assert result == {employee.id: True}

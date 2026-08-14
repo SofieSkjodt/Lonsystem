@@ -10,10 +10,10 @@ from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
-from auth import get_current_user, log_action
+from auth import get_current_user, log_action, require_permission
 from calculators.baseline_updater import update_baseline_from_activity
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
-from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee
+from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee, EmployeeSpringerFlag, PayPeriod, PayPeriodStatus
 from database.schemas import (
     ActivityApprove,
     ActivityCreate,
@@ -25,6 +25,14 @@ from database.schemas import (
 from database.session import get_db
 
 router = APIRouter(prefix="/api/activities", tags=["activities"])
+
+_toggle_springer_access = require_permission("toggle_springer")
+
+
+class SpringerFlagUpdate(BaseModel):
+    employee_id: int
+    pay_period_id: int
+    enabled: bool
 
 _XLSX = Path(__file__).parent.parent / "Fraværstyper.xlsx"
 _LABEL_OVERRIDES = {"Kursus/Skole": "skole_kursus"}
@@ -324,6 +332,46 @@ def period_info(period_start: Optional[str] = None,
         "prev_period_start": prev_start,
         "next_period_start": next_start,
     }
+
+
+@router.get("/springer-flags")
+def get_springer_flags(pay_period_id: int,
+                        current_user: AppUser = Depends(get_current_user),
+                        db: Session = Depends(get_db)):
+    rows = db.query(EmployeeSpringerFlag).filter(
+        EmployeeSpringerFlag.pay_period_id == pay_period_id,
+        EmployeeSpringerFlag.enabled == True,
+    ).all()
+    return {r.employee_id: True for r in rows}
+
+
+@router.post("/springer-flag")
+def set_springer_flag(body: SpringerFlagUpdate,
+                       current_user: AppUser = Depends(_toggle_springer_access),
+                       db: Session = Depends(get_db)):
+    period = db.query(PayPeriod).filter(PayPeriod.id == body.pay_period_id).first()
+    if not period:
+        raise HTTPException(404, "Lønperiode ikke fundet")
+    if period.status == PayPeriodStatus.closed:
+        raise HTTPException(400, "Lønperioden er låst – kan ikke ændres")
+    row = db.query(EmployeeSpringerFlag).filter(
+        EmployeeSpringerFlag.employee_id == body.employee_id,
+        EmployeeSpringerFlag.pay_period_id == body.pay_period_id,
+    ).first()
+    if row:
+        row.enabled = body.enabled
+        row.updated_by = current_user.initials
+    else:
+        row = EmployeeSpringerFlag(
+            employee_id=body.employee_id, pay_period_id=body.pay_period_id,
+            enabled=body.enabled, updated_by=current_user.initials,
+        )
+        db.add(row)
+    db.commit()
+    log_action(db, current_user, "springer_flag_set", "employee_springer_flag", body.employee_id,
+               f"periode {body.pay_period_id}: {'sat' if body.enabled else 'fjernet'}")
+    db.commit()
+    return {"employee_id": body.employee_id, "pay_period_id": body.pay_period_id, "enabled": body.enabled}
 
 
 _EIGHT_WEEKS = 56  # dage
