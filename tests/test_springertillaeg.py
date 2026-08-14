@@ -84,3 +84,30 @@ def test_ensure_springer_pay_type_seeds_rate_and_paytype(db, monkeypatch):
     _ensure_springer_pay_type()
     assert db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "Springertillæg").count() == 1
     assert db.query(MasterPayType).filter(MasterPayType.code_key == "SPRINGERTILLAEG").count() == 1
+
+
+def test_load_springer_rate_from_db_returns_seeded_rate(db):
+    from decimal import Decimal
+    from database.models import MasterSupplementRate
+    from calculators.rates_loader import load_springer_rate_from_db
+    db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("25.50")))
+    db.commit()
+    assert load_springer_rate_from_db(db) == Decimal("25.50")
+
+
+def test_load_springer_rate_from_db_returns_zero_when_missing(db):
+    from decimal import Decimal
+    from calculators.rates_loader import load_springer_rate_from_db
+    assert load_springer_rate_from_db(db) == Decimal("0")
+
+
+def test_resolve_rate_springer_reads_calc_dict():
+    from routers.payroll_router import _resolve_rate
+    calc = {"springer_rate": 25.5, "hourly_rate": 150.0}
+    assert _resolve_rate("springer", calc) == 25.5
+
+
+def test_resolve_rate_springer_defaults_to_zero_when_missing():
+    from routers.payroll_router import _resolve_rate
+    calc = {"hourly_rate": 150.0}
+    assert _resolve_rate("springer", calc) == 0

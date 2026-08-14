@@ -44,6 +44,7 @@ from calculators.rates_loader import (
     load_salt_supplement_rate_from_db,
     load_overnight_rate_from_db,
     load_dagpenge_rate_from_db,
+    load_springer_rate_from_db,
     get_active_supplement_for_period,
 )
 from database.models import Activity, ActivityStatus, Employee, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
@@ -118,6 +119,8 @@ def _resolve_rate(rate_src: str, calc: dict) -> float:
         return float(calc.get("overnight_rate", 0))
     if rate_src == "dagpenge":
         return float(calc.get("dagpenge_sats", 137.43))
+    if rate_src == "springer":
+        return float(calc.get("springer_rate", 0))
     return float(calc["hourly_rate"])
 
 

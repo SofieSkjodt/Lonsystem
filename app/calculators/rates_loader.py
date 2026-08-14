@@ -165,6 +165,12 @@ def load_overnight_rate_from_db(db) -> Decimal:
         return Decimal("0")
 
 
+def load_springer_rate_from_db(db) -> Decimal:
+    from database.models import MasterSupplementRate
+    row = db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "Springertillæg").first()
+    return Decimal(str(row.rate)) if row else Decimal("0")
+
+
 def load_dagpenge_rate_from_db(db) -> Decimal:
     from database.models import MasterSupplementRate
     from calculators.pay_rates import DANLOEN_DAGPENGE_SATS
