@@ -32,10 +32,11 @@ app/
     vehicles.py                # /api/vehicles – alle roller
     import_ddd.py              # /api/import-ddd-from, browse-ddd-* – admin+lonbogholder
     auto_approval_router.py    # POST /api/auto-approval/rebuild-baselines, GET /baseline-summary (manage_baselines perm)
+    employee_supplements.py    # /api/employee-supplements – kr/time-tillæg pr. medarbejder (manage_employee_supplements perm)
   calculators/
     overtime.py                # calculate_overtime() → OvertimeResult
     pay_period.py              # get_or_create_period_for_date(), is_even_week()
-    rates_loader.py            # load_agreement_types/overtime_rates/salt_supplement_rate()
+    rates_loader.py            # load_agreement_types/overtime_rates/salt_supplement_rate(); get_active_supplement_for_period()
     pay_rates.py               # DANLOEN_CODE_* konstanter (NORMAL/OT_*/SALT/AFSPADSERING/SYGDOM/PARAGRAF_56/BARN_1SYGEDAG – "1" placeholder, DB-værdier er authoritative)
     day_type.py                # Dag-klassifikation og lønberegning for lørdage, søndage og helligdage (SH-betaling)
     holidays.py                # easter_date() + danish_holidays(year) – genererer helligdage via Computus
@@ -99,6 +100,17 @@ CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Ligh
 - **PayPeriod**: start_date, end_date, status(open/preview/closed)
 - **Vehicle**: registration_number (nummerplade), vehicle_number (vognnr)
 - **PayrollRun**: pay_period_id, run_type, csv_path, excel_path
+
+### EmployeeSupplement (tabel: employee_supplements)
+| Felt | Type | Bemærk |
+|---|---|---|
+| employee_id | Int FK | |
+| name | String | Altid `"Ikke overenskomstmæssigt tillæg"` – hardcoded server-side, ikke redigerbar |
+| type | String | Altid `"Timebaseret"` – hardcoded server-side |
+| value | Numeric(10,2) | kr/time, skal være > 0, afrundes til 2 decimaler før gemning |
+| start_date / end_date | Date | Gyldighedsperiode – `end_date` default `9999-12-31` (åbentstående) |
+
+Status (Aktiv/Inaktiv) er IKKE lagret – beregnes ved visning ud fra om dags dato ligger i `[start_date, end_date]`. Partielt unikt indeks `uq_employee_supplements_one_open_row` (`employee_id` WHERE `end_date='9999-12-31'`) sikrer kun én åbentstående række pr. medarbejder. Se afsnit "Medarbejdertillæg" nedenfor for livscyklus- og satsopslagsregler.
 
 ### EmployeeBaseline (tabel: employee_baselines)
 | Felt | Type | Bemærk |
@@ -483,6 +495,24 @@ Semantik (v15+): `normal_hours = total_hours` (alle timer efter pausefradrag). O
 `_duration_minutes(a)` i `activities.py` fratrækker `pause_intervals` fra brutto-varighed → bruges til "Sum, effektiv tid" i UI og `is_under_4h`/`is_over_12h`.  
 `_calculate_employee()` i `payroll_router.py` sender pauser til `calculate_overtime()` som `[(datetime, datetime), ...]` → `_subtract_pauses()` fjerner dem fra arbejdsintervallerne FØR timefordeling.  
 Pauser oprettes manuelt via `modal-pause` (kun HH:MM, dato arves fra aktivitetens startdato). Gemt som `[["ISO","ISO"],...]` i `pause_intervals`-kolonnen.
+
+---
+
+## Medarbejdertillæg (2026-08-13, employee_supplements.py + payroll_router.py + absence_overview_router.py)
+
+Individuelt kr/time-tillæg pr. medarbejder oveni overenskomsttypens grundsats, administreret fra et selvstændigt sidebar-punkt "Tillæg" (permission `manage_employee_supplements`).
+
+**Livscyklus** (`_create_supplement()` i `employee_supplements.py`): oprettelse af en ny række lukker automatisk medarbejderens forrige åbentstående række (`end_date` sættes til `ny_start_dato − 1 dag`); ny `start_date` skal være efter den forrige rækkes `start_date`, ellers 400. Ingen PATCH/DELETE – kun oprettelse og `POST /{id}/end` (se nedenfor). Partielt unikt indeks (`uq_employee_supplements_one_open_row`, kun WHERE `end_date='9999-12-31'`) forhindrer to samtidige åbentstående rækker for samme medarbejder; `IntegrityError` oversættes til 409.
+
+**Afslutning af et tillæg** (`POST /api/employee-supplements/{id}/end`): sætter `end_date` til slutdatoen for den lønperiode `date.today()` falder i (`get_or_create_period_for_date()`), IKKE til dags dato selv – tillægget gælder derfor stadig resten af igangværende periode og bortfalder først fra den efterfølgende. Kun muligt på en række der er aktuelt aktiv OG åbentstående.
+
+**Satsopslag** (`get_active_supplement_for_period(db, employee_id, period_start, period_end)` i `calculators/rates_loader.py` – IKKE i `employee_supplements.py`, flyttet dertil for at undgå at et routermodul importerer et andet): finder rækken hvis gyldighedsperiode overlapper den beregnede periode; overlapper flere (nyt tillæg oprettet midt i en periode), vinder rækken med nyeste `start_date` for HELE perioden (ingen dag-for-dag splitning). Gør genberegning af en gammel, afsluttet periode historisk korrekt.
+
+**Integration i lønberegningen**: `payroll_router.py`, `_calculate_employee()` – `hourly_rate` forhøjes med et evt. tillæg umiddelbart efter overenskomstopslaget (linje ~270-276), FØR alle nedstrøms forbrug (normaltid/kode 1, SH-betaling, CSV-rækkerne AFSPADSERING/SYGDOM/BARSEL/SKOLE_KURSUS/FERIEFRI). Samme funktion kaldes fra `absence_overview_router.py`s eget satsopslag, så Fraværsoversigtens viste sats altid stemmer overens med den der reelt udbetales.
+
+**API**: `GET /api/employee-supplements` (filtre `employee_id`/`from`/`to`), `GET /active/{employee_id}` (null hvis intet aktivt), `POST ""` (opret), `POST /{id}/end` (afslut). Alle kræver `manage_employee_supplements`.
+
+**Frontend**: sidebar-punkt "Tillæg" → søgeliste (samme mønster som `employee-search`) → klik åbner `modal-supplement-detail` (IKKE en inline-boks – med ~79 medarbejdere ville en inline-visning lande langt uden for skærmen uden auto-scroll, rettet 2026-08-13) med historik-tabel (`table-layout:fixed`, procent-kolonnebredder, `width:96vw;max-width:1400px` – undgår horisontal scroll uanset antal medarbejdere/kolonneindhold). "+ Tilføj" findes både i sidens toolbar og i detaljemodalens footer (`openAddSupplementFromDetail()` lukker detaljemodalen midlertidigt for at undgå to overlappende `.modal-overlay` med samme z-index, genåbner den efter succesfuld oprettelse). Read-only felt (`emp-active-supplement`) i `modal-employee` under Overenskomsttype, gated bag `data-perm-require="manage_employee_supplements"` og et JS-permission-tjek før fetch (undgår unødvendige 403'ere for brugere uden rettigheden).
 
 ---
 

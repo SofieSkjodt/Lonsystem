@@ -162,6 +162,31 @@ Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `sen
 
 ---
 
+### `employee_supplements` (Medarbejdertillæg)
+
+| Felt | Type | Beskrivelse |
+|------|------|-------------|
+| id | INTEGER PK | Intern ID |
+| employee_id | INTEGER FK | Medarbejder |
+| name | TEXT | Altid "Ikke overenskomstmæssigt tillæg" – hardkodet, ikke redigerbar |
+| type | TEXT | Altid "Timebaseret" – hardkodet |
+| value | NUMERIC(10,2) | kr/time, skal være > 0 |
+| start_date | DATE NOT NULL | Gyldighedsperiodens start (default dags dato ved oprettelse) |
+| end_date | DATE NOT NULL | Gyldighedsperiodens slut (default 9999-12-31 = åbentstående) |
+
+**Regler:**
+- Status (Aktiv/Inaktiv) er IKKE et lagret felt — beregnes ved visning ud fra om dags dato ligger i `[start_date, end_date]`
+- Oprettelse af et nyt tillæg lukker automatisk medarbejderens forrige åbentstående række (`end_date = ny_start_dato − 1 dag`)
+- "Afslut"-handlingen sætter `end_date` til slutdatoen for den lønperiode dags dato falder i (ikke dags dato selv) — tillægget gælder derfor stadig resten af igangværende periode
+- Partielt unikt indeks `uq_employee_supplements_one_open_row` (`employee_id` WHERE `end_date='9999-12-31'`) sikrer kun én åbentstående række pr. medarbejder ad gangen
+- Ved lønberegning: overlapper flere rækker den beregnede periode (nyt tillæg oprettet midt i perioden), vinder rækken med nyeste `start_date` for hele perioden
+- Ingen redigering eller sletning af eksisterende rækker — kun oprettelse af nye og afslutning af den aktive
+- Permission: `manage_employee_supplements`
+
+Se `PAYROLL_RULES.md` og `CODEREF.md` for hvordan tillægget slår igennem i selve lønberegningen.
+
+---
+
 ## Beregningsregler (ikke gemt i DB)
 
 Se `PAYROLL_RULES.md` for detaljerede beregningsregler.

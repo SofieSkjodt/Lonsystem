@@ -60,6 +60,32 @@ overtidstillæggene. Se `docs/OVERTIME_RULES.md` for den fulde, aktuelle model.
 
 ---
 
+## Medarbejdertillæg (individuelt, fra 2026-08-13)
+
+Ud over overenskomsttypens grundsats kan en medarbejder have et individuelt kr/time-tillæg
+("Ikke overenskomstmæssigt tillæg"), administreret under sidebar-punktet "Tillæg" og gemt i
+tabellen `employee_supplements` med en historisk gyldighedsperiode (start-/slutdato).
+
+**Satsopslag ved lønberegning:** for den periode der beregnes, findes det tillæg hvis
+gyldighedsperiode overlapper perioden. Overlapper flere rækker (fordi et nyt tillæg er oprettet
+midt i en periode), bruges rækken med nyeste startdato for HELE perioden — ingen dag-for-dag
+opdeling. Findes intet overlap, bruges kun grundsatsen. Reglen gør samtidig genberegning af en
+gammel, allerede afsluttet periode historisk korrekt.
+
+**Hvor det slår igennem:** tillægget lægges til grundsatsen étsted (`hourly_rate` i
+`_calculate_employee()`), og fordi den variabel allerede bruges alle steder nedstrøms, slår det
+automatisk igennem i: normaltid (kode 1 i CSV'en), søgnehelligdags-betaling, afspadsering,
+sygdom, barsel, skole/kursus, samt i Fraværsoversigtens viste sats (samme funktion genbruges der).
+Det påvirker IKKE de tre overtidstillæg (OT_BEFORE/OT_13/OT_EXTRA) eller salt-/overnatnings-
+tillæggene, som har deres egne, adskilte satser.
+
+**Afslutning af et tillæg:** stopper ikke med øjeblikkelig virkning — det gælder stadig resten af
+den lønperiode hvori afslutningsdatoen falder, og bortfalder først fra den efterfølgende periode.
+
+Se `DATA_MODEL.md` for tabelstruktur og `CODEREF.md` for implementeringsdetaljer.
+
+---
+
 ## Anciennitet
 
 - Beregnes automatisk fra `hire_date`

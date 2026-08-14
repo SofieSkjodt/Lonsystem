@@ -658,6 +658,71 @@ def build_teknisk():
         "today-indikatoren via border-bottom i accentfarven."
     ))
 
+    heading(doc, "Medarbejdertillæg (employee_supplements)", 2, "6.4")
+    body(doc, (
+        "Ud over overenskomsttypens timesats kan hver medarbejder have et individuelt kr/time-tillæg "
+        "('Ikke overenskomstmæssigt tillæg'), historisk sporet i en selvstændig tabel employee_supplements. "
+        "Tabellen administreres fra det selvstændige sidebar-punktet 'Tillæg' (kræver rettigheden "
+        "manage_employee_supplements) og påvirker selve lønberegningen – ikke kun visning."
+    ))
+    header_table(doc,
+        ["Felt", "Type", "Beskrivelse"],
+        [
+            ["employee_id",  "FK → Employee",  "Tilknyttet medarbejder"],
+            ["name",         "String",         "Altid 'Ikke overenskomstmæssigt tillæg' – hardkodet server-side, ikke redigerbar"],
+            ["type",         "String",         "Altid 'Timebaseret' – hardkodet server-side"],
+            ["value",        "Numeric(10,2)",  "Tillæggets værdi i kr/time. Skal være > 0, afrundes til 2 decimaler før gemning"],
+            ["start_date",   "Date",           "Gyldighedsperiodens start – default dags dato ved oprettelse"],
+            ["end_date",     "Date",           "Gyldighedsperiodens slut – default 9999-12-31 (åbentstående)"],
+        ]
+    )
+    body(doc, (
+        "Status (Aktiv/Inaktiv) er IKKE et lagret felt – det beregnes ved hver visning ud fra om "
+        "dags dato ligger i intervallet [start_date, end_date]. Et tillæg med fremtidig startdato "
+        "vises derfor som Inaktiv, indtil startdatoen er nået."
+    ))
+
+    heading(doc, "Livscyklus og satsopslag", 2, "6.4.1")
+    for step in [
+        "Oprettelse (POST /api/employee-supplements): den medarbejders eksisterende åbentstående række (end_date = 9999-12-31) får automatisk sin end_date sat til ny_start_dato − 1 dag, og en ny åbentstående række indsættes. Ny start_date skal være efter den forrige rækkes start_date, ellers afvises oprettelsen.",
+        "Afslutning (POST /api/employee-supplements/{id}/end): sætter IKKE end_date til dags dato, men til slutdatoen for den lønperiode dags dato falder i (get_or_create_period_for_date()). Tillægget gælder derfor stadig resten af den igangværende lønperiode og bortfalder først fra den efterfølgende periode.",
+        "Der findes ingen redigerings- eller sletningsmulighed for eksisterende rækker – kun oprettelse af nye og afslutning af den aktive.",
+        "Et partielt unikt indeks (uq_employee_supplements_one_open_row) sikrer på databaseniveau at en medarbejder kun kan have ÉN åbentstående række ad gangen (WHERE end_date = '9999-12-31') – forhindrer et race condition ved samtidige oprettelser.",
+    ]:
+        bullet(doc, step)
+    body(doc, (
+        "Ved lønberegning slår get_active_supplement_for_period(db, employee_id, periode_start, periode_slut) "
+        "(calculators/rates_loader.py) op efter den række hvis gyldighedsperiode OVERLAPPER den beregnede periode. "
+        "Overlapper flere rækker (fordi et nyt tillæg er oprettet midt i en periode), vinder rækken med nyeste "
+        "start_date – for hele perioden (ingen dag-for-dag splitning). Denne regel gør samtidig en genberegning "
+        "af en gammel, afsluttet periode historisk korrekt: det tillæg der dengang overlappede perioden, ændres "
+        "ikke bagudrettet af senere oprettede tillæg."
+    ))
+    note_box(doc,
+        "hourly_rate forhøjes med tillæggets value umiddelbart efter det almindelige overenskomstopslag i "
+        "_calculate_employee() (payroll_router.py) – ÉN variabel der allerede bruges alle steder nedstrøms "
+        "(normaltid/kode 1, SH-betaling, CSV-rækkerne for AFSPADSERING/SYGDOM/BARSEL/SKOLE_KURSUS m.fl.). "
+        "Samme funktion genbruges af absence_overview_router.py, så Fraværsoversigtens viste sats altid stemmer "
+        "overens med den sats der reelt udbetales i lønkørslen.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "API-endepunkter", 2, "6.4.2")
+    header_table(doc,
+        ["Endepunkt", "Metode", "Beskrivelse"],
+        [
+            ["/api/employee-supplements",              "GET",  "Liste, filtreret på employee_id/from/to (gyldighedsperiode-overlap)."],
+            ["/api/employee-supplements/active/{id}",   "GET",  "Det aktuelt aktive tillæg for én medarbejder, eller null."],
+            ["/api/employee-supplements",               "POST", "Opret nyt tillæg (se livscyklus ovenfor)."],
+            ["/api/employee-supplements/{id}/end",      "POST", "Afslut det aktuelt aktive tillæg fra og med den efterfølgende lønperiode."],
+        ]
+    )
+    body(doc, (
+        "Alle fire endepunkter kræver rettigheden manage_employee_supplements. Medarbejder-modalen "
+        "(fanen 'Medarbejdere') viser tillæggets aktuelle værdi i et read-only felt under Overenskomsttype "
+        "(hentet via GET /active/{id}) – feltet kan ikke redigeres eller udfyldes derfra, kun under fanen 'Tillæg'."
+    ))
+
     # ── 7. Lønkørsel ─────────────────────────────────────────────────────
     doc.add_page_break()
     heading(doc, "Lønkørsel", 1, "7")
@@ -1505,6 +1570,48 @@ def build_bruger():
         "(feltet anciennitet_dismissed_at). Varslet vises ikke igen – uanset computer eller browser. "
         "Hvis overenskomsttypen ændres på medarbejderen, nulstilles afvisningen automatisk, "
         "så varslet kan dukke op igen hvis ancienniteten stadig er relevant."
+    ))
+
+    heading(doc, "Tillæg", 2, "7.4")
+    body(doc, (
+        "Ud over overenskomsttypens timesats kan en medarbejder have et individuelt kr/time-tillæg. "
+        "Klik på 'Tillæg' i venstre menu for at administrere dette (kræver rettigheden 'Administrér "
+        "medarbejdertillæg')."
+    ))
+    for i, step in enumerate([
+        "Søg medarbejderen frem i søgefeltet (navn eller lønnummer).",
+        "Klik på medarbejderen. En boks åbner sig med medarbejderens fulde tillægshistorik: status "
+        "(Aktiv/Inaktiv), lønnummer, tillægsnavn, type, gyldighedsperiode og værdi i kr. Brug 'Fra'/'Til'-"
+        "felterne til at indsnævre visningen til en bestemt periode – lader du dem stå tomme, vises hele "
+        "historikken.",
+        "Klik '+ Tilføj' (enten i boksen eller i toolbaren øverst på siden) for at oprette et nyt tillæg: "
+        "vælg medarbejder (forudvalgt hvis du kom fra dennes boks), startdato (default dags dato) og "
+        "værdi i kr/time. Tillægsnavn og type sættes automatisk og kan ikke ændres.",
+    ], 1):
+        bullet(doc, step, f"Trin {i}: ")
+    note_box(doc,
+        "Når et nyt tillæg oprettes, bliver medarbejderens tidligere tillæg automatisk gjort inaktivt "
+        "fra og med dagen før den nye startdato. Der findes ikke en 'rediger'-funktion – en fejl rettes "
+        "ved at oprette et nyt tillæg med den korrekte værdi.",
+        "GODT AT VIDE"
+    )
+    body(doc, (
+        "Har en medarbejder et aktivt tillæg der ikke længere skal gælde, klik 'Afslut' på den aktive "
+        "række. Tillægget fortsætter med at gælde resten af den igangværende lønperiode og bortfalder "
+        "først fra den efterfølgende periode – det stopper altså ikke med øjeblikkelig virkning midt i "
+        "en periode."
+    ))
+    note_box(doc,
+        "Tillægget lægges automatisk til medarbejderens grundsats i selve lønberegningen – både i "
+        "prøvekørslen, PDF-timesedlerne, Danløn CSV'en (kode 1/normaltid) og i afspadsering, sygdom, "
+        "barsel og skole/kursus. Det kræver ingen særskilt handling ud over at oprette/afslutte "
+        "tillægget her.",
+        "VIGTIGT"
+    )
+    body(doc, (
+        "Findes der et aktivt tillæg på en medarbejder, vises værdien også som et read-only felt under "
+        "Overenskomsttype, når du åbner medarbejderen under fanen 'Medarbejdere'. Feltet kan ikke "
+        "redigeres derfra – kun under fanen 'Tillæg'."
     ))
 
     # ── 8. Helligdagskalender ─────────────────────────────────────────────
