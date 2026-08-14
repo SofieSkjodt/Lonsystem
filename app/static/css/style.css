@@ -304,14 +304,15 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
 .springer-flag-label {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 3px;
   font-weight: 400;
-  font-size: 11px;
+  font-size: 10px;
   color: var(--text-light);
   margin-top: 2px;
   white-space: nowrap;
   cursor: pointer;
 }
+.springer-flag-label input { width: 11px; height: 11px; margin: 0; }
 .springer-flag-label input[disabled] { cursor: not-allowed; }
 
 .time-badge {
