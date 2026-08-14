@@ -383,7 +383,12 @@
       "Bash(powershell -NoProfile -Command \"\\(Get-Process -Id 24312\\).StartTime\")",
       "Bash(powershell -NoProfile -Command \"\\(Get-Process -Id 24312\\).Path\")",
       "Bash(python build_docs.py)",
-      "Bash(where.exe soffice *)"
+      "Bash(where.exe soffice *)",
+      "Bash(python -m pytest ../tests/test_springertillaeg.py -v)",
+      "Bash(python -m pytest ../tests/test_springertillaeg.py::test_ensure_toggle_springer_permission_adds_to_all_roles -v)",
+      "Bash(python -m pytest ../tests/test_springertillaeg.py::test_ensure_springer_pay_type_seeds_rate_and_paytype -v)",
+      "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter \\\\\"ProcessId=24312\\\\\" | Select-Object ProcessId,ParentProcessId,CommandLine,CreationDate | Format-List\")",
+      "Bash(grep -n \"springer-flag-label\" \"$\\(git rev-parse --show-toplevel\\)/app/static/css/style.css\")"
     ]
   }
 }
