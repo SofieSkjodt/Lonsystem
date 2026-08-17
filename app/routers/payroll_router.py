@@ -47,7 +47,7 @@ from calculators.rates_loader import (
     load_springer_rate_from_db,
     get_active_supplement_for_period,
 )
-from database.models import Activity, ActivityStatus, Employee, EmployeeSpringerFlag, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
+from database.models import Activity, ActivityStatus, AgreementKind, Employee, EmployeeSpringerFlag, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
 from database.session import get_db
 
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
@@ -258,6 +258,18 @@ def _split_into_day_pieces(act: Activity) -> list[_DayPiece]:
     return pieces
 
 
+# Medarbejdere med aftalen "timelønnet, ikke fastlagt arbejdstid" (agreement_kind
+# hourly_flexible) har intet dagligt garanteret timetal – i stedet må de arbejde
+# 37 "normal timer" i tidsrummet 06-18 PR. KALENDERUGE (mandag-søndag), hvorefter
+# de næste 5 timer i samme tidsrum udløser OT 1-3-tillæg, og resten Øvrig overtid.
+# Puljerne er ugentlige og deles derfor på tværs af alle dage/vagter i ugen, i
+# modsætning til hourly_fixed, hvor loftet nulstilles hver dag (bekræftet af
+# bruger 2026-08-17). Den ugentlige OT-1-3-pulje er fælles med aften-vinduets
+# (18-21) tillæg, ligesom den daglige pulje er det for hourly_fixed.
+WEEKLY_FLEX_NORMAL_MAX = Decimal("37")
+WEEKLY_FLEX_OT13_MAX = Decimal("5")
+
+
 def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> dict:
     """Beregn timefordeling og kr. for én medarbejder i et datointerval.
     Alle dage i perioden medtages – dage uden aktivitet vises som 0,
@@ -370,6 +382,12 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     overnight_dates = {a.start_time.date() for a in activities if a.activity_type == "overnatning"}
     totals["overnight_count"] = sum(1 for a in activities if a.activity_type == "overnatning")
 
+    # hourly_flexible: 37t normaltid + 5t OT-1-3 er en ugentlig pulje (mandag-søndag),
+    # ikke et dagligt loft – initialiseres her og videreføres/nulstilles i dag-løkken.
+    is_hourly_flexible = emp.agreement_kind == AgreementKind.hourly_flexible
+    week_normal_remaining = WEEKLY_FLEX_NORMAL_MAX
+    week_ot13_remaining = WEEKLY_FLEX_OT13_MAX
+
     # Gennemløb alle dage i perioden
     cur = start
     while cur <= end:
@@ -390,8 +408,15 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         # Normaltids-/OT13-loft deles på tværs af dagens aktiviteter (ikke nulstillet
         # pr. aktivitet), så en dag der er delt i flere godkendte aktiviteter (fx efter
         # split) regnes som ét sammenhængende skift.
-        day_normal_remaining = guaranteed_today
-        day_ot13_remaining = OT_13_MAX
+        if is_hourly_flexible:
+            if cur.weekday() == 0:  # mandag – ny uge, ny 37t/5t-pulje
+                week_normal_remaining = WEEKLY_FLEX_NORMAL_MAX
+                week_ot13_remaining = WEEKLY_FLEX_OT13_MAX
+            day_normal_remaining = week_normal_remaining
+            day_ot13_remaining = week_ot13_remaining
+        else:
+            day_normal_remaining = guaranteed_today
+            day_ot13_remaining = OT_13_MAX
 
         if not acts_today:
             days.append({
@@ -507,6 +532,9 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "vehicle_number": act.vehicle_number or "",
                         "overnight":    overnight_today,
                     })
+        if is_hourly_flexible:
+            week_normal_remaining = day_normal_remaining
+            week_ot13_remaining = day_ot13_remaining
         cur += timedelta(days=1)
 
     has_pending = (
