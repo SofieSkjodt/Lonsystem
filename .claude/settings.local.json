@@ -401,7 +401,10 @@
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" status)",
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" log --oneline -20)",
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff --stat -- app/routers/payroll_router.py)",
-      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff -- backup/backup.log)"
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff -- backup/backup.log)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" status --short)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" show HEAD:app/calculators/overtime.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff --stat -- app/calculators/overtime.py app/routers/payroll_router.py)"
     ]
   }
 }
