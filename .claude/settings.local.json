@@ -388,7 +388,20 @@
       "Bash(python -m pytest ../tests/test_springertillaeg.py::test_ensure_toggle_springer_permission_adds_to_all_roles -v)",
       "Bash(python -m pytest ../tests/test_springertillaeg.py::test_ensure_springer_pay_type_seeds_rate_and_paytype -v)",
       "Bash(powershell -Command \"Get-CimInstance Win32_Process -Filter \\\\\"ProcessId=24312\\\\\" | Select-Object ProcessId,ParentProcessId,CommandLine,CreationDate | Format-List\")",
-      "Bash(grep -n \"springer-flag-label\" \"$\\(git rev-parse --show-toplevel\\)/app/static/css/style.css\")"
+      "Bash(grep -n \"springer-flag-label\" \"$\\(git rev-parse --show-toplevel\\)/app/static/css/style.css\")",
+      "Read(//c/Users/**)",
+      "Read(//c//**)",
+      "Bash(/c/Users/SofieThraneSkjødt/AppData/Local/Programs/Python/Python313/python -c ' *)",
+      "Bash(find \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord\" -iname \"*excel problemer*\" -maxdepth 4 2>/dev/null)",
+      "Bash(\"/c/Users/SofieThraneSkjødt/AppData/Local/Programs/Python/Python313/python\")",
+      "Bash(\"/c/Users/SofieThraneSkjødt/AppData/Local/Programs/Python/Python313/python\" -m pytest _test_overtime.py -q)",
+      "Bash(\"/c/Users/SofieThraneSkjødt/AppData/Local/Programs/Python/Python313/python\" _test_overtime.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" status --short app/routers/payroll_router.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" show HEAD:app/routers/payroll_router.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" status)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" log --oneline -20)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff --stat -- app/routers/payroll_router.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff -- backup/backup.log)"
     ]
   }
 }
