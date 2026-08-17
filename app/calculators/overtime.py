@@ -109,6 +109,7 @@ def calculate_overtime(
     rates: dict | None = None,
     normal_remaining: Decimal | None = None,
     ot13_remaining: Decimal | None = None,
+    next_day_normal_hours: Decimal | None = None,
 ) -> OvertimeResult:
     """
     Beregn timefordelingen for én aktivitet (ét skift).
@@ -120,6 +121,16 @@ def calculate_overtime(
     tidligere aktivitet SAMME dag (når dagen er delt i flere godkendte
     aktiviteter) – uden angivelse startes der forfra fra
     normal_daily_hours/OT_13_MAX.
+    next_day_normal_hours: en vagt der krydser midnat splittes IKKE i separate
+    aktiviteter (bekræftet 2026-07-02), men for medarbejdere med et DAGLIGT
+    loft (hourly_fixed) skal OT-1-3-loftet nulstilles til friske 3 timer ved
+    midnat for HVER kalenderdag, og normaltids-loftet skifter til den nye dags
+    eget garanterede timetal – ellers bliver fx en lørdags-fortsættelse af en
+    fredagsvagt fejlagtigt dækket af fredagens (ubrugte) normaltids-loft, selv
+    om lørdag ikke har noget loft at forbruge (bekræftet af bruger 2026-08-17,
+    jf. Jesper Rosengreen-sagen). Kun angivet af kaldere med et dagligt loft –
+    ved None (fx den ugentlige 37t/5t-pulje for hourly_flexible) bevares det
+    oprindelige loft helt uændret over midnat, som hidtil.
     """
     result = OvertimeResult()
     if rates is None:
@@ -130,10 +141,19 @@ def calculate_overtime(
 
     work_intervals = _subtract_pauses(start, end, pause_intervals or [])
 
+    active_date = start.date()
+
     for seg_start, seg_end in _work_segments(work_intervals):
         duration = Decimal(str((seg_end - seg_start).total_seconds())) / 3600
         if duration <= 0:
             continue
+
+        if seg_start.date() != active_date:
+            active_date = seg_start.date()
+            if next_day_normal_hours is not None:
+                normal_remaining = Decimal(str(next_day_normal_hours))
+                ot13_remaining = OT_13_MAX
+
         result.total_hours += duration
 
         window = _window(seg_start)

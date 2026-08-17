@@ -388,6 +388,14 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     week_normal_remaining = WEEKLY_FLEX_NORMAL_MAX
     week_ot13_remaining = WEEKLY_FLEX_OT13_MAX
 
+    # hourly_fixed: når en vagt krydser midnat, nulstiller calculate_overtime nu
+    # loftet internt til den nye kalenderdags eget loft (se next_day_normal_hours).
+    # Den tilbageværende del af DET loft skal videreføres til næste dags bucket i
+    # denne løkke, så en efterfølgende separat aktivitet SAMME (nye) kalenderdag
+    # ikke fejlagtigt får sit eget friske loft oveni (dobbelt-tælling, fundet i
+    # Anders Gervig Jensen-sagen 2026-08-17).
+    midnight_carry = None
+
     # Gennemløb alle dage i perioden
     cur = start
     while cur <= end:
@@ -414,6 +422,11 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                 week_ot13_remaining = WEEKLY_FLEX_OT13_MAX
             day_normal_remaining = week_normal_remaining
             day_ot13_remaining = week_ot13_remaining
+        elif midnight_carry is not None and midnight_carry[0] == cur:
+            # Gårsdagens vagt krydsede midnat ind i i dag – fortsæt med det loft,
+            # den efterlod, i stedet for at give i dag et helt frisk loft oveni.
+            _, day_normal_remaining, day_ot13_remaining = midnight_carry
+            midnight_carry = None
         else:
             day_normal_remaining = guaranteed_today
             day_ot13_remaining = OT_13_MAX
@@ -479,14 +492,27 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         # Lørdag er ikke længere en særlig dag – den bruger samme
                         # tidsvindues-beregning som en hverdag, med lørdagens egne
                         # garanterede timer (typisk 0) som loft (bekræftet 2026-07-02).
+                        # hourly_fixed har et DAGLIGT loft, så en vagt der krydser
+                        # midnat skal skifte til den nye kalenderdags eget loft (og
+                        # friske 3t OT-1-3) – ellers "arver" fx lørdagens andel af en
+                        # fredagsvagt fejlagtigt fredagens loft (bekræftet 2026-08-17).
+                        # hourly_flexible's ugentlige pulje må IKKE nulstilles ved
+                        # midnat, så next_day_normal_hours udelades for den.
+                        _next_day_normal = (
+                            None if is_hourly_flexible
+                            else _normal_hours_for_day(emp, cur + timedelta(days=1))
+                        )
                         ot = calculate_overtime(
                             act.start_time, act.end_time,
                             guaranteed_today, pauses, ot_rates,
                             normal_remaining=day_normal_remaining,
                             ot13_remaining=day_ot13_remaining,
+                            next_day_normal_hours=_next_day_normal,
                         )
                         day_normal_remaining = ot.normal_remaining_after
                         day_ot13_remaining = ot.ot13_remaining_after
+                        if not is_hourly_flexible and act.end_time.date() != cur:
+                            midnight_carry = (act.end_time.date(), day_normal_remaining, day_ot13_remaining)
                     else:
                         ot = calculate_special_day_overtime(
                             act.start_time, act.end_time,
