@@ -345,16 +345,28 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     # fortsætter uændret hen over midnat, så længe det ikke er brugt op – det
     # håndterer calculate_overtime() automatisk ved at behandle vagten som ét
     # sammenhængende opslag. Kun søndage/helligdage har en loft-uafhængig regel
-    # ("alle kørte timer, uanset tidspunkt"), så en vagt der STARTER på en
-    # søndag/helligdag SKAL splittes ved midnat, så resten af vagten falder
-    # tilbage til den følgende dags egne (loft-baserede) regler.
-    # Bekræftet af bruger 2026-07-02.
+    # ("alle kørte timer, uanset tidspunkt"), så en vagt der STARTER PÅ, eller
+    # STRÆKKER SIG IND I (efter midnat), en søndag/helligdag SKAL splittes ved
+    # midnat, så den del der falder på søndagen/helligdagen får dennes regel,
+    # og resten falder tilbage til de øvrige dages egne (loft-baserede) regler.
+    # Bekræftet af bruger 2026-07-02 (start-tilfældet) og 2026-08-17 (også når
+    # vagten blot krydser ind i søndagen/helligdagen fra en tidligere hverdag/
+    # lørdag – fx en lørdag-nattevagt der fortsætter forbi midnat ind i søndag).
     # Fraværstyper og overnatning er altid ét-dags og splittes aldrig.
+    def _spans_absolute_day(act) -> bool:
+        cur_d = act.start_time.date()
+        end_d = act.end_time.date()
+        while cur_d <= end_d:
+            if classify_day(cur_d, holiday_map) in _ABSOLUTE_DAY_TYPES:
+                return True
+            cur_d += timedelta(days=1)
+        return False
+
     acts_by_date = defaultdict(list)
     for act in activities:
         if act.activity_type == "overnatning" or _ABSENCE_LABELS.get(act.activity_type):
             acts_by_date[act.start_time.date()].append(act)
-        elif classify_day(act.start_time.date(), holiday_map) in _ABSOLUTE_DAY_TYPES:
+        elif _spans_absolute_day(act):
             for piece in _split_into_day_pieces(act):
                 acts_by_date[piece.start_time.date()].append(piece)
         else:

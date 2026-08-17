@@ -404,7 +404,13 @@
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff -- backup/backup.log)",
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" status --short)",
       "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" show HEAD:app/calculators/overtime.py)",
-      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff --stat -- app/calculators/overtime.py app/routers/payroll_router.py)"
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" diff --stat -- app/calculators/overtime.py app/routers/payroll_router.py)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" show -s --format=\"%H %ci\" f8b8d39)",
+      "Bash(git -C \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" show f8b8d39 --stat)",
+      "Bash(mkdir -p \"/c/Users/SOFIET~1/AppData/Local/Temp/claude/C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem/35cb7727-a581-436d-9f71-164a5ba933d0/scratchpad\")",
+      "Bash(python compare_tacho.py)",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\anders_jersild_overview.py\")",
+      "PowerShell(python \"C:\\\\Users\\\\SOFIET~1\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\bb951d14-407a-45b4-8bf4-902620757967\\\\scratchpad\\\\find_affected_by_sunday_fix.py\")"
     ]
   }
 }
