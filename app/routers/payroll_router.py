@@ -884,10 +884,8 @@ def export_csv(period_start: Optional[str] = None,
                 continue
             qty_fmt = fmt(qty)
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
-            if _inc_rate(key) or _inc_tot(key):
-                row.append(fmt(rate) if _inc_rate(key) else "")
-            if _inc_tot(key):
-                row.append(fmt(qty * float(rate)))
+            row.append(fmt(rate) if _inc_rate(key) else "")
+            row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
             row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
@@ -991,10 +989,8 @@ def export_csv_post(body: ExportCsvRequest,
                 continue
             qty_fmt = fmt(qty)
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
-            if _inc_rate(key) or _inc_tot(key):
-                row.append(fmt(rate) if _inc_rate(key) else "")
-            if _inc_tot(key):
-                row.append(fmt(qty * float(rate)))
+            row.append(fmt(rate) if _inc_rate(key) else "")
+            row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
             row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
