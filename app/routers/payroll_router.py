@@ -835,7 +835,7 @@ def export_csv(period_start: Optional[str] = None,
     employees = _active_employees(db)
 
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
+    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
 
     def fmt(v: float) -> str:
         return str(round(v * 100))
@@ -888,11 +888,12 @@ def export_csv(period_start: Optional[str] = None,
                 row.append(fmt(rate) if _inc_rate(key) else "")
             if _inc_tot(key):
                 row.append(fmt(qty * float(rate)))
+            row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
     OUTPUT_DIR.mkdir(exist_ok=True)
-    (OUTPUT_DIR / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+    (OUTPUT_DIR / filename).write_bytes(output.getvalue().encode("utf-8"))
 
     return StreamingResponse(
         iter([output.getvalue()]),
@@ -942,7 +943,7 @@ def export_csv_post(body: ExportCsvRequest,
     employees = _active_employees(db)
 
     output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\n")
+    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
 
     def fmt(v: float) -> str:
         return str(round(v * 100))
@@ -994,6 +995,7 @@ def export_csv_post(body: ExportCsvRequest,
                 row.append(fmt(rate) if _inc_rate(key) else "")
             if _inc_tot(key):
                 row.append(fmt(qty * float(rate)))
+            row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
@@ -1004,7 +1006,7 @@ def export_csv_post(body: ExportCsvRequest,
         import logging; logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
         raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
     try:
-        (save_dir / filename).write_text(output.getvalue(), encoding="utf-8-sig")
+        (save_dir / filename).write_bytes(output.getvalue().encode("utf-8"))
     except PermissionError:
         raise HTTPException(
             400,
