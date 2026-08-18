@@ -886,7 +886,6 @@ def export_csv(period_start: Optional[str] = None,
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
             row.append(fmt(rate) if _inc_rate(key) else "")
             row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
-            row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
@@ -991,7 +990,6 @@ def export_csv_post(body: ExportCsvRequest,
             row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
             row.append(fmt(rate) if _inc_rate(key) else "")
             row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
-            row.append("")  # afsluttende ";" på hver linje (matcher Tacholøn-formatet)
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
