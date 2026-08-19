@@ -54,6 +54,7 @@ def init_db():
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
     _ensure_springer_pay_type()
+    _ensure_feriefri_fuldloennet_pay_type()
     _migrate_dispatcher_groups()
 
 
@@ -394,6 +395,28 @@ def _ensure_springer_pay_type():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved seeding af Springertillæg: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_feriefri_fuldloennet_pay_type():
+    """Seeder FERIEFRI_FULDLOENNET-løntypekode til eksisterende databaser (idempotent)."""
+    from database.models import MasterPayType
+    from calculators.pay_rates import DANLOEN_CODE_FERIEFRI_FULDLOENNET
+    db = SessionLocal()
+    try:
+        if not db.query(MasterPayType).filter(MasterPayType.code_key == "FERIEFRI_FULDLOENNET").first():
+            db.add(MasterPayType(
+                code_key="FERIEFRI_FULDLOENNET", label="Feriefri fuldlønnet",
+                danloen_code=DANLOEN_CODE_FERIEFRI_FULDLOENNET,
+                include_in_csv=True, sort_order=17,
+                csv_quantity_type="hours", csv_rate_source="hourly",
+                csv_include_rate=True, csv_include_total=False,
+            ))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved seeding af FERIEFRI_FULDLOENNET-løntypekode: {e}")
     finally:
         db.close()
 

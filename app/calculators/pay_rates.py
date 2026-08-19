@@ -17,6 +17,7 @@ DANLOEN_CODE_SALT = "1"  # Danløn-kode for salttillæg – oplyses af lønafdel
 DANLOEN_CODE_AFSPADSERING = "1"  # Danløn-kode for afspadsering – oplyses af lønafdelingen
 DANLOEN_CODE_SYGDOM    = "1"     # Danløn-kode for sygdom – oplyses af lønafdelingen
 DANLOEN_CODE_FERIEFRI  = "1"    # Danløn-kode for feriefri – oplyses af lønafdelingen
+DANLOEN_CODE_FERIEFRI_FULDLOENNET = "5"  # Danløn-kode for feriefri timer (fuldlønnede)
 DANLOEN_CODE_BARSEL        = "1"    # Danløn-kode for barsel – oplyses af lønafdelingen
 DANLOEN_CODE_SKOLE_KURSUS  = "1"    # Danløn-kode for kursus/skole – oplyses af lønafdelingen
 DANLOEN_CODE_OVERNATNING   = "1"    # Danløn-kode for overnatning – oplyses af lønafdelingen
