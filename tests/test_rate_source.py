@@ -96,3 +96,71 @@ def test_calculate_employee_exposes_rate_dicts_by_id(db, employee):
 
     assert calc["ot_rates_by_id"][ot.id] == pytest.approx(44.54)
     assert calc["supplement_rates_by_id"][supp.id] == pytest.approx(597.00)
+
+
+from fastapi import HTTPException
+
+from routers.stamdata import delete_overtime_rate, delete_supplement
+from database.models import AppUser, MasterPayType
+
+
+def _dummy_user():
+    """Ugemt AppUser til at kalde route-funktioner direkte i tests uden en
+    rigtig session — samme mønster som i tests/test_springertillaeg.py."""
+    return AppUser(name="Test", initials="TST", role="admin", password_hash="x")
+
+
+def test_delete_overtime_rate_blocked_when_referenced_by_pay_type(db):
+    ot = MasterOvertimeRate(label="Ekstra overtid", rate=Decimal("50.00"), is_user_created=True)
+    db.add(ot)
+    db.commit()
+    db.refresh(ot)
+    db.add(MasterPayType(
+        code_key="TEST_TYPE", label="Testtype", csv_rate_source=f"overtime:{ot.id}",
+        is_user_created=True,
+    ))
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        delete_overtime_rate(ot.id, current_user=_dummy_user(), db=db)
+    assert exc_info.value.status_code == 400
+    assert "Testtype" in exc_info.value.detail
+
+
+def test_delete_overtime_rate_allowed_when_not_referenced(db):
+    ot = MasterOvertimeRate(label="Ubrugt overtid", rate=Decimal("50.00"), is_user_created=True)
+    db.add(ot)
+    db.commit()
+    db.refresh(ot)
+
+    delete_overtime_rate(ot.id, current_user=_dummy_user(), db=db)
+
+    assert db.query(MasterOvertimeRate).filter(MasterOvertimeRate.id == ot.id).first() is None
+
+
+def test_delete_supplement_blocked_when_referenced_by_pay_type(db):
+    supp = MasterSupplementRate(label="Ekstra tillæg", rate=Decimal("30.00"), is_user_created=True)
+    db.add(supp)
+    db.commit()
+    db.refresh(supp)
+    db.add(MasterPayType(
+        code_key="TEST_TYPE2", label="Testtype 2", csv_rate_source=f"supplement:{supp.id}",
+        is_user_created=True,
+    ))
+    db.commit()
+
+    with pytest.raises(HTTPException) as exc_info:
+        delete_supplement(supp.id, current_user=_dummy_user(), db=db)
+    assert exc_info.value.status_code == 400
+    assert "Testtype 2" in exc_info.value.detail
+
+
+def test_delete_supplement_allowed_when_not_referenced(db):
+    supp = MasterSupplementRate(label="Ubrugt tillæg", rate=Decimal("30.00"), is_user_created=True)
+    db.add(supp)
+    db.commit()
+    db.refresh(supp)
+
+    delete_supplement(supp.id, current_user=_dummy_user(), db=db)
+
+    assert db.query(MasterSupplementRate).filter(MasterSupplementRate.id == supp.id).first() is None

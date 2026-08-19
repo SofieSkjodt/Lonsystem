@@ -194,6 +194,9 @@ def delete_overtime_rate(
         raise HTTPException(404, "Ikke fundet")
     if not row.is_user_created:
         raise HTTPException(400, "Systemsatser kan ikke slettes")
+    in_use = db.query(MasterPayType).filter(MasterPayType.csv_rate_source == f"overtime:{rate_id}").first()
+    if in_use:
+        raise HTTPException(400, f"Kan ikke slettes – bruges som sats-kilde af løntypekoden '{in_use.label}'")
     log_action(db, current_user, "stamdata_delete", "overtime_rate", row.id,
                f"Slettet overtidssats: {row.label}")
     db.delete(row)
@@ -262,6 +265,9 @@ def delete_supplement(
         raise HTTPException(404, "Ikke fundet")
     if not row.is_user_created:
         raise HTTPException(400, "Systemtillæg kan ikke slettes")
+    in_use = db.query(MasterPayType).filter(MasterPayType.csv_rate_source == f"supplement:{supplement_id}").first()
+    if in_use:
+        raise HTTPException(400, f"Kan ikke slettes – bruges som sats-kilde af løntypekoden '{in_use.label}'")
     log_action(db, current_user, "stamdata_delete", "supplement_rate", row.id,
                f"Slettet tillæg: {row.label}")
     db.delete(row)
