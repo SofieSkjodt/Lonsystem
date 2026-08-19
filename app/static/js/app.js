@@ -3517,6 +3517,7 @@ async function loadStamdataOvertimeRates() {
   tbody.innerHTML = `<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>`;
   try {
     const rows = await GET("/api/stamdata/overtime-rates");
+    state.stamdataOvertimeRates = rows;
     tbody.innerHTML = rows.map((r, i) => `
       <tr style="border-bottom:1px solid var(--border);background:${i % 2 === 0 ? "#fff" : "var(--bg)"}">
         <td style="padding:10px 14px">${h(r.label)}</td>
@@ -3539,6 +3540,7 @@ async function loadStamdataSupplements() {
   tbody.innerHTML = `<tr><td colspan="3" style="padding:20px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>`;
   try {
     const rows = await GET("/api/stamdata/supplements");
+    state.stamdataSupplements = rows;
     tbody.innerHTML = rows.map((r, i) => `
       <tr style="border-bottom:1px solid var(--border);background:${i % 2 === 0 ? "#fff" : "var(--bg)"}">
         <td style="padding:10px 14px">${h(r.label)}</td>
@@ -3555,11 +3557,16 @@ async function loadStamdataSupplements() {
   }
 }
 
-const _RATE_SRC_LABELS = {
-  hourly: "Timesats", ot_before: "OT 1t før", ot_13: "OT 1-3t",
-  ot_extra: "Øvrig OT", salt: "Salt", overnight: "Overnatning", dagpenge: "Dagpenge §56",
-  springer: "Springertillæg",
-};
+function _rateSourceLabel(rateSrc) {
+  if (!rateSrc || rateSrc === "hourly") return "Timesats";
+  const sepIdx = rateSrc.indexOf(":");
+  if (sepIdx === -1) return rateSrc; // gammel fast værdi (ikke migreret, eller ukendt) – vis rå streng
+  const kind = rateSrc.slice(0, sepIdx);
+  const id = parseInt(rateSrc.slice(sepIdx + 1));
+  const list = kind === "overtime" ? state.stamdataOvertimeRates : state.stamdataSupplements;
+  const row = list?.find(r => r.id === id);
+  return row ? row.label : rateSrc;
+}
 
 async function loadStamdataPayTypes() {
   const tbody = document.getElementById("stamdata-paytype-tbody");
@@ -3572,7 +3579,7 @@ async function loadStamdataPayTypes() {
         ? `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#d4edcc;color:#317423">${yes}</span>`
         : `<span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600;background:#fee2e2;color:#b71c1c">${no}</span>`;
       const qtyLabel = r.csv_quantity_type === "count" ? "Antal" : "Timer";
-      const rateLabel = _RATE_SRC_LABELS[r.csv_rate_source] || r.csv_rate_source;
+      const rateLabel = _rateSourceLabel(r.csv_rate_source);
       return `
       <tr style="border-bottom:1px solid var(--border);background:${i % 2 === 0 ? "#fff" : "var(--bg)"}">
         <td style="padding:10px 14px">${h(r.label)}</td>
@@ -3658,13 +3665,31 @@ async function confirmStamdataRate() {
   } catch (e) { toast(e.message, "error"); }
 }
 
+function _buildRateSourceOptions(selectId, selectedValue) {
+  const sel = document.getElementById(selectId);
+  if (!sel) return;
+  let optionsHtml = `<option value="hourly">Timesats (overenskomst)</option>`;
+  if (state.stamdataOvertimeRates?.length) {
+    optionsHtml += `<optgroup label="Overtidssatser">` +
+      state.stamdataOvertimeRates.map(r => `<option value="overtime:${r.id}">${h(r.label)}</option>`).join("") +
+      `</optgroup>`;
+  }
+  if (state.stamdataSupplements?.length) {
+    optionsHtml += `<optgroup label="Tillæg">` +
+      state.stamdataSupplements.map(r => `<option value="supplement:${r.id}">${h(r.label)}</option>`).join("") +
+      `</optgroup>`;
+  }
+  sel.innerHTML = optionsHtml;
+  sel.value = selectedValue || "hourly";
+}
+
 function openStamdataPayTypeModal(id, label, code, inCsv, qtyType, rateSrc, incRate, incTotal) {
   document.getElementById("stamdata-paytype-id").value = id;
   document.getElementById("stamdata-paytype-label").value = label || "";
   document.getElementById("stamdata-paytype-code").value = code || "";
   document.getElementById("stamdata-paytype-incsv").checked = !!inCsv;
   document.getElementById("stamdata-paytype-qtytype").value = qtyType || "hours";
-  document.getElementById("stamdata-paytype-ratesrc").value = rateSrc || "hourly";
+  _buildRateSourceOptions("stamdata-paytype-ratesrc", rateSrc);
   document.getElementById("stamdata-paytype-incrate").checked = incRate !== false;
   document.getElementById("stamdata-paytype-inctotal").checked = !!incTotal;
   openModal("modal-stamdata-paytype");
@@ -3735,7 +3760,7 @@ function openNewPayTypeModal() {
   document.getElementById("new-paytype-code").value  = "";
   document.getElementById("new-paytype-incsv").checked = true;
   document.getElementById("new-paytype-qtytype").value = "hours";
-  document.getElementById("new-paytype-ratesrc").value = "hourly";
+  _buildRateSourceOptions("new-paytype-ratesrc", "hourly");
   document.getElementById("new-paytype-incrate").checked = true;
   document.getElementById("new-paytype-inctotal").checked = false;
   openModal("modal-stamdata-new-paytype");
