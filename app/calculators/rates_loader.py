@@ -180,6 +180,14 @@ def load_dagpenge_rate_from_db(db) -> Decimal:
     return DANLOEN_DAGPENGE_SATS
 
 
+def load_dob_overnight_rate_from_db(db) -> Decimal:
+    """DOB-overnatningens tillægssats – brugeroprettet via Stamdata → Tillæg,
+    intet Excel-fallback (i modsætning til load_overnight_rate_from_db)."""
+    from database.models import MasterSupplementRate
+    row = db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "DOB_overnatning").first()
+    return Decimal(str(row.rate)) if row else Decimal("0")
+
+
 def load_overtime_rates_by_id_from_db(db) -> dict[int, Decimal]:
     """Alle overtidssatser nøglet på id (ikke kun de tre faste) — bruges af
     _resolve_rate() til at slå brugerdefinerede sats-kilder op dynamisk."""
