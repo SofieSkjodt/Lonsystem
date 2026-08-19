@@ -141,6 +141,28 @@ def _migrate():
         )
         conn.commit()
 
+        # Migrer eksisterende faste sats-kilde-værdier til det nye id-baserede skema
+        # (overtime:<id> / supplement:<id>) – idempotent, rammer kun rækker der
+        # stadig har en af de gamle faste værdier.
+        _legacy_rate_src_map = {
+            "ot_before": ("master_overtime_rates", "Overtid 1 time før"),
+            "ot_13": ("master_overtime_rates", "Overtid 1-3 timer efter"),
+            "ot_extra": ("master_overtime_rates", "Øvrigt overtid"),
+            "salt": ("master_supplement_rates", "Salttillæg"),
+            "overnight": ("master_supplement_rates", "Overnatning"),
+            "dagpenge": ("master_supplement_rates", "Dagpenge §56"),
+            "springer": ("master_supplement_rates", "Springertillæg"),
+        }
+        for old_value, (table, label) in _legacy_rate_src_map.items():
+            found = conn.execute(f"SELECT id FROM {table} WHERE label = ?", (label,)).fetchone()
+            if found:
+                prefix = "overtime" if table == "master_overtime_rates" else "supplement"
+                conn.execute(
+                    "UPDATE master_pay_types SET csv_rate_source = ? WHERE csv_rate_source = ?",
+                    (f"{prefix}:{found[0]}", old_value),
+                )
+        conn.commit()
+
 
 def _seed_roles():
     from database.models import Role

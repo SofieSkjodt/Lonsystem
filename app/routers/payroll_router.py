@@ -45,6 +45,8 @@ from calculators.rates_loader import (
     load_overnight_rate_from_db,
     load_dagpenge_rate_from_db,
     load_springer_rate_from_db,
+    load_overtime_rates_by_id_from_db,
+    load_supplement_rates_by_id_from_db,
     get_active_supplement_for_period,
 )
 from database.models import Activity, ActivityStatus, AgreementKind, Employee, EmployeeSpringerFlag, Holiday, MasterCvrNumber, PayPeriod, PayPeriodStatus
@@ -107,6 +109,13 @@ def _get_pay_type_data(db: Session) -> dict:
 
 def _resolve_rate(rate_src: str, calc: dict) -> float:
     """Opslår en sats fra calc-dict baseret på rate_src-streng."""
+    if rate_src.startswith("overtime:"):
+        rid = int(rate_src.split(":", 1)[1])
+        return float(calc.get("ot_rates_by_id", {}).get(rid, 0))
+    if rate_src.startswith("supplement:"):
+        rid = int(rate_src.split(":", 1)[1])
+        return float(calc.get("supplement_rates_by_id", {}).get(rid, 0))
+    # Gamle faste værdier – bevaret som sikkerhedsnet efter migrationen til id-baserede referencer.
     if rate_src == "ot_before":
         return float(calc["ot_rates"][OT_BEFORE_KEY])
     if rate_src == "ot_13":
@@ -301,6 +310,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     overnight_rate = load_overnight_rate_from_db(db)
     dagpenge_sats = load_dagpenge_rate_from_db(db)
     springer_rate = load_springer_rate_from_db(db)
+    ot_rates_by_id = load_overtime_rates_by_id_from_db(db)
+    supplement_rates_by_id = load_supplement_rates_by_id_from_db(db)
     _springer_period = get_or_create_period_for_date(start, db)
     springer_enabled = db.query(EmployeeSpringerFlag).filter(
         EmployeeSpringerFlag.employee_id == emp.id,
@@ -598,6 +609,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         "hourly_rate":        float(hourly_rate),
         "salt_rate":          float(salt_rate),
         "ot_rates":           {k: float(v) for k, v in ot_rates.items()},
+        "ot_rates_by_id":     {k: float(v) for k, v in ot_rates_by_id.items()},
+        "supplement_rates_by_id": {k: float(v) for k, v in supplement_rates_by_id.items()},
         "days":               days,
         "normal_hours":       float(_round2(totals["normal"])),
         "ot_before_hours":    float(_round2(totals["ot_before"])),

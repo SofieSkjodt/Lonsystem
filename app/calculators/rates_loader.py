@@ -180,6 +180,20 @@ def load_dagpenge_rate_from_db(db) -> Decimal:
     return DANLOEN_DAGPENGE_SATS
 
 
+def load_overtime_rates_by_id_from_db(db) -> dict[int, Decimal]:
+    """Alle overtidssatser nøglet på id (ikke kun de tre faste) — bruges af
+    _resolve_rate() til at slå brugerdefinerede sats-kilder op dynamisk."""
+    from database.models import MasterOvertimeRate
+    return {r.id: Decimal(str(r.rate)) for r in db.query(MasterOvertimeRate).all()}
+
+
+def load_supplement_rates_by_id_from_db(db) -> dict[int, Decimal]:
+    """Alle tillægssatser nøglet på id (ikke kun de fast navngivne) — bruges af
+    _resolve_rate() til at slå brugerdefinerede sats-kilder op dynamisk."""
+    from database.models import MasterSupplementRate
+    return {r.id: Decimal(str(r.rate)) for r in db.query(MasterSupplementRate).all()}
+
+
 def seniority_variant_exists_from_db(db, agreement_type: str) -> str | None:
     types = load_agreement_types_from_db(db)
     candidate = f"{agreement_type}. 9 mdr anciennitet"
