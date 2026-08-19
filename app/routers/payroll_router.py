@@ -881,13 +881,21 @@ def export_csv(period_start: Optional[str] = None,
             ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
             ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
         ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
+        code_agg = {}
         for key, qty, rate in raw_rows:
             if not _in_csv(key) or qty == 0:
                 continue
+            code = _code(key)
+            if code in code_agg:
+                prev_qty, prev_rate, prev_inc_rate, prev_inc_tot = code_agg[code]
+                code_agg[code] = (prev_qty + qty, prev_rate, prev_inc_rate, prev_inc_tot)
+            else:
+                code_agg[code] = (qty, rate, _inc_rate(key), _inc_tot(key))
+        for code, (qty, rate, inc_rate, inc_tot) in code_agg.items():
             qty_fmt = fmt(qty)
-            row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
-            row.append(fmt(rate) if _inc_rate(key) else "")
-            row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
+            row = [_get_employee_cvr(emp, db), calc["employee_number"], code, qty_fmt]
+            row.append(fmt(rate) if inc_rate else "")
+            row.append(fmt(qty * float(rate)) if inc_tot else "")
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
@@ -987,13 +995,21 @@ def export_csv_post(body: ExportCsvRequest,
             ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
             ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
         ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
+        code_agg = {}
         for key, qty, rate in raw_rows:
             if not _in_csv(key) or qty == 0:
                 continue
+            code = _code(key)
+            if code in code_agg:
+                prev_qty, prev_rate, prev_inc_rate, prev_inc_tot = code_agg[code]
+                code_agg[code] = (prev_qty + qty, prev_rate, prev_inc_rate, prev_inc_tot)
+            else:
+                code_agg[code] = (qty, rate, _inc_rate(key), _inc_tot(key))
+        for code, (qty, rate, inc_rate, inc_tot) in code_agg.items():
             qty_fmt = fmt(qty)
-            row = [_get_employee_cvr(emp, db), calc["employee_number"], _code(key), qty_fmt]
-            row.append(fmt(rate) if _inc_rate(key) else "")
-            row.append(fmt(qty * float(rate)) if _inc_tot(key) else "")
+            row = [_get_employee_cvr(emp, db), calc["employee_number"], code, qty_fmt]
+            row.append(fmt(rate) if inc_rate else "")
+            row.append(fmt(qty * float(rate)) if inc_tot else "")
             writer.writerow(row)
 
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
