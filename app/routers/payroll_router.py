@@ -773,6 +773,12 @@ def _build_proevekoersel_workbook(employees, period, db):
                        "", "", "", "", "", "", "", "", "", "", round(on_kr, 2)])
             for cell in ws[ws.max_row]:
                 cell.font = bold
+        dob_on_kr = calc.get("dob_overnight_kr", 0.0)
+        if dob_on_kr > 0:
+            ws.append([calc["employee_name"], calc["employee_number"], "", "DOB Overnatning (kr.)",
+                       "", "", "", "", "", "", "", "", "", "", round(dob_on_kr, 2)])
+            for cell in ws[ws.max_row]:
+                cell.font = bold
         ws.append([])
 
     for col in "ABCDEFGHIJKLMNO":

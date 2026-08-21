@@ -165,3 +165,21 @@ def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, t
     assert code14_line.split(";")[3] == "100"  # 1 stk * 100 (fmt() ganger med 100)
     assert code43_line.split(";")[3] == "100"
     assert code43_line.split(";")[4] == "59700"  # 597,00 kr * 100
+
+
+def test_proevekoersel_workbook_includes_dob_overnight_row(db, employee):
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_router import _build_proevekoersel_workbook
+    from conftest import make_activity
+
+    _setup_rates(db, employee)
+    period = get_or_create_period_for_date(date(2026, 8, 20), db)
+    midnight = datetime(2026, 8, 20, 0, 0, 0)
+    make_activity(db, employee, midnight, midnight, activity_type="dob_overnatning",
+                  status=ActivityStatus.approved)
+
+    wb = _build_proevekoersel_workbook([employee], period, db)
+    ws = wb.active
+    labels = [row[3] for row in ws.iter_rows(values_only=True) if row[3]]
+    assert "DOB Overnatning (kr.)" in labels
