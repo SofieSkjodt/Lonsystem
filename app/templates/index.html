@@ -93,6 +93,9 @@
       <div class="sidebar-item" data-view="absence-overview" data-perm-require="absence_overview">
         <span class="icon">📅</span> Fraværsoversigt
       </div>
+      <div class="sidebar-item" data-view="vagtplan" data-perm-require="vagtplan_view">
+        <span class="icon">🗓️</span> Vagtplan
+      </div>
     </div>
     <div class="sidebar-section">
       <div class="sidebar-label">Registre</div>
@@ -200,6 +203,32 @@
         <button class="btn btn-secondary" onclick="exportAbsencePerType()">&#128202; Eksporter per fraværstype</button>
       </div>
       <div id="absence-overview-container"></div>
+    </div>
+
+    <!-- ══════════════ VAGTPLAN VIEW ══════════════ -->
+    <div class="view hidden" data-view="vagtplan">
+      <div class="period-bar">
+        <button id="btn-prev-vagtplan" class="period-nav-btn" title="Forrige 4 uger">&#8249;</button>
+        <span id="vagtplan-period-label" class="period-label">Indlæser...</span>
+        <button id="btn-vagtplan-today" class="btn btn-secondary" style="margin:0 8px">I dag</button>
+        <button id="btn-next-vagtplan" class="period-nav-btn" title="Næste 4 uger">&#8250;</button>
+      </div>
+      <div class="toolbar">
+        <select id="vagtplan-filter-employee" style="width:200px">
+          <option value="">Alle medarbejdere</option>
+        </select>
+        <div id="vagtplan-group-filter" style="position:relative"></div>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="openVagtplanTomorrowModal()">&#128197; Fravær i morgen</button>
+      </div>
+      <div class="table-wrapper">
+        <table class="grid-table" id="vagtplan-grid-table">
+          <thead id="vagtplan-grid-head"></thead>
+          <tbody id="vagtplan-grid-body">
+            <tr><td style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
 
     <!-- ══════════════ IMPORT VIEW ══════════════ -->

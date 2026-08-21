@@ -27,6 +27,12 @@ const state = {
   usersAdminTab: "users",  // aktiv fane i users-admin view
   holidays: [],            // { date: "YYYY-MM-DD", name: string, half_day_from: string|null }
   dispatcherGroups: [],    // { id, name, description }
+  vagtplan: {
+    weekStart: null,       // ISO date (Monday) of the first of the 4 displayed weeks
+    activities: [],
+    comments: [],
+    groupFilterIds: null,  // null = alle grupper; annet: array of selected dispatcher_group ids
+  },
 };
 
 const PERMISSION_LABELS = {
@@ -46,6 +52,9 @@ const PERMISSION_LABELS = {
   view_calendar:       "Se aktivitetskalender",
   manage_employee_supplements: "Administrér medarbejdertillæg",
   toggle_springer:     "Sæt springertillæg",
+  vagtplan_view:       "Se vagtplan",
+  vagtplan_edit_own:   "Redigér egen linje i vagtplan",
+  vagtplan_edit_all:   "Redigér alle linjer i vagtplan",
 };
 
 let manualPauses = [];
@@ -119,6 +128,11 @@ function setView(view) {
   if (view === "employee-supplements") loadEmployeeSupplementsView();
   if (view === "users-admin")       loadUsersAdminView();
   if (view === "stamdata")          loadStamdata();
+  if (view === "vagtplan")          loadVagtplan();
+}
+
+async function loadVagtplan() {
+  // Implementeres fuldt i Task 8
 }
 
 // ── Period navigation ──────────────────────────────────────────────────────
