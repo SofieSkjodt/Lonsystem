@@ -300,7 +300,7 @@ function renderActivitiesTable() {
   }
 
   // Rækker: medarbejdere (filtreret hvis valgt), sorteret efter navn
-  let emps = state.employees.filter(e => e.active);
+  let emps = state.employees.filter(e => e.active && _empHasVisibleGroup(e));
   if (groupFilter) emps = emps.filter(e => _empInGroup(e, groupFilter));
   if (empFilter) emps = emps.filter(e => e.id === parseInt(empFilter));
   emps.sort((x, y) => x.name.localeCompare(y.name, "da"));
@@ -4306,22 +4306,31 @@ function _empInGroup(emp, groupId) {
   return (emp.dispatcher_groups || []).some(g => String(g.id) === String(groupId));
 }
 
+function _empHasVisibleGroup(emp) {
+  const visibleIds = new Set(
+    (state.dispatcherGroups || [])
+      .filter(g => g.visible_in_activity_overview)
+      .map(g => String(g.id))
+  );
+  return (emp.dispatcher_groups || []).some(g => visibleIds.has(String(g.id)));
+}
+
 function fillDispatcherGroupFilter() {
   const sel = document.getElementById("filter-dispatcher-group");
   if (!sel) return;
   const cur = sel.value;
+  const visibleGroups = state.dispatcherGroups.filter(g => g.visible_in_activity_overview);
   sel.innerHTML = `<option value="">Alle afdelinger</option>` +
-    state.dispatcherGroups.map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
-  if (state.dispatcherGroups.find(g => String(g.id) === cur)) sel.value = cur;
+    visibleGroups.map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
+  if (visibleGroups.find(g => String(g.id) === cur)) sel.value = cur;
 }
 
 function fillEmployeeFilter() {
   const sel = document.getElementById("filter-employee");
   const cur = sel.value;
   const groupFilter = document.getElementById("filter-dispatcher-group")?.value || "";
-  const visible = groupFilter
-    ? state.employees.filter(e => _empInGroup(e, groupFilter))
-    : state.employees;
+  let visible = state.employees.filter(e => _empHasVisibleGroup(e));
+  if (groupFilter) visible = visible.filter(e => _empInGroup(e, groupFilter));
   const placeholder = groupFilter ? "Alle i afdelingen" : "Alle medarbejdere";
   sel.innerHTML = `<option value="">${placeholder}</option>` +
     visible.slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
