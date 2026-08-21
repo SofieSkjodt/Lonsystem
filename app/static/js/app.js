@@ -1170,6 +1170,10 @@ async function modalDeactivate() {
 
 function openDeactivateModal() {
   document.getElementById("deactivate-comment").value = "";
+  document.getElementById("deactivate-hide-vagtplan").checked = false;
+  const a = _findLoadedActivity(state.selectedActivityId);
+  document.getElementById("deactivate-hide-vagtplan-group").style.display =
+    (a && a.source === "vagtplan") ? "" : "none";
   const lbl = document.getElementById("deactivate-user-label");
   if (lbl) lbl.textContent = state.currentUser ? `Deaktiveres af: ${state.currentUser.name} (${state.currentUser.initials})` : "";
   openModal("modal-deactivate");
@@ -1177,12 +1181,19 @@ function openDeactivateModal() {
 
 async function confirmDeactivate() {
   const comment = document.getElementById("deactivate-comment").value.trim();
+  const hideFromVagtplan = document.getElementById("deactivate-hide-vagtplan").checked;
   try {
     const updated = await POST(`/api/activities/${state.selectedActivityId}/deactivate`,
       { comment: comment || null });
+    applyActivityLocally(updated);
+    if (hideFromVagtplan) {
+      await POST(`/api/activities/${state.selectedActivityId}/hide-from-vagtplan`, { hidden: true });
+      const vIdx = state.vagtplan.activities.findIndex(x => x.id === state.selectedActivityId);
+      if (vIdx !== -1) state.vagtplan.activities.splice(vIdx, 1);
+      if (state.currentView === "vagtplan") renderVagtplanTable();
+    }
     toast("Aktivitet deaktiveret");
     closeAllModals();
-    applyActivityLocally(updated);
     refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
