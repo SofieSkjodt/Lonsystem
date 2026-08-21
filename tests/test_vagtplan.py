@@ -208,3 +208,36 @@ def test_list_activities_date_range_respects_employee_filter(db, employee):
                               current_user=_dummy_user(), db=db)
     assert len(result) == 1
     assert result[0].employee_id == employee.id
+
+
+def test_all_permissions_includes_vagtplan_keys():
+    from auth import ALL_PERMISSIONS
+    assert "vagtplan_view" in ALL_PERMISSIONS
+    assert "vagtplan_edit_own" in ALL_PERMISSIONS
+    assert "vagtplan_edit_all" in ALL_PERMISSIONS
+
+
+def test_ensure_vagtplan_permissions_adds_view_and_edit_all_to_all_roles(db, monkeypatch):
+    from database.models import Role
+    from database.session import _ensure_vagtplan_permissions
+    import database.session as session_module
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(session_module, "SessionLocal", sessionmaker(bind=db.get_bind()))
+
+    db.add(Role(name="lonbogholder", display_name="Lønbogholder", is_system=False, permissions=["payroll"]))
+    db.add(Role(name="disponent", display_name="Disponent", is_system=False, permissions=[]))
+    db.commit()
+
+    _ensure_vagtplan_permissions()
+
+    for role in db.query(Role).all():
+        db.refresh(role)
+        assert "vagtplan_view" in role.permissions
+        assert "vagtplan_edit_all" in role.permissions
+        assert "vagtplan_edit_own" not in role.permissions  # kun tilføjet automatisk, ikke opt-in
+
+    # Idempotent
+    _ensure_vagtplan_permissions()
+    for role in db.query(Role).all():
+        db.refresh(role)
+        assert role.permissions.count("vagtplan_view") == 1

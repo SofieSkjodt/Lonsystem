@@ -51,6 +51,7 @@ def init_db():
     _ensure_anciennitet_alert_permission()
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
+    _ensure_vagtplan_permissions()
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
     _ensure_springer_pay_type()
@@ -567,6 +568,31 @@ def _ensure_activity_permissions():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af aktivitetsrettigheder: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_vagtplan_permissions():
+    """Tilføjer vagtplan_view + vagtplan_edit_all til ALLE roller (idempotent) – 'alle
+    nuværende roller skal kunne se og redigere i vagtplanen' (spec-beslutning 2026-08-21).
+    vagtplan_edit_own tilføjes IKKE automatisk – det er en mere restriktiv, opt-in ret."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        new_perms = ["vagtplan_view", "vagtplan_edit_all"]
+        for role in db.query(Role).all():
+            perms = list(role.permissions or [])
+            changed = False
+            for p in new_perms:
+                if p not in perms:
+                    perms.append(p)
+                    changed = True
+            if changed:
+                role.permissions = perms
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af vagtplan-rettigheder: {e}")
     finally:
         db.close()
 
