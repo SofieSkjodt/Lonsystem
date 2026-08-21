@@ -565,6 +565,13 @@ function openActivityDetail(id) {
         Salttillæg
       </label>
     </div>
+    ${(a.activity_type === "overnatning" || a.activity_type === "dob_overnatning") ? `
+    <div class="form-group" style="margin-bottom:14px">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
+        <input type="checkbox" id="edit-dob" ${a.activity_type === "dob_overnatning" ? "checked" : ""} ${a.status !== "pending" ? "disabled" : ""} style="width:16px;height:16px;cursor:${a.status !== 'pending' ? 'not-allowed' : 'pointer'}">
+        DOB
+      </label>
+    </div>` : ""}
 
     <div>
       <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;display:block">Aktivitetsfordeling</label>
@@ -855,7 +862,8 @@ async function saveActivityTimes() {
   const start = readDatetimePicker("edit-start");
   const end   = readDatetimePicker("edit-end");
   if (!start || !end) { toast("Angiv start- og sluttid", "error"); return; }
-  if (new Date(end) <= new Date(start)) { toast("Sluttid skal være efter starttid", "error"); return; }
+  const dobCb = document.getElementById("edit-dob");
+  if (!dobCb && new Date(end) <= new Date(start)) { toast("Sluttid skal være efter starttid", "error"); return; }
   const vehicleNum = document.getElementById("edit-vehicle")?.value || null;
   const kmStartVal = document.getElementById("edit-km-start")?.value;
   const kmEndVal   = document.getElementById("edit-km-end")?.value;
@@ -870,6 +878,7 @@ async function saveActivityTimes() {
     km_end:   kmEndVal   !== "" && kmEndVal   != null ? parseInt(kmEndVal)   : null,
     salt_supplement: saltVal,
   };
+  if (dobCb) payload.activity_type = dobCb.checked ? "dob_overnatning" : "overnatning";
 
   // Spørg om pausedatoer skal følge med, hvis startdatoen ændres
   if (a && a.pause_intervals && a.pause_intervals.length) {
@@ -929,13 +938,16 @@ async function confirmApprove() {
     const kmStartVal = document.getElementById("edit-km-start")?.value;
     const kmEndVal   = document.getElementById("edit-km-end")?.value;
     const saltVal    = document.getElementById("edit-salt")?.checked ?? false;
+    const dobCb      = document.getElementById("edit-dob");
     if (vehicleNum !== undefined) {
-      await PATCH(`/api/activities/${state.selectedActivityId}`, {
+      const patchBody = {
         vehicle_number: vehicleNum || null,
         km_start: kmStartVal !== "" && kmStartVal != null ? parseInt(kmStartVal) : null,
         km_end:   kmEndVal   !== "" && kmEndVal   != null ? parseInt(kmEndVal)   : null,
         salt_supplement: saltVal,
-      });
+      };
+      if (dobCb) patchBody.activity_type = dobCb.checked ? "dob_overnatning" : "overnatning";
+      await PATCH(`/api/activities/${state.selectedActivityId}`, patchBody);
     }
     const updated = await POST(`/api/activities/${state.selectedActivityId}/approve`,
       { comment: comment || null });
