@@ -203,6 +203,8 @@ class ActivityUpdate(BaseModel):
 
     @model_validator(mode="after")
     def end_after_start(self):
+        if self.activity_type in ("overnatning", "dob_overnatning"):
+            return self
         if self.start_time and self.end_time and self.end_time <= self.start_time:
             raise ValueError("Sluttid skal være efter starttid")
         return self

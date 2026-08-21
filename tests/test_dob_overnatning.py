@@ -5,7 +5,7 @@ import pytest
 from pydantic import ValidationError
 
 from database.models import ActivityStatus, MasterAgreementType, MasterOvertimeRate, MasterSupplementRate
-from database.schemas import ActivityCreate
+from database.schemas import ActivityCreate, ActivityUpdate
 from calculators.overtime import OT_BEFORE_KEY, OT_13_KEY, OT_EXTRA_KEY
 
 
@@ -37,6 +37,35 @@ def test_activity_create_rejects_equal_start_end_for_normal():
         ActivityCreate(
             employee_id=1,
             activity_type="normal",
+            start_time=midnight,
+            end_time=midnight,
+        )
+
+
+def test_activity_update_allows_equal_start_end_when_toggling_to_dob_overnatning():
+    midnight = datetime(2026, 8, 20, 0, 0, 0)
+    update = ActivityUpdate(
+        activity_type="dob_overnatning",
+        start_time=midnight,
+        end_time=midnight,
+    )
+    assert update.activity_type == "dob_overnatning"
+
+
+def test_activity_update_allows_equal_start_end_when_toggling_to_overnatning():
+    midnight = datetime(2026, 8, 20, 0, 0, 0)
+    update = ActivityUpdate(
+        activity_type="overnatning",
+        start_time=midnight,
+        end_time=midnight,
+    )
+    assert update.activity_type == "overnatning"
+
+
+def test_activity_update_still_rejects_equal_start_end_without_activity_type():
+    midnight = datetime(2026, 8, 20, 0, 0, 0)
+    with pytest.raises(ValidationError):
+        ActivityUpdate(
             start_time=midnight,
             end_time=midnight,
         )
@@ -165,6 +194,21 @@ def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, t
     assert code14_line.split(";")[3] == "100"  # 1 stk * 100 (fmt() ganger med 100)
     assert code43_line.split(";")[3] == "100"
     assert code43_line.split(";")[4] == "59700"  # 597,00 kr * 100
+
+
+def test_update_activity_toggles_overnatning_to_dob_overnatning(db, employee):
+    from database.schemas import ActivityUpdate
+    from routers.activities import update_activity
+    from conftest import make_activity
+
+    midnight = datetime(2026, 8, 20, 0, 0, 0)
+    act = make_activity(db, employee, midnight, midnight, activity_type="overnatning",
+                         status=ActivityStatus.pending)
+
+    body = ActivityUpdate(activity_type="dob_overnatning", start_time=midnight, end_time=midnight)
+    updated = update_activity(act.id, body, current_user=_dummy_user(), db=db)
+
+    assert updated.activity_type == "dob_overnatning"
 
 
 def test_absence_types_excludes_dob_overnatning_from_type_picker(db, employee):
