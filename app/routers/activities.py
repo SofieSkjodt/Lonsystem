@@ -57,6 +57,10 @@ _BACKEND_ONLY_TYPES = {
     "barsel_u_loen",
 }  # tildeles automatisk, ikke brugervalgt
 
+_HIDDEN_FROM_TYPE_PICKER = {
+    "dob_overnatning",  # tilgås kun via DOB-krydsfeltet i Overnatning-modalen, ikke egen type
+}
+
 _NINE_MONTHS = 9
 
 
@@ -104,7 +108,7 @@ def get_absence_types(
     result.extend([
         {"value": upt.code_key, "label": upt.label}
         for upt in user_pay_types
-        if upt.code_key not in existing_keys
+        if upt.code_key not in existing_keys and upt.code_key not in _HIDDEN_FROM_TYPE_PICKER
     ])
     return result
 

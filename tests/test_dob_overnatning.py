@@ -167,6 +167,29 @@ def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, t
     assert code43_line.split(";")[4] == "59700"  # 597,00 kr * 100
 
 
+def test_absence_types_excludes_dob_overnatning_from_type_picker(db, employee):
+    from database.models import MasterPayType
+    from routers.activities import get_absence_types
+
+    db.add(MasterPayType(
+        code_key="dob_overnatning", label="DOB_overnatning", danloen_code="43",
+        is_user_created=True, sort_order=17, csv_quantity_type="count",
+        csv_rate_source="supplement:1",
+    ))
+    db.add(MasterPayType(
+        code_key="andet_tillæg", label="Andet tillæg", danloen_code="99",
+        is_user_created=True, sort_order=18, csv_quantity_type="hours",
+        csv_rate_source="hourly",
+    ))
+    db.commit()
+
+    result = get_absence_types(current_user=_dummy_user(), db=db)
+
+    values = [r["value"] for r in result]
+    assert "dob_overnatning" not in values
+    assert "andet_tillæg" in values
+
+
 def test_proevekoersel_workbook_includes_dob_overnight_row(db, employee):
     from database.models import ActivityStatus
     from calculators.pay_period import get_or_create_period_for_date
