@@ -443,7 +443,10 @@
       "Bash(pytest tests/test_dob_overnatning.py tests/test_springertillaeg.py -v)",
       "Bash(pytest tests/test_dob_overnatning.py tests/test_springertillaeg.py tests/test_auto_approval.py tests/test_baseline_updater.py tests/test_ddd_parser.py tests/test_import_ddd.py tests/test_employee_supplements.py)",
       "Bash(tasklist //FI \"PID eq 23948\")",
-      "Bash(taskkill //PID 23948 //F)"
+      "Bash(taskkill //PID 23948 //F)",
+      "Bash(pytest tests/test_dob_overnatning.py -v -k activity_update)",
+      "Bash(pytest tests/)",
+      "Bash(taskkill //F //PID 22012)"
     ]
   }
 }
