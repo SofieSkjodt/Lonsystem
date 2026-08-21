@@ -170,3 +170,41 @@ def test_reopen_resets_hidden_from_vagtplan(db, employee):
     db.commit()
     resp = reopen_activity(a.id, current_user=_dummy_user(), db=db)
     assert resp.hidden_from_vagtplan is False
+
+
+def test_list_activities_date_range_returns_only_overlapping_activities(db, employee):
+    from routers.activities import list_activities
+    from conftest import make_activity
+    make_activity(db, employee, datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0))
+    make_activity(db, employee, datetime(2026, 2, 20, 8, 0), datetime(2026, 2, 20, 16, 0))
+    result = list_activities(date_from="2026-01-01", date_to="2026-01-31",
+                              current_user=_dummy_user(), db=db)
+    assert len(result) == 1
+    assert result[0].start_time.month == 1
+
+
+def test_list_activities_date_range_includes_activity_crossing_range_end(db, employee):
+    from routers.activities import list_activities
+    from conftest import make_activity
+    make_activity(db, employee, datetime(2026, 1, 31, 22, 0), datetime(2026, 2, 1, 4, 0))
+    result = list_activities(date_from="2026-01-01", date_to="2026-01-31",
+                              current_user=_dummy_user(), db=db)
+    assert len(result) == 1
+
+
+def test_list_activities_date_range_respects_employee_filter(db, employee):
+    from routers.activities import list_activities
+    from conftest import make_activity
+    from database.models import Employee, AgreementKind
+    from datetime import date as _date
+    other = Employee(employee_number="2002", first_name="Anden", last_name="Person",
+                     agreement_kind=AgreementKind.hourly_fixed, agreement_type="Standardoverenskomst",
+                     hire_date=_date(2020, 1, 1), work_schedule={"even": [0]*7, "odd": [0]*7})
+    db.add(other)
+    db.commit()
+    make_activity(db, employee, datetime(2026, 1, 5, 8, 0), datetime(2026, 1, 5, 16, 0))
+    make_activity(db, other, datetime(2026, 1, 6, 8, 0), datetime(2026, 1, 6, 16, 0))
+    result = list_activities(date_from="2026-01-01", date_to="2026-01-31", employee_id=employee.id,
+                              current_user=_dummy_user(), db=db)
+    assert len(result) == 1
+    assert result[0].employee_id == employee.id

@@ -281,10 +281,31 @@ def _to_response(a: Activity) -> ActivityResponse:
 def list_activities(
     period_start: Optional[str] = None,
     employee_id: Optional[int] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
     current_user: AppUser = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """Return activities for a pay period. If period_start omitted, uses today."""
+    """Return activities either for a pay period (period_start, default = today's period)
+    or for an arbitrary date range (date_from/date_to) independent of pay periods –
+    den sidste bruges af Vagtplan, hvis 4-ugers vindue ikke følger 14-dages lønperioder."""
+    if date_from and date_to:
+        range_start = datetime.combine(date.fromisoformat(date_from), datetime.min.time())
+        range_end = datetime.combine(date.fromisoformat(date_to), datetime.min.time()) + timedelta(days=1)
+        q = (
+            db.query(Activity)
+            .join(Activity.employee)
+            .options(
+                selectinload(Activity.employee),
+                selectinload(Activity.split_children),
+            )
+            .filter(Activity.start_time < range_end, Activity.end_time > range_start)
+        )
+        if employee_id:
+            q = q.filter(Activity.employee_id == employee_id)
+        activities = q.order_by(Activity.start_time).all()
+        return [_to_response(a) for a in activities]
+
     start_date = date.fromisoformat(period_start) if period_start else date.today()
     period = get_or_create_period_for_date(start_date, db)
 
