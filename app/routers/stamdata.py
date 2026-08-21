@@ -532,6 +532,7 @@ def delete_absence_type(
 class DispatcherGroupBody(BaseModel):
     name: Optional[str] = None
     description: Optional[str] = None
+    visible_in_activity_overview: Optional[bool] = None
 
 
 def _dispatcher_group_row(r) -> dict:
@@ -540,6 +541,7 @@ def _dispatcher_group_row(r) -> dict:
         "name": r.name,
         "description": r.description,
         "employee_count": len(r.employees),
+        "visible_in_activity_overview": r.visible_in_activity_overview,
     }
 
 
@@ -563,7 +565,15 @@ def create_dispatcher_group(
     name = body.name.strip()
     if db.query(DispatcherGroup).filter(DispatcherGroup.name == name).first():
         raise HTTPException(400, "En disponentgruppe med dette navn eksisterer allerede")
-    row = DispatcherGroup(name=name, description=(body.description or "").strip() or None)
+    row = DispatcherGroup(
+        name=name,
+        description=(body.description or "").strip() or None,
+        visible_in_activity_overview=(
+            body.visible_in_activity_overview
+            if body.visible_in_activity_overview is not None
+            else True
+        ),
+    )
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -596,6 +606,8 @@ def update_dispatcher_group(
         row.name = name
     if body.description is not None:
         row.description = body.description.strip() or None
+    if body.visible_in_activity_overview is not None:
+        row.visible_in_activity_overview = body.visible_in_activity_overview
     db.commit()
     log_action(db, current_user, "stamdata_update", "dispatcher_group", row.id,
                f"Disponentgruppe opdateret: {row.name}")
