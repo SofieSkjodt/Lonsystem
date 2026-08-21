@@ -131,6 +131,13 @@ def _migrate():
                 "ON activities(employee_id, start_time, source)"
             )
             conn.commit()
+        dg_cols = {row[1] for row in conn.execute("PRAGMA table_info(dispatcher_groups)")}
+        if "visible_in_activity_overview" not in dg_cols:
+            conn.execute(
+                "ALTER TABLE dispatcher_groups ADD COLUMN visible_in_activity_overview "
+                "BOOLEAN NOT NULL DEFAULT 1"
+            )
+            conn.commit()
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_supplements_one_open_row "
             "ON employee_supplements(employee_id) WHERE end_date = '9999-12-31'"

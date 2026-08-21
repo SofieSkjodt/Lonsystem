@@ -171,6 +171,7 @@ class DispatcherGroup(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String, nullable=False, unique=True)
     description = Column(Text, nullable=True)
+    visible_in_activity_overview = Column(Boolean, nullable=False, default=True)
 
     employees = relationship(
         "Employee",
