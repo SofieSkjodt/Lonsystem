@@ -2490,9 +2490,9 @@ async function dismissAnciennitetsAlert(employeeId) {
 async function checkAnciennitetsAlerts() {
   if (!state.currentUser?.permissions?.includes("anciennitet_alert")) return;
   try {
-    const all = await GET("/api/employees/anciennitet-alerts");
-    const dismissed = _getDismissedAlerts();
-    const alerts = all.filter(a => !dismissed.has(a.employee_id));
+    // Serveren filtrerer allerede afviste medarbejdere fra (employees.anciennitet_dismissed_at),
+    // se GET /api/employees/anciennitet-alerts – ingen klient-side dismiss-liste nødvendig.
+    const alerts = await GET("/api/employees/anciennitet-alerts");
     if (alerts.length === 0) return;
     const a = alerts[0];
     document.getElementById("anciennitet-body").innerHTML = `
