@@ -113,3 +113,55 @@ def test_calculate_employee_dob_overnight_not_counted_as_work_hours(db, employee
     day = next(d for d in calc["days"] if d["date"] == "2026-08-20")
     assert day["overnight"] == 1
     assert day["absence_type"] is None
+
+
+def _dummy_user():
+    from database.models import AppUser
+    return AppUser(name="Test", initials="TST", role="admin", password_hash="x")
+
+
+def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, tmp_path):
+    from datetime import timedelta
+    from database.models import MasterPayType, ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_router import export_csv_post, ExportCsvRequest
+    from conftest import make_activity
+
+    employee.cvr_number = "13246505"
+    _setup_rates(db, employee)
+    dob_supp = db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "DOB_overnatning").first()
+    db.add(MasterPayType(
+        code_key="OVERNATNING", label="Overnatning", danloen_code="14",
+        include_in_csv=True, sort_order=6, csv_quantity_type="count", csv_rate_source="overnight",
+    ))
+    db.add(MasterPayType(
+        code_key="dob_overnatning", label="DOB_overnatning", danloen_code="43",
+        is_user_created=True, include_in_csv=True, sort_order=17,
+        csv_quantity_type="count", csv_rate_source=f"supplement:{dob_supp.id}",
+    ))
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 8, 20), db)
+    # Begge dage afledes af den faktiske periode (ikke hardcodede datoer) for at
+    # garantere at de falder inden for samme lønperiode, uanset periodens grænser.
+    midnight_a = datetime.combine(period.start_date, datetime.min.time())
+    midnight_b = midnight_a + timedelta(days=1)
+    make_activity(db, employee, midnight_a, midnight_a, activity_type="overnatning",
+                  status=ActivityStatus.approved)
+    make_activity(db, employee, midnight_b, midnight_b, activity_type="dob_overnatning",
+                  status=ActivityStatus.approved)
+
+    body = ExportCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path))
+    export_csv_post(body, current_user=_dummy_user(), db=db)
+
+    csv_files = list(tmp_path.glob("danloen_*.csv"))
+    assert len(csv_files) == 1
+    content = csv_files[0].read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    codes = {l.split(";")[2] for l in lines}
+    assert "14" in codes, f"Forventede kode 14 (Overnatning) i linjerne: {lines}"
+    assert "43" in codes, f"Forventede kode 43 (DOB_overnatning) i linjerne: {lines}"
+    code14_line = next(l for l in lines if l.split(";")[2] == "14")
+    code43_line = next(l for l in lines if l.split(";")[2] == "43")
+    assert code14_line.split(";")[3] == "100"  # 1 stk * 100 (fmt() ganger med 100)
+    assert code43_line.split(";")[3] == "100"
+    assert code43_line.split(";")[4] == "59700"  # 597,00 kr * 100
