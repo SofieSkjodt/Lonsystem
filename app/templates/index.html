@@ -855,6 +855,30 @@
   </div>
 </div>
 
+<!-- Vagtplan "Fravær i morgen" modal -->
+<div id="modal-vagtplan-tomorrow" class="modal-overlay">
+  <div class="modal" style="width:480px;max-width:95vw">
+    <div class="modal-header">
+      <h2 id="vagtplan-tomorrow-title">Fravær i morgen</h2>
+      <button class="modal-close" onclick="closeModal('modal-vagtplan-tomorrow')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <table style="width:100%;font-size:14px;border-collapse:collapse">
+        <thead>
+          <tr style="text-align:left;border-bottom:1px solid var(--border)">
+            <th style="padding:6px 4px">Medarbejder</th>
+            <th style="padding:6px 4px">Fraværstype / kommentar</th>
+          </tr>
+        </thead>
+        <tbody id="vagtplan-tomorrow-body"></tbody>
+      </table>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-vagtplan-tomorrow')">Luk</button>
+    </div>
+  </div>
+</div>
+
 <!-- Pause modal -->
 <div id="modal-pause" class="modal-overlay">
   <div class="modal" style="width:380px;max-width:95vw">

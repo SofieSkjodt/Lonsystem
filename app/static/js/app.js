@@ -226,6 +226,41 @@ async function deleteVagtplanComment() {
   } catch (e) { toast(e.message, "error"); }
 }
 
+async function openVagtplanTomorrowModal() {
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const iso = _isoOfDate(tomorrow);
+
+  document.getElementById("vagtplan-tomorrow-title").textContent =
+    `Fravær i morgen – ${tomorrow.toLocaleDateString("da-DK", { day: "numeric", month: "short", year: "numeric" })}`;
+
+  let activities = [], comments = [];
+  try {
+    [activities, comments] = await Promise.all([
+      GET(`/api/activities?date_from=${iso}&date_to=${iso}`),
+      GET(`/api/vagtplan-comments?date_from=${iso}&date_to=${iso}`),
+    ]);
+  } catch (e) { toast(e.message, "error"); return; }
+  activities = activities.filter(a => a.activity_type !== "normal" && !a.hidden_from_vagtplan);
+
+  const rows = [];
+  for (const a of activities) {
+    rows.push({ name: a.employee_name, text: ABSENCE_LABELS[a.activity_type] || a.activity_type });
+  }
+  for (const c of comments) {
+    const emp = state.employees.find(e => e.id === c.employee_id);
+    if (emp) rows.push({ name: emp.name, text: c.text });
+  }
+  rows.sort((x, y) => x.name.localeCompare(y.name, "da"));
+
+  const body = document.getElementById("vagtplan-tomorrow-body");
+  body.innerHTML = rows.length === 0
+    ? `<tr><td colspan="2" style="padding:16px 4px;color:var(--text-light)">Ingen fravær eller kommentarer registreret i morgen</td></tr>`
+    : rows.map(r => `<tr><td style="padding:6px 4px;border-bottom:1px solid var(--border)">${h(r.name)}</td><td style="padding:6px 4px;border-bottom:1px solid var(--border)">${h(r.text)}</td></tr>`).join("");
+
+  openModal("modal-vagtplan-tomorrow");
+}
+
 function renderVagtplanTable() {
   const days = _vagtplanDays();
   const empFilter = document.getElementById("vagtplan-filter-employee")?.value || "";
