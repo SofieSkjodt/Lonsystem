@@ -1273,6 +1273,9 @@ async function loadAbsenceTypes() {
       opt.textContent = t.label;
       sel.appendChild(opt);
     });
+    TYPE_LABELS["dob_overnatning"] = "DOB Overnatning";
+    ABSENCE_LABELS["dob_overnatning"] = badgeLabel("DOB Overnatning");
+    ABSENCE_TYPES.add("dob_overnatning");
   } catch (e) { console.error("loadAbsenceTypes fejlede:", e); }
 }
 
@@ -1303,6 +1306,8 @@ function updateManualTypeVisibility() {
   document.getElementById("manual-normal-fields").style.display = isAbsence ? "none" : "";
   document.getElementById("manual-end-group").style.display     = isDateOnly ? "none" : "";
   document.getElementById("manual-barsel-group").style.display  = isBarsel ? "" : "none";
+  document.getElementById("manual-dob-group").style.display     = isOvernatning ? "" : "none";
+  if (!isOvernatning) document.getElementById("manual-dob").checked = false;
 
   // Skjul/vis tidsfelterne i startpickeren (kun dato for ferie og sygdom)
   const startEl = document.getElementById("manual-start");
@@ -1582,6 +1587,7 @@ function openManualActivityModal(empId = null, dateIso = null) {
   document.getElementById("manual-reg").value = "";
   document.getElementById("manual-reg-hint").textContent = "";
   document.getElementById("manual-salt").checked = false;
+  document.getElementById("manual-dob").checked = false;
   document.getElementById("manual-reg").oninput = function () {
     const reg = this.value.trim().toUpperCase();
     this.value = reg;
@@ -1664,16 +1670,17 @@ async function confirmManualActivity() {
 
   if (actType === "overnatning") {
     if (!start) { toast("Angiv dato for overnatningen", "error"); return; }
+    const isDob = document.getElementById("manual-dob").checked;
     const dateStr = start.slice(0, 10);
     const timeStr = dateStr + "T00:00:00";
     try {
       await POST("/api/activities", {
         employee_id: empId,
-        activity_type: "overnatning",
+        activity_type: isDob ? "dob_overnatning" : "overnatning",
         start_time: timeStr,
         end_time:   timeStr,
       });
-      toast("Overnatning oprettet", "success");
+      toast(isDob ? "DOB-overnatning oprettet" : "Overnatning oprettet", "success");
       closeModal("modal-manual-activity");
       await refreshActivities();
     } catch (e) { toast(e.message, "error"); }
@@ -2560,6 +2567,7 @@ function renderPayrollPreview(data) {
         ${payrollRow("SH-Udbetaling", emp.sh_timeloennet_hours, emp.hourly_rate)}
         ${payrollRowSalt("Salttillæg", emp.salt_hours, emp.salt_rate, emp.salt_kr)}
         ${payrollRowOvernight("Overnatning", emp.overnight_count, emp.overnight_rate, emp.overnight_kr)}
+        ${payrollRowOvernight("DOB Overnatning", emp.dob_overnight_count, emp.dob_overnight_rate, emp.dob_overnight_kr)}
         ${payrollRow("Afspadsering", emp.afspadsering_hours)}
         ${payrollRow("Sygdom med løn", emp.sygdom_hours, emp.hourly_rate)}
         ${payrollRow("§56 syg", emp.paragraf_56_syg_hours, emp.dagpenge_sats)}
