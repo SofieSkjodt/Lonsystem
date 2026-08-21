@@ -196,12 +196,15 @@ def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_p
     assert len(csv_files) == 1
     content = csv_files[0].read_text(encoding="utf-8-sig")
     lines = [l for l in content.splitlines() if l]
-    # Medarbejderen har kun én aktivitet (8 arbejdstimer, ingen overtid/salt/fravær) – med
-    # flueben sat giver det præcis 2 linjer (NORMAL + SPRINGERTILLAEG), begge med kvantitet 800
-    # (8 timer * 100, jf. fmt()). NORMAL og SPRINGERTILLAEG deler samme placeholder Danløn-kode
-    # ("1"), så linjerne kan ikke skelnes på kolonne C – antallet af linjer er det robuste tjek.
-    assert len(lines) == 2
-    assert all(line.split(";")[3] == "800" for line in lines)
+    # Medarbejderen har kun én aktivitet (8 arbejdstimer, ingen overtid/salt/fravær). NORMAL og
+    # SPRINGERTILLAEG deler samme placeholder Danløn-kode ("1"), så de aggregeres (jf.
+    # "aggreger CSV-linjer med samme Danloen-kode pr. medarbejder") til ÉN linje med kombineret
+    # kvantitet 800+800=1600 (8 timer * 100 hver, jf. fmt()). Satsen på den aggregerede linje er
+    # NORMAL's timesats (150,00 kr), da NORMAL står før SPRINGERTILLAEG i raw_rows, og
+    # aggregeringen bevarer den først sete sats for koden.
+    assert len(lines) == 1
+    assert lines[0].split(";")[3] == "1600"
+    assert lines[0].split(";")[4] == "15000"
 
 
 def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_path):
