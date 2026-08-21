@@ -277,3 +277,19 @@ class EmployeeSupplementResponse(BaseModel):
     is_active: bool
 
     model_config = {"from_attributes": True}
+
+
+class VagtplanCommentCreate(BaseModel):
+    employee_id: int
+    date: date
+    text: str = Field(min_length=1, max_length=1000)
+
+
+class VagtplanCommentResponse(BaseModel):
+    id: int
+    employee_id: int
+    date: date
+    text: str
+    created_by: Optional[str] = None
+
+    model_config = {"from_attributes": True}

@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Boolean, Date, DateTime, Numeric,
-    ForeignKey, Text, Enum, JSON, Index, text
+    ForeignKey, Text, Enum, JSON, Index, UniqueConstraint, text
 )
 from sqlalchemy.orm import DeclarativeBase, relationship
 from sqlalchemy.sql import func
@@ -188,6 +188,23 @@ class EmployeeDispatcherGroup(Base):
 
     employee_id = Column(Integer, ForeignKey("employees.id"), primary_key=True)
     dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), primary_key=True)
+
+
+class VagtplanComment(Base):
+    __tablename__ = "vagtplan_comments"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    date = Column(Date, nullable=False)
+    text = Column(String(1000), nullable=False)
+    created_by = Column(String(10), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    employee = relationship("Employee")
+
+    __table_args__ = (
+        UniqueConstraint("employee_id", "date", name="uq_vagtplan_comments_employee_date"),
+    )
 
 
 class PayrollRun(Base):

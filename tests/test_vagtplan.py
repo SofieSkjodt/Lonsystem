@@ -241,3 +241,69 @@ def test_ensure_vagtplan_permissions_adds_view_and_edit_all_to_all_roles(db, mon
     for role in db.query(Role).all():
         db.refresh(role)
         assert role.permissions.count("vagtplan_view") == 1
+
+
+def test_create_vagtplan_comment_requires_edit_permission(db, employee):
+    from routers.vagtplan_comments import create_comment
+    from database.schemas import VagtplanCommentCreate
+    from database.models import Role
+    from datetime import date as _date
+    db.add(Role(name="disponent", display_name="Disponent", is_system=False, permissions=[]))
+    db.commit()
+    body = VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 1, 5), text="Ringer syg ind")
+    with pytest.raises(HTTPException) as exc:
+        create_comment(body, current_user=_dummy_user(role="disponent"), db=db)
+    assert exc.value.status_code == 403
+
+
+def test_create_vagtplan_comment_upserts_on_same_employee_and_date(db, employee):
+    from routers.vagtplan_comments import create_comment
+    from database.schemas import VagtplanCommentCreate
+    from database.models import Role
+    from datetime import date as _date
+    db.add(Role(name="admin", display_name="Administrator", is_system=True, permissions=[]))
+    db.commit()
+    user = _dummy_user(role="admin")
+    body1 = VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 1, 5), text="Første tekst")
+    resp1 = create_comment(body1, current_user=user, db=db)
+    body2 = VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 1, 5), text="Rettet tekst")
+    resp2 = create_comment(body2, current_user=user, db=db)
+    assert resp1.id == resp2.id
+    assert resp2.text == "Rettet tekst"
+
+    from database.models import VagtplanComment
+    assert db.query(VagtplanComment).count() == 1
+
+
+def test_list_comments_filters_by_date_range(db, employee):
+    from routers.vagtplan_comments import create_comment, list_comments
+    from database.schemas import VagtplanCommentCreate
+    from database.models import Role
+    from datetime import date as _date
+    db.add(Role(name="admin", display_name="Administrator", is_system=True, permissions=[]))
+    db.commit()
+    user = _dummy_user(role="admin")
+    create_comment(VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 1, 5), text="Inden for"), current_user=user, db=db)
+    create_comment(VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 3, 1), text="Uden for"), current_user=user, db=db)
+    result = list_comments(date_from="2026-01-01", date_to="2026-01-31", employee_id=None,
+                            current_user=user, db=db)
+    assert len(result) == 1
+    assert result[0].text == "Inden for"
+
+
+def test_delete_comment_requires_edit_permission(db, employee):
+    from routers.vagtplan_comments import create_comment, delete_comment
+    from database.schemas import VagtplanCommentCreate
+    from database.models import Role
+    from datetime import date as _date
+    db.add(Role(name="admin", display_name="Administrator", is_system=True, permissions=[]))
+    db.add(Role(name="disponent", display_name="Disponent", is_system=False, permissions=[]))
+    db.commit()
+    admin = _dummy_user(role="admin")
+    comment = create_comment(VagtplanCommentCreate(employee_id=employee.id, date=_date(2026, 1, 5), text="X"), current_user=admin, db=db)
+    with pytest.raises(HTTPException) as exc:
+        delete_comment(comment.id, current_user=_dummy_user(role="disponent"), db=db)
+    assert exc.value.status_code == 403
+    delete_comment(comment.id, current_user=admin, db=db)
+    from database.models import VagtplanComment
+    assert db.query(VagtplanComment).count() == 0
