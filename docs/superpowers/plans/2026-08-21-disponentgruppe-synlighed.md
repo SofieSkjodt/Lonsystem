@@ -1,6 +1,6 @@
 # Disponentgruppe-synlighed i aktivitetsoversigten Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Gør det muligt i Stamdata → Disponentgrupper at vælge, hvilke grupper (og dermed deres medarbejdere) der vises i aktivitetsoversigten — en global on/off-flag pr. gruppe.
 
@@ -30,7 +30,7 @@ Medarbejder-id 79 (Magne Sørensen, lønnr. 34362) har i dag ingen disponentgrup
 - Consumes: `database.session.SessionLocal`, `database.models.Employee`, `database.models.DispatcherGroup` (ingen ændring af disse i denne task).
 - Produces: intet der andre tasks er afhængige af — ren datarettelse.
 
-- [ ] **Step 1: Skriv verifikations-/rettelsesscriptet**
+- [x] **Step 1: Skriv verifikations-/rettelsesscriptet**
 
 ```python
 # scratchpad/link_magne_to_kran.py
@@ -56,7 +56,7 @@ finally:
     db.close()
 ```
 
-- [ ] **Step 2: Kør scriptet mod den rigtige database**
+- [x] **Step 2: Kør scriptet mod den rigtige database**
 
 Run: `python "C:\Users\SofieThraneSkjødt\AppData\Local\Temp\claude\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\c3b86f7c-3215-4fac-9604-449d273f16b9\scratchpad\link_magne_to_kran.py"`
 
@@ -68,7 +68,7 @@ Efter: Magne Sørensen grupper: ['2 - Kran']
 
 Hvis `assert`-linjen fejler (dvs. han allerede har en gruppe), STOP og undersøg — data har ændret sig siden denne plan blev skrevet, og rettelsen skal genovervejes i stedet for at overskrive noget ukendt.
 
-- [ ] **Step 3: Slet det temporære script**
+- [x] **Step 3: Slet det temporære script**
 
 Scriptet er en engangsrettelse af data, ikke en del af applikationens kildekode — det skal ikke committes.
 
@@ -88,7 +88,7 @@ Ingen `git commit` for denne task — det er en ren databaseændring, ikke en ko
 **Interfaces:**
 - Produces: `DispatcherGroup.visible_in_activity_overview` (Python-attribut, `bool`, default `True`) — bruges af Task 3 og 4.
 
-- [ ] **Step 1: Skriv den fejlende test for kolonnens default-værdi**
+- [x] **Step 1: Skriv den fejlende test for kolonnens default-værdi**
 
 ```python
 # tests/test_dispatcher_group_visibility.py
@@ -103,12 +103,12 @@ def test_new_dispatcher_group_defaults_to_visible(db):
     assert group.visible_in_activity_overview is True
 ```
 
-- [ ] **Step 2: Kør testen og bekræft at den fejler**
+- [x] **Step 2: Kør testen og bekræft at den fejler**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: FAIL — `AttributeError: 'DispatcherGroup' object has no attribute 'visible_in_activity_overview'` (eller lignende, da kolonnen ikke findes endnu).
 
-- [ ] **Step 3: Tilføj kolonnen til modellen**
+- [x] **Step 3: Tilføj kolonnen til modellen**
 
 I `app/database/models.py`, i klassen `DispatcherGroup` (linje 168-179), tilføj feltet efter `description`:
 
@@ -128,12 +128,12 @@ class DispatcherGroup(Base):
     )
 ```
 
-- [ ] **Step 4: Kør testen igen og bekræft at den nu passerer**
+- [x] **Step 4: Kør testen igen og bekræft at den nu passerer**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: PASS
 
-- [ ] **Step 5: Tilføj migration for eksisterende (produktions-)databaser**
+- [x] **Step 5: Tilføj migration for eksisterende (produktions-)databaser**
 
 I `app/database/session.py`, i funktionen `_migrate()`, indsæt en ny kolonne-tjek-blok efter den eksisterende `employee_supplements`-indeks-blok (efter linje 133, `conn.commit()` for `ix_activities_employee_start_source`, og før kommentaren "Migrer eksisterende faste sats-kilde-værdier"):
 
@@ -149,7 +149,7 @@ I `app/database/session.py`, i funktionen `_migrate()`, indsæt en ny kolonne-tj
 
 Denne blok skal stå inde i den eksisterende `with _sqlite3.connect(str(DB_PATH)) as conn:`-kontekst i `_migrate()`, på samme indrykningsniveau som de øvrige `ALTER TABLE`-tjek i funktionen.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/database/models.py app/database/session.py tests/test_dispatcher_group_visibility.py
@@ -168,7 +168,7 @@ git commit -m "feat: tilføj visible_in_activity_overview til DispatcherGroup"
 - Consumes: `DispatcherGroup.visible_in_activity_overview` (fra Task 2).
 - Produces: `DispatcherGroupResponse.visible_in_activity_overview: bool` — bruges af Task 4 (stamdata-endpoints) og af frontend (Task 5, 6) via både `/api/stamdata/dispatcher-groups` og `/api/employees/dispatcher-groups`.
 
-- [ ] **Step 1: Skriv den fejlende test**
+- [x] **Step 1: Skriv den fejlende test**
 
 ```python
 # tilføj i tests/test_dispatcher_group_visibility.py
@@ -186,12 +186,12 @@ def test_dispatcher_group_response_includes_visibility_field(db):
     assert response.visible_in_activity_overview is False
 ```
 
-- [ ] **Step 2: Kør testen og bekræft at den fejler**
+- [x] **Step 2: Kør testen og bekræft at den fejler**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: FAIL — Pydantic-fejl (`AttributeError` eller manglende felt), da `DispatcherGroupResponse` endnu ikke har feltet.
 
-- [ ] **Step 3: Tilføj feltet til schemaet**
+- [x] **Step 3: Tilføj feltet til schemaet**
 
 I `app/database/schemas.py`, opdatér `DispatcherGroupResponse` (linje 22-27):
 
@@ -205,12 +205,12 @@ class DispatcherGroupResponse(BaseModel):
     model_config = {"from_attributes": True}
 ```
 
-- [ ] **Step 4: Kør testene igen og bekræft at de passerer**
+- [x] **Step 4: Kør testene igen og bekræft at de passerer**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: PASS (begge tests i filen)
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/database/schemas.py tests/test_dispatcher_group_visibility.py
@@ -229,7 +229,7 @@ git commit -m "feat: eksponer visible_in_activity_overview i DispatcherGroupResp
 - Consumes: `DispatcherGroup` (Task 2), `DispatcherGroupResponse`-mønster (Task 3), `log_action` (allerede importeret i `stamdata.py`).
 - Produces: `create_dispatcher_group(body, current_user, db)` og `update_dispatcher_group(group_id, body, current_user, db)` accepterer nu `visible_in_activity_overview` i `body`; `_dispatcher_group_row(r)` returnerer nøglen `"visible_in_activity_overview"`. Bruges direkte af Task 5's frontend-kald.
 
-- [ ] **Step 1: Skriv de fejlende tests**
+- [x] **Step 1: Skriv de fejlende tests**
 
 ```python
 # tilføj i tests/test_dispatcher_group_visibility.py
@@ -278,12 +278,12 @@ def test_dispatcher_group_row_includes_visibility_key(db):
     assert "visible_in_activity_overview" in created
 ```
 
-- [ ] **Step 2: Kør testene og bekræft at de fejler**
+- [x] **Step 2: Kør testene og bekræft at de fejler**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: FAIL på de 4 nye tests — `DispatcherGroupBody` accepterer ikke `visible_in_activity_overview`, og `_dispatcher_group_row` returnerer ikke nøglen.
 
-- [ ] **Step 3: Udvid `DispatcherGroupBody`**
+- [x] **Step 3: Udvid `DispatcherGroupBody`**
 
 I `app/routers/stamdata.py`, linje 532-534:
 
@@ -294,7 +294,7 @@ class DispatcherGroupBody(BaseModel):
     visible_in_activity_overview: Optional[bool] = None
 ```
 
-- [ ] **Step 4: Udvid `_dispatcher_group_row`**
+- [x] **Step 4: Udvid `_dispatcher_group_row`**
 
 Linje 537-543:
 
@@ -309,7 +309,7 @@ def _dispatcher_group_row(r) -> dict:
     }
 ```
 
-- [ ] **Step 5: Sæt default `True` i `create_dispatcher_group`**
+- [x] **Step 5: Sæt default `True` i `create_dispatcher_group`**
 
 Linje 555-573, tilføj visibility-håndtering i selve `DispatcherGroup(...)`-konstruktøren:
 
@@ -343,7 +343,7 @@ def create_dispatcher_group(
     return _dispatcher_group_row(row)
 ```
 
-- [ ] **Step 6: Opdatér feltet i `update_dispatcher_group` når angivet**
+- [x] **Step 6: Opdatér feltet i `update_dispatcher_group` når angivet**
 
 Linje 577-603, tilføj efter `description`-håndteringen (før `db.commit()`):
 
@@ -380,17 +380,17 @@ def update_dispatcher_group(
     return _dispatcher_group_row(row)
 ```
 
-- [ ] **Step 7: Kør testene igen og bekræft at de passerer**
+- [x] **Step 7: Kør testene igen og bekræft at de passerer**
 
 Run: `cd tests && python -m pytest test_dispatcher_group_visibility.py -v`
 Expected: PASS (alle 8 tests i filen nu)
 
-- [ ] **Step 8: Kør hele test-suiten for at sikre ingen regression**
+- [x] **Step 8: Kør hele test-suiten for at sikre ingen regression**
 
 Run: `cd tests && python -m pytest -v`
 Expected: PASS (alle eksisterende tests upåvirkede)
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/routers/stamdata.py tests/test_dispatcher_group_visibility.py
@@ -410,7 +410,7 @@ git commit -m "feat: CRUD-støtte for visible_in_activity_overview i disponentgr
 - Consumes: `GET /api/stamdata/dispatcher-groups` returnerer nu `visible_in_activity_overview` pr. række (Task 4); `POST`/`PATCH /api/stamdata/dispatcher-groups` accepterer feltet i body (Task 4).
 - Produces: intet nyt for andre tasks — dette er UI-slutpunktet for Stamdata-delen.
 
-- [ ] **Step 1: Tilføj kolonne til tabel-header, index.html:550-561**
+- [x] **Step 1: Tilføj kolonne til tabel-header, index.html:550-561**
 
 ```html
         <!-- Disponentgrupper -->
@@ -432,7 +432,7 @@ git commit -m "feat: CRUD-støtte for visible_in_activity_overview i disponentgr
         </div>
 ```
 
-- [ ] **Step 2: Tilføj checkbox til modal, index.html:1708-1718**
+- [x] **Step 2: Tilføj checkbox til modal, index.html:1708-1718**
 
 ```html
     <div class="modal-body">
@@ -452,7 +452,7 @@ git commit -m "feat: CRUD-støtte for visible_in_activity_overview i disponentgr
     </div>
 ```
 
-- [ ] **Step 3: Opdatér `loadStamdataDispatcherGroups`, app.js:3876-3900**
+- [x] **Step 3: Opdatér `loadStamdataDispatcherGroups`, app.js:3876-3900**
 
 ```js
 async function loadStamdataDispatcherGroups() {
@@ -486,7 +486,7 @@ async function loadStamdataDispatcherGroups() {
 }
 ```
 
-- [ ] **Step 4: Opdatér `openStamdataDispatcherModal`, app.js:3902-3908**
+- [x] **Step 4: Opdatér `openStamdataDispatcherModal`, app.js:3902-3908**
 
 ```js
 function openStamdataDispatcherModal(id, name, description, visible) {
@@ -499,7 +499,7 @@ function openStamdataDispatcherModal(id, name, description, visible) {
 }
 ```
 
-- [ ] **Step 5: Opdatér `confirmStamdataDispatcher`, app.js:3910-3926**
+- [x] **Step 5: Opdatér `confirmStamdataDispatcher`, app.js:3910-3926**
 
 ```js
 async function confirmStamdataDispatcher() {
@@ -522,7 +522,7 @@ async function confirmStamdataDispatcher() {
 }
 ```
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add app/templates/index.html app/static/js/app.js
@@ -547,7 +547,7 @@ git commit -m "feat: Stamdata-UI for visible_in_activity_overview på disponentg
 
 Ingen automatiserede tests for denne task — projektet har ingen JS-testopsætning, og al frontend-adfærd i denne kodebase verificeres manuelt i browseren (jf. eksisterende mønster for `app.js`-ændringer). Verifikation sker i Task 7.
 
-- [ ] **Step 1: Tilføj `_empHasVisibleGroup`, app.js — lige efter `_empInGroup` (linje 4291-4293)**
+- [x] **Step 1: Tilføj `_empHasVisibleGroup`, app.js — lige efter `_empInGroup` (linje 4291-4293)**
 
 ```js
 function _empInGroup(emp, groupId) {
@@ -564,7 +564,7 @@ function _empHasVisibleGroup(emp) {
 }
 ```
 
-- [ ] **Step 2: Filtrér `fillDispatcherGroupFilter` til kun synlige grupper (linje 4295-4302)**
+- [x] **Step 2: Filtrér `fillDispatcherGroupFilter` til kun synlige grupper (linje 4295-4302)**
 
 ```js
 function fillDispatcherGroupFilter() {
@@ -578,7 +578,7 @@ function fillDispatcherGroupFilter() {
 }
 ```
 
-- [ ] **Step 3: Filtrér `fillEmployeeFilter` til medarbejdere med mindst én synlig gruppe (linje 4304-4316)**
+- [x] **Step 3: Filtrér `fillEmployeeFilter` til medarbejdere med mindst én synlig gruppe (linje 4304-4316)**
 
 ```js
 function fillEmployeeFilter() {
@@ -595,7 +595,7 @@ function fillEmployeeFilter() {
 }
 ```
 
-- [ ] **Step 4: Filtrér `emps`-listen i `renderActivitiesTable` (linje ~303-306)**
+- [x] **Step 4: Filtrér `emps`-listen i `renderActivitiesTable` (linje ~303-306)**
 
 Find i `renderActivitiesTable()`:
 
@@ -617,7 +617,7 @@ og ret til:
   emps.sort((x, y) => x.name.localeCompare(y.name, "da"));
 ```
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add app/static/js/app.js
@@ -632,42 +632,55 @@ Dette er et frontend-tungt feature uden JS-testramme i projektet — verifikatio
 
 **Files:** Ingen — ren verifikation, ingen kodeændringer i denne task.
 
-- [ ] **Step 1: Genstart serveren (migration + kodeændringer kræver det)**
+- [x] **Step 1: Genstart serveren (migration + kodeændringer kræver det)**
 
 Run: `cd app && uvicorn main:app --host 0.0.0.0 --port 8000 --reload`
 
-- [ ] **Step 2: Bekræft migrationen kørte**
+- [x] **Step 2: Bekræft migrationen kørte**
 
 Run (i en anden terminal): `python -c "import sqlite3; con=sqlite3.connect('app/database/lonsystem.db'); print([r[1] for r in con.execute('PRAGMA table_info(dispatcher_groups)')])"`
 Expected: listen indeholder `visible_in_activity_overview`.
 
-- [ ] **Step 3: Åbn appen i browseren og gå til Stamdata → Disponentgrupper**
+- [x] **Step 3: Åbn appen i browseren og gå til Stamdata → Disponentgrupper**
 
 Bekræft: alle 7 eksisterende grupper viser "Ja" i den nye kolonne "Vis i aktivitetsoversigt" (default-migreret til synlig).
 
-- [ ] **Step 4: Rediger en gruppe uden medarbejdere (eller opret en testgruppe) og slå synlighed fra**
+- [x] **Step 4: Rediger en gruppe uden medarbejdere (eller opret en testgruppe) og slå synlighed fra**
 
 Fjern fluebenet i "Vis i aktivitetsoversigt", gem. Bekræft badge'en skifter til "Nej".
 
-- [ ] **Step 5: Gå til Aktivitetsoversigt og bekræft gruppen er væk fra afdelings-dropdown'en**
+- [x] **Step 5: Gå til Aktivitetsoversigt og bekræft gruppen er væk fra afdelings-dropdown'en**
 
 "Alle afdelinger"-dropdownen i toolbaren må IKKE længere vise den skjulte gruppe.
 
-- [ ] **Step 6: Bekræft medarbejdere i den skjulte gruppe er væk fra gitteret**
+- [x] **Step 6: Bekræft medarbejdere i den skjulte gruppe er væk fra gitteret**
 
 Hvis testgruppen har medarbejdere uden andre synlige grupper, skal de være væk fra rækkerne i aktivitetsoversigten og fra "Alle medarbejdere"-dropdownen.
 
-- [ ] **Step 7: Bekræft medarbejder med flere grupper stadig vises, hvis mindst én er synlig**
+- [x] **Step 7: Bekræft medarbejder med flere grupper stadig vises, hvis mindst én er synlig**
 
 Find (eller opret temporært) en medarbejder med to grupper, hvor kun én er slået fra — bekræft medarbejderen stadig vises i gitteret.
 
-- [ ] **Step 8: Bekræft Magne Sørensen (34362) vises i aktivitetsoversigten**
+- [x] **Step 8: Bekræft Magne Sørensen (34362) vises i aktivitetsoversigten**
 
 Søg ham op i "Alle medarbejdere"-dropdownen eller filtrér på "2 - Kran" — bekræft han optræder (jf. Task 1's datarettelse).
 
-- [ ] **Step 9: Slå testgruppen synlig igen (eller slet den, hvis den var oprettet kun til testen) og bekræft alt er tilbage til normalt**
+- [x] **Step 9: Slå testgruppen synlig igen (eller slet den, hvis den var oprettet kun til testen) og bekræft alt er tilbage til normalt**
 
-- [ ] **Step 10: Kør hele test-suiten en sidste gang**
+- [x] **Step 10: Kør hele test-suiten en sidste gang**
 
 Run: `cd tests && python -m pytest -v`
 Expected: PASS (alle tests, inkl. de nye fra Task 2-4)
+
+## Fund under verifikation (rettet)
+
+Manuel test af Step 6/7 afslørede at `filter-employee`-dropdownen i
+aktivitetsoversigten ikke opdaterede sig selv, når en gruppes synlighed blev
+ændret i Stamdata uden en fuld sideindlæsning bagefter — `loadStamdataDispatcherGroups()`
+kaldte `fillDispatcherGroupFilter()` men ikke `fillEmployeeFilter()`, så en
+medarbejder hvis eneste gruppe lige var blevet skjult stod tilbage i
+dropdownen (men korrekt væk fra selve gitteret). Rettet ved at tilføje
+`fillEmployeeFilter()`-kaldet samme sted (`app/static/js/app.js`), committet
+separat som `fix: opdatér medarbejder-dropdown live når disponentgruppe-synlighed ændres i Stamdata`.
+Verificeret efterfølgende at både dropdown og gitter opdaterer sig korrekt
+uden sideindlæsning.
