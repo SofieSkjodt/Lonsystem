@@ -3900,7 +3900,11 @@ async function loadStamdataDispatcherGroups() {
       </tr>`).join("");
   } catch (e) { tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
   // Ny/ændret gruppe kan påvirke medarbejder-modal og filtre
-  try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); fillDispatcherGroupFilter(); } catch (_) {}
+  try {
+    state.dispatcherGroups = await GET("/api/employees/dispatcher-groups");
+    fillDispatcherGroupFilter();
+    fillEmployeeFilter();
+  } catch (_) {}
 }
 
 function openStamdataDispatcherModal(id, name, description, visible) {
