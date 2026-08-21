@@ -2039,7 +2039,7 @@ async function openNewEmployeeModal() {
   document.getElementById("emp-modal-title").textContent = "Opret medarbejder";
   document.getElementById("emp-save-btn").textContent = "Opret";
   document.getElementById("emp-id").value = "";
-  ["emp-number","emp-card","emp-firstname","emp-lastname","emp-address","emp-postal",
+  ["emp-number","emp-card","emp-initials","emp-firstname","emp-lastname","emp-address","emp-postal",
    "emp-email","emp-phone","emp-mobile"].forEach(id => document.getElementById(id).value = "");
   document.getElementById("emp-agreement-kind").value = "";
   fillAgreementTypeSelect();
@@ -2063,6 +2063,7 @@ async function openEditEmployee(id) {
   document.getElementById("emp-id").value = e.id;
   document.getElementById("emp-number").value = e.employee_number;
   document.getElementById("emp-card").value = e.tachograph_card_number || "";
+  document.getElementById("emp-initials").value = e.initials || "";
   document.getElementById("emp-firstname").value = e.first_name;
   document.getElementById("emp-lastname").value = e.last_name;
   document.getElementById("emp-address").value = e.address || "";
@@ -2095,6 +2096,7 @@ async function confirmEmployee() {
   const body = {
     employee_number: document.getElementById("emp-number").value.trim(),
     tachograph_card_number: document.getElementById("emp-card").value.trim() || null,
+    initials: document.getElementById("emp-initials").value.trim().toUpperCase() || null,
     first_name: document.getElementById("emp-firstname").value.trim(),
     last_name: document.getElementById("emp-lastname").value.trim(),
     address: document.getElementById("emp-address").value.trim() || null,
