@@ -4657,11 +4657,17 @@ function fillVagtplanGroupFilter() {
   if (state.vagtplan.groupFilterIds === null) {
     state.vagtplan.groupFilterIds = state.dispatcherGroups.map(g => g.id); // default: alle valgt
   }
+  const allSelected = state.vagtplan.groupFilterIds.length === state.dispatcherGroups.length;
   const selectedCount = state.vagtplan.groupFilterIds.length;
-  const label = selectedCount === state.dispatcherGroups.length ? "Alle afdelinger" : `${selectedCount} afdeling${selectedCount === 1 ? "" : "er"}`;
+  const label = allSelected ? "Alle afdelinger" : `${selectedCount} afdeling${selectedCount === 1 ? "" : "er"}`;
   container.innerHTML = `
     <button type="button" class="btn btn-secondary" id="vagtplan-group-filter-btn" style="width:180px;text-align:left">${h(label)} ▾</button>
     <div id="vagtplan-group-filter-panel" style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:4px;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.12)">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;font-weight:600;padding:3px 0 8px;margin-bottom:6px;border-bottom:1px solid var(--border)">
+        <input type="checkbox" class="vagtplan-group-all-checkbox" ${allSelected ? "checked" : ""}
+               style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
+        Alle afdelinger
+      </label>
       ${state.dispatcherGroups.map(g => `
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:3px 0">
           <input type="checkbox" class="vagtplan-group-checkbox" value="${g.id}"
@@ -4677,19 +4683,42 @@ function fillVagtplanGroupFilter() {
     e.stopPropagation();
     panel.style.display = panel.style.display === "none" ? "block" : "none";
   });
-  document.addEventListener("click", e => {
-    if (!container.contains(e.target)) panel.style.display = "none";
+
+  function _applyGroupFilterChange(newIds) {
+    state.vagtplan.groupFilterIds = newIds;
+    fillVagtplanGroupFilter(); // opdater knap-label + afkrydsninger
+    document.getElementById("vagtplan-group-filter-panel").style.display = "block"; // hold åben under multi-valg
+    fillVagtplanEmployeeFilter();
+    renderVagtplanTable();
+  }
+
+  container.querySelector(".vagtplan-group-all-checkbox").addEventListener("change", () => {
+    _applyGroupFilterChange(state.dispatcherGroups.map(g => g.id));
   });
   container.querySelectorAll(".vagtplan-group-checkbox").forEach(cb => {
     cb.addEventListener("change", () => {
-      state.vagtplan.groupFilterIds = [...container.querySelectorAll(".vagtplan-group-checkbox:checked")].map(x => parseInt(x.value));
-      fillVagtplanGroupFilter(); // opdater knap-label
-      document.getElementById("vagtplan-group-filter-panel").style.display = "block"; // hold åben under multi-valg
-      fillVagtplanEmployeeFilter();
-      renderVagtplanTable();
+      // Første klik på en enkelt afdeling, mens "alle" er valgt, isolerer til kun denne –
+      // efterfølgende klik lægger til/fjerner normalt.
+      if (allSelected) {
+        _applyGroupFilterChange([parseInt(cb.value)]);
+      } else {
+        _applyGroupFilterChange(
+          [...container.querySelectorAll(".vagtplan-group-checkbox:checked")].map(x => parseInt(x.value))
+        );
+      }
     });
   });
 }
+
+// Luk disponentgruppe-panelet ved klik udenfor – bindes én gang (ikke i
+// fillVagtplanGroupFilter, som kan kaldes mange gange og ellers ville hobe
+// dublet-listeners op på document).
+document.addEventListener("click", e => {
+  if (!e.target.closest("#vagtplan-group-filter")) {
+    const panel = document.getElementById("vagtplan-group-filter-panel");
+    if (panel) panel.style.display = "none";
+  }
+});
 
 function fillVagtplanEmployeeFilter() {
   const sel = document.getElementById("vagtplan-filter-employee");
