@@ -131,8 +131,143 @@ function setView(view) {
   if (view === "vagtplan")          loadVagtplan();
 }
 
+const DAYS_PER_VAGTPLAN_VIEW = 28;
+
+function _mondayOf(d) {
+  const copy = new Date(d);
+  const dow = (copy.getDay() + 6) % 7; // 0=Mandag
+  copy.setDate(copy.getDate() - dow);
+  return copy;
+}
+
+function _isoOfDate(d) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function _vagtplanDays() {
+  const start = new Date(state.vagtplan.weekStart + "T00:00:00");
+  const days = [];
+  for (let i = 0; i < DAYS_PER_VAGTPLAN_VIEW; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    days.push(d);
+  }
+  return days;
+}
+
 async function loadVagtplan() {
-  // Implementeres fuldt i Task 8
+  if (!state.vagtplan.weekStart) {
+    state.vagtplan.weekStart = _isoOfDate(_mondayOf(new Date()));
+  }
+  setLoading(true);
+  try {
+    const days = _vagtplanDays();
+    const dateFrom = _isoOfDate(days[0]);
+    const dateTo = _isoOfDate(days[days.length - 1]);
+    const [activities, comments] = await Promise.all([
+      GET(`/api/activities?date_from=${dateFrom}&date_to=${dateTo}`),
+      GET(`/api/vagtplan-comments?date_from=${dateFrom}&date_to=${dateTo}`),
+    ]);
+    state.vagtplan.activities = activities.filter(a => a.activity_type !== "normal" && !a.hidden_from_vagtplan);
+    state.vagtplan.comments = comments;
+    renderVagtplanTable();
+  } catch (e) { toast(e.message, "error"); }
+  finally { setLoading(false); }
+}
+
+function navigateVagtplan(direction) {
+  const start = new Date(state.vagtplan.weekStart + "T00:00:00");
+  start.setDate(start.getDate() + (direction === "prev" ? -DAYS_PER_VAGTPLAN_VIEW : DAYS_PER_VAGTPLAN_VIEW));
+  state.vagtplan.weekStart = _isoOfDate(start);
+  loadVagtplan();
+}
+
+function jumpToVagtplanToday() {
+  state.vagtplan.weekStart = _isoOfDate(_mondayOf(new Date()));
+  loadVagtplan();
+}
+
+function renderVagtplanTable() {
+  const days = _vagtplanDays();
+  const empFilter = document.getElementById("vagtplan-filter-employee")?.value || "";
+  const groupIds = state.vagtplan.groupFilterIds; // null = alle
+
+  const fmt = d => new Date(d).toLocaleDateString("da-DK", { day: "numeric", month: "short", year: "numeric" });
+  document.getElementById("vagtplan-period-label").textContent =
+    `${fmt(days[0])} – ${fmt(days[days.length - 1])}`;
+
+  // Header: uge-nummer-række (7 kolonner pr. uge) + dag-række
+  const head = document.getElementById("vagtplan-grid-head");
+  let weekRow = `<th></th>`;
+  for (let w = 0; w < DAYS_PER_VAGTPLAN_VIEW / 7; w++) {
+    weekRow += `<th colspan="7" style="text-align:center">Uge ${isoWeekNumber(days[w * 7])}</th>`;
+  }
+  const todayIso = _isoOfDate(new Date());
+  let dayRow = `<th>Chauffør</th>` + days.map(d => {
+    const iso = _isoOfDate(d);
+    const cls = iso === todayIso ? "today" : "";
+    return `<th class="${cls}">
+      <span class="day-name">${DAY_NAMES[(d.getDay() + 6) % 7]}</span>
+      <span class="day-date">${String(d.getDate()).padStart(2, "0")}-${String(d.getMonth() + 1).padStart(2, "0")}</span>
+    </th>`;
+  }).join("");
+  head.innerHTML = `<tr>${weekRow}</tr><tr>${dayRow}</tr>`;
+
+  // Gruppér: employee_id -> dato-ISO -> { activities: [...], comment: {...}|null }
+  const byEmpDay = {};
+  for (const a of state.vagtplan.activities) {
+    const iso = a.start_time.slice(0, 10);
+    ((byEmpDay[a.employee_id] ??= {})[iso] ??= { activities: [], comment: null }).activities.push(a);
+  }
+  for (const c of state.vagtplan.comments) {
+    const entry = (byEmpDay[c.employee_id] ??= {})[c.date] ??= { activities: [], comment: null };
+    entry.comment = c;
+  }
+
+  let emps = state.employees.filter(e => e.active);
+  if (groupIds) emps = emps.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  if (empFilter) emps = emps.filter(e => e.id === parseInt(empFilter));
+  emps.sort((x, y) => x.name.localeCompare(y.name, "da"));
+
+  const body = document.getElementById("vagtplan-grid-body");
+  if (emps.length === 0) {
+    body.innerHTML = `<tr><td colspan="${DAYS_PER_VAGTPLAN_VIEW + 1}" class="empty-state"><div class="icon">📋</div><h3>Ingen medarbejdere</h3></td></tr>`;
+    return;
+  }
+
+  body.innerHTML = "";
+  for (const emp of emps) {
+    let cells = `<td class="emp-cell" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">${h(emp.name)}</td>`;
+    for (const d of days) {
+      const iso = _isoOfDate(d);
+      const entry = byEmpDay[emp.id]?.[iso];
+      const weekend = d.getDay() === 0 || d.getDay() === 6;
+      const badges = (entry?.activities || []).map(a => renderCellActivity(a, "full")).join("");
+      const commentHtml = entry?.comment
+        ? `<span class="vagtplan-comment-text" data-comment-id="${entry.comment.id}" title="${h(entry.comment.text)}">${h(entry.comment.text)}</span>`
+        : "";
+      cells += `<td class="${weekend ? "weekend" : ""}" data-emp-id="${emp.id}" data-date="${iso}">${badges}${commentHtml}</td>`;
+    }
+    const tr = document.createElement("tr");
+    tr.innerHTML = cells;
+    body.appendChild(tr);
+  }
+
+  body.querySelectorAll(".time-badge").forEach(el => {
+    el.addEventListener("click", () => openActivityDetail(parseInt(el.dataset.id)));
+  });
+  body.querySelectorAll(".vagtplan-comment-text").forEach(el => {
+    el.addEventListener("click", e => {
+      e.stopPropagation();
+      openVagtplanCommentModal(parseInt(el.dataset.commentId));
+    });
+  });
+  body.querySelectorAll("td[data-emp-id]").forEach(td => {
+    td.addEventListener("click", e => {
+      if (e.target.closest(".time-badge") || e.target.closest(".vagtplan-comment-text")) return;
+      openManualActivityModal(parseInt(td.dataset.empId), td.dataset.date, { vagtplan: true });
+    });
+  });
 }
 
 // ── Period navigation ──────────────────────────────────────────────────────
@@ -4393,6 +4528,9 @@ async function init() {
 
   document.getElementById("btn-prev-period").addEventListener("click", () => navigatePeriod("prev"));
   document.getElementById("btn-next-period").addEventListener("click", () => navigatePeriod("next"));
+  document.getElementById("btn-prev-vagtplan").addEventListener("click", () => navigateVagtplan("prev"));
+  document.getElementById("btn-next-vagtplan").addEventListener("click", () => navigateVagtplan("next"));
+  document.getElementById("btn-vagtplan-today").addEventListener("click", () => jumpToVagtplanToday());
   buildDatePicker("period-date-picker", "");
   document.getElementById("period-date-picker").style.width = "150px";
   document.getElementById("period-date-picker").querySelector(".dp-val").addEventListener("change", e => jumpToDate(e.target.value));
