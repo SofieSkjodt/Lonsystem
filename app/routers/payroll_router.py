@@ -43,6 +43,7 @@ from calculators.rates_loader import (
     load_overtime_rates_from_db,
     load_salt_supplement_rate_from_db,
     load_overnight_rate_from_db,
+    load_dob_overnight_rate_from_db,
     load_dagpenge_rate_from_db,
     load_springer_rate_from_db,
     load_overtime_rates_by_id_from_db,
@@ -308,6 +309,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     ot_rates = load_overtime_rates_from_db(db)
     salt_rate = load_salt_supplement_rate_from_db(db)
     overnight_rate = load_overnight_rate_from_db(db)
+    dob_overnight_rate = load_dob_overnight_rate_from_db(db)
     dagpenge_sats = load_dagpenge_rate_from_db(db)
     springer_rate = load_springer_rate_from_db(db)
     ot_rates_by_id = load_overtime_rates_by_id_from_db(db)
@@ -375,7 +377,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
 
     acts_by_date = defaultdict(list)
     for act in activities:
-        if act.activity_type == "overnatning" or _ABSENCE_LABELS.get(act.activity_type):
+        if act.activity_type in ("overnatning", "dob_overnatning") or _ABSENCE_LABELS.get(act.activity_type):
             acts_by_date[act.start_time.date()].append(act)
         elif _spans_absolute_day(act):
             for piece in _split_into_day_pieces(act):
@@ -397,13 +399,17 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         "skole_kursus": Decimal("0"),
         "salt_hours": Decimal("0"), "salt_kr": Decimal("0"),
         "overnight_count": 0,
+        "dob_overnight_count": 0,
     }
     days = []
     total_kr = Decimal("0")
 
-    # Overnatning håndteres som kolonne (ikke fraværsrække) – forhåndsberegn datoer
-    overnight_dates = {a.start_time.date() for a in activities if a.activity_type == "overnatning"}
+    # Overnatning håndteres som kolonne (ikke fraværsrække) – forhåndsberegn datoer.
+    # DOB-overnatning tælles med i overnight_dates (samme dag-markering), men holdes
+    # ude af overnight_count (kode 14) – den har sin egen tælling og sats (kode 43).
+    overnight_dates = {a.start_time.date() for a in activities if a.activity_type in ("overnatning", "dob_overnatning")}
     totals["overnight_count"] = sum(1 for a in activities if a.activity_type == "overnatning")
+    totals["dob_overnight_count"] = sum(1 for a in activities if a.activity_type == "dob_overnatning")
 
     # hourly_flexible: 37t normaltid + 5t OT-1-3 er en ugentlig pulje (mandag-søndag),
     # ikke et dagligt loft – initialiseres her og videreføres/nulstilles i dag-løkken.
@@ -422,7 +428,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     # Gennemløb alle dage i perioden
     cur = start
     while cur <= end:
-        acts_today = [a for a in acts_by_date.get(cur, []) if a.activity_type != "overnatning"]
+        acts_today = [a for a in acts_by_date.get(cur, []) if a.activity_type not in ("overnatning", "dob_overnatning")]
         overnight_today = 1 if cur in overnight_dates else 0
 
         # Dag-klassifikation og SH-betaling (gælder uanset om der køres)
@@ -621,6 +627,9 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         "overnight_count":    totals["overnight_count"],
         "overnight_rate":     float(overnight_rate),
         "overnight_kr":       float(_round2(Decimal(str(totals["overnight_count"])) * overnight_rate)),
+        "dob_overnight_count": totals["dob_overnight_count"],
+        "dob_overnight_rate":  float(dob_overnight_rate),
+        "dob_overnight_kr":    float(_round2(Decimal(str(totals["dob_overnight_count"])) * dob_overnight_rate)),
         "springer_rate":      float(springer_rate),
         "springer_enabled":   springer_enabled,
         "afspadsering_hours":   float(_round2(totals["afspadsering"])),
