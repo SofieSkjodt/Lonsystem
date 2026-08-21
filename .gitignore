@@ -6,3 +6,10 @@ __pycache__/
 *.db-shm
 *.db-wal
 .env
+
+# Debug/scratch scripts and ad-hoc exports (not part of the app)
+app/_debug_recalc.py
+app/compare_tacho.py
+app/current_csv_export.csv
+/danloen_2026-06-01_2026-06-14.csv
+backup/arkiv/lonsystem_2026-08-21_09-00.zip
