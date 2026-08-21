@@ -10,7 +10,7 @@ from sqlalchemy import or_, and_
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
-from auth import get_current_user, log_action, require_permission
+from auth import get_current_user, log_action, require_permission, user_has_permission
 from calculators.baseline_updater import update_baseline_from_activity
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee, EmployeeSpringerFlag, PayPeriod, PayPeriodStatus
@@ -21,6 +21,7 @@ from database.schemas import (
     ActivityResponse,
     ActivitySplit,
     ActivityUpdate,
+    VagtplanHideBody,
 )
 from database.session import get_db
 
@@ -70,6 +71,17 @@ def _months_between(d1: date, d2: date) -> int:
     if d2.day < d1.day:
         months -= 1
     return months
+
+
+def _has_vagtplan_edit_access(db: Session, current_user: AppUser, emp: Employee) -> bool:
+    """Kun relevant når en aktivitet oprettes med source='vagtplan' (fra Vagtplan-griddet).
+    Almindelig oprettelse/redigering fra Aktivitetsoversigten er upåvirket – der er i dag
+    ingen rolle-baseret restriktion på selve /api/activities uden for dette."""
+    if user_has_permission(db, current_user, "vagtplan_edit_all"):
+        return True
+    if user_has_permission(db, current_user, "vagtplan_edit_own"):
+        return bool(emp.initials) and emp.initials.strip().lower() == current_user.initials.strip().lower()
+    return False
 
 
 @router.get("/absence-types")
@@ -261,6 +273,7 @@ def _to_response(a: Activity) -> ActivityResponse:
         auto_approved=bool(a.auto_approved),
         auto_approval_flags=a.auto_approval_flags or [],
         is_likely_incomplete=bool(a.is_likely_incomplete),
+        hidden_from_vagtplan=bool(a.hidden_from_vagtplan),
     )
 
 
@@ -389,6 +402,12 @@ def create_manual_activity(body: ActivityCreate,
     if not emp:
         raise HTTPException(404, "Medarbejder ikke fundet")
 
+    activity_source = ActivitySource.manual
+    if body.source == "vagtplan":
+        if not _has_vagtplan_edit_access(db, current_user, emp):
+            raise HTTPException(403, "Ingen redigeringsret til Vagtplan for denne medarbejder")
+        activity_source = ActivitySource.vagtplan
+
     activity_type = body.activity_type
 
     if activity_type in _BACKEND_ONLY_TYPES:
@@ -419,7 +438,7 @@ def create_manual_activity(body: ActivityCreate,
     activity = Activity(
         employee_id=body.employee_id,
         pay_period_id=period.id,
-        source=ActivitySource.manual,
+        source=activity_source,
         created_by=current_user.initials,
         activity_type=activity_type,
         start_time=body.start_time,
@@ -648,6 +667,21 @@ def deactivate_activity(activity_id: int, body: ActivityDeactivate,
     return _to_response(a)
 
 
+@router.post("/{activity_id}/hide-from-vagtplan", response_model=ActivityResponse)
+def hide_from_vagtplan(activity_id: int, body: VagtplanHideBody,
+                       current_user: AppUser = Depends(get_current_user),
+                       db: Session = Depends(get_db)):
+    a = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not a:
+        raise HTTPException(404, "Aktivitet ikke fundet")
+    a.hidden_from_vagtplan = body.hidden
+    log_action(db, current_user, "hide_from_vagtplan", "activity", a.id,
+               f"{'Skjult' if body.hidden else 'Vist'} i Vagtplan for {a.employee.name}")
+    db.commit()
+    db.refresh(a)
+    return _to_response(a)
+
+
 @router.post("/{activity_id}/correct-segment", response_model=ActivityResponse)
 def correct_segment(
     activity_id: int,
@@ -778,6 +812,7 @@ def reopen_activity(activity_id: int,
     a.status = ActivityStatus.pending
     a.approved_by = None
     a.approved_at = None
+    a.hidden_from_vagtplan = False
     log_action(db, current_user, "reopen_activity", "activity", a.id,
                f"Genåbnet for {a.employee.name} ({a.start_time.strftime('%d-%m-%Y')})")
     db.commit()

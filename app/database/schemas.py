@@ -141,6 +141,7 @@ class ActivityResponse(BaseModel):
     auto_approved: bool = False
     auto_approval_flags: list[str] = []
     is_likely_incomplete: bool = False
+    hidden_from_vagtplan: bool = False
 
 
 class ActivityCreate(BaseModel):
@@ -157,6 +158,7 @@ class ActivityCreate(BaseModel):
     salt_supplement: bool = False
     terminsdato: Optional[date] = None
     pause_intervals: list = Field(default_factory=list)
+    source: Optional[str] = None
 
     @model_validator(mode="after")
     def end_after_start(self):
@@ -219,6 +221,10 @@ class ActivityApprove(BaseModel):
 
 class ActivityDeactivate(BaseModel):
     comment: Optional[str] = None
+
+
+class VagtplanHideBody(BaseModel):
+    hidden: bool = True
 
 
 class ActivitySplit(BaseModel):

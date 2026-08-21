@@ -127,6 +127,9 @@ def _migrate():
         if "baseline_start_hour" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN baseline_start_hour REAL")
             conn.commit()
+        if "hidden_from_vagtplan" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN hidden_from_vagtplan BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
         existing_indexes = {row[1] for row in conn.execute("PRAGMA index_list(activities)")}
         if "ix_activities_employee_start_source" not in existing_indexes:
             conn.execute(

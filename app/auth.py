@@ -54,6 +54,10 @@ def _role_has_permission(db: Session, role_name: str, perm: str) -> bool:
     return perm in (role.permissions or [])
 
 
+def user_has_permission(db: Session, user: AppUser, perm: str) -> bool:
+    return _role_has_permission(db, user.role, perm)
+
+
 def require_permission(perm: str):
     def checker(request: Request, db: Session = Depends(get_db)) -> AppUser:
         user_id = request.session.get("user_id")
