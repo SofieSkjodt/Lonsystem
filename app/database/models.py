@@ -67,6 +67,7 @@ class Employee(Base):
     email = Column(String, nullable=True)
     phone = Column(String, nullable=True)
     mobile = Column(String, nullable=True)
+    initials = Column(String(10), nullable=True)  # matcher app_users.initials for "egen linje"-rettighed i Vagtplan
     agreement_kind = Column(Enum(AgreementKind), nullable=False, default=AgreementKind.hourly_fixed)
     agreement_type = Column(String, nullable=False)  # Overenskomsttype fra Excel-arket
     fuldloennet = Column(Boolean, default=True, nullable=False)

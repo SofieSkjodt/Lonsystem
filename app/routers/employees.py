@@ -62,6 +62,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         cvr_number=emp.cvr_number,
         anciennitet_dismissed_at=emp.anciennitet_dismissed_at,
         terminsdato=emp.terminsdato,
+        initials=emp.initials,
     )
 
 

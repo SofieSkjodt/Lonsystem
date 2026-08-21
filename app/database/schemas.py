@@ -47,6 +47,7 @@ class EmployeeCreate(BaseModel):
     work_schedule: WorkSchedule = Field(default_factory=WorkSchedule)
     dispatcher_group_ids: list[int] = Field(default_factory=list)
     cvr_number: Optional[str] = None
+    initials: Optional[str] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -68,6 +69,7 @@ class EmployeeUpdate(BaseModel):
     work_schedule: Optional[WorkSchedule] = None
     dispatcher_group_ids: Optional[list[int]] = None
     cvr_number: Optional[str] = None
+    initials: Optional[str] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -95,6 +97,7 @@ class EmployeeResponse(BaseModel):
     cvr_number: Optional[str] = None
     anciennitet_dismissed_at: Optional[datetime] = None
     terminsdato: Optional[date] = None
+    initials: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
