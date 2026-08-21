@@ -170,6 +170,8 @@ async function loadVagtplan() {
     ]);
     state.vagtplan.activities = activities.filter(a => a.activity_type !== "normal" && !a.hidden_from_vagtplan);
     state.vagtplan.comments = comments;
+    fillVagtplanGroupFilter();
+    fillVagtplanEmployeeFilter();
     renderVagtplanTable();
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
@@ -4505,6 +4507,59 @@ function fillEmployeeFilter() {
   if (visible.find(e => String(e.id) === cur)) sel.value = cur;
 }
 
+function fillVagtplanGroupFilter() {
+  const container = document.getElementById("vagtplan-group-filter");
+  if (!container) return;
+  if (state.vagtplan.groupFilterIds === null) {
+    state.vagtplan.groupFilterIds = state.dispatcherGroups.map(g => g.id); // default: alle valgt
+  }
+  const selectedCount = state.vagtplan.groupFilterIds.length;
+  const label = selectedCount === state.dispatcherGroups.length ? "Alle afdelinger" : `${selectedCount} afdeling${selectedCount === 1 ? "" : "er"}`;
+  container.innerHTML = `
+    <button type="button" class="btn btn-secondary" id="vagtplan-group-filter-btn" style="width:180px;text-align:left">${h(label)} ▾</button>
+    <div id="vagtplan-group-filter-panel" style="display:none;position:absolute;top:100%;left:0;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;padding:10px;margin-top:4px;min-width:220px;box-shadow:0 4px 12px rgba(0,0,0,.12)">
+      ${state.dispatcherGroups.map(g => `
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:14px;padding:3px 0">
+          <input type="checkbox" class="vagtplan-group-checkbox" value="${g.id}"
+                 ${state.vagtplan.groupFilterIds.includes(g.id) ? "checked" : ""}
+                 style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
+          ${h(g.name)}
+        </label>`).join("")}
+    </div>`;
+
+  const btn = document.getElementById("vagtplan-group-filter-btn");
+  const panel = document.getElementById("vagtplan-group-filter-panel");
+  btn.addEventListener("click", e => {
+    e.stopPropagation();
+    panel.style.display = panel.style.display === "none" ? "block" : "none";
+  });
+  document.addEventListener("click", e => {
+    if (!container.contains(e.target)) panel.style.display = "none";
+  });
+  container.querySelectorAll(".vagtplan-group-checkbox").forEach(cb => {
+    cb.addEventListener("change", () => {
+      state.vagtplan.groupFilterIds = [...container.querySelectorAll(".vagtplan-group-checkbox:checked")].map(x => parseInt(x.value));
+      fillVagtplanGroupFilter(); // opdater knap-label
+      document.getElementById("vagtplan-group-filter-panel").style.display = "block"; // hold åben under multi-valg
+      fillVagtplanEmployeeFilter();
+      renderVagtplanTable();
+    });
+  });
+}
+
+function fillVagtplanEmployeeFilter() {
+  const sel = document.getElementById("vagtplan-filter-employee");
+  if (!sel) return;
+  const cur = sel.value;
+  const groupIds = state.vagtplan.groupFilterIds;
+  let visible = state.employees.filter(e => e.active);
+  if (groupIds) visible = visible.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  sel.innerHTML = `<option value="">Alle medarbejdere</option>` +
+    visible.slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
+      .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
+  if (visible.find(e => String(e.id) === cur)) sel.value = cur;
+}
+
 // ── Startup ────────────────────────────────────────────────────────────────
 async function loadApp() {
   try {
@@ -4531,6 +4586,7 @@ async function init() {
   document.getElementById("btn-prev-vagtplan").addEventListener("click", () => navigateVagtplan("prev"));
   document.getElementById("btn-next-vagtplan").addEventListener("click", () => navigateVagtplan("next"));
   document.getElementById("btn-vagtplan-today").addEventListener("click", () => jumpToVagtplanToday());
+  document.getElementById("vagtplan-filter-employee").addEventListener("change", () => renderVagtplanTable());
   buildDatePicker("period-date-picker", "");
   document.getElementById("period-date-picker").style.width = "150px";
   document.getElementById("period-date-picker").querySelector(".dp-val").addEventListener("change", e => jumpToDate(e.target.value));
