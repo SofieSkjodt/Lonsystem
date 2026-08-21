@@ -23,6 +23,7 @@ class DispatcherGroupResponse(BaseModel):
     id: int
     name: str
     description: Optional[str] = None
+    visible_in_activity_overview: bool = True
 
     model_config = {"from_attributes": True}
 
