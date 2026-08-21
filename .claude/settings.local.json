@@ -446,7 +446,13 @@
       "Bash(taskkill //PID 23948 //F)",
       "Bash(pytest tests/test_dob_overnatning.py -v -k activity_update)",
       "Bash(pytest tests/)",
-      "Bash(taskkill //F //PID 22012)"
+      "Bash(taskkill //F //PID 22012)",
+      "Bash(pandoc -t markdown \"Vagtplan i PS Løn.docx\")",
+      "Bash(python3 -c \"import docx\")",
+      "Bash(python -c \"import docx\")",
+      "Bash(ls -la /c/Users/SOFIET~1/AppData/Local/Temp/vagtplan_copy.docx 2>&1)",
+      "Bash(powershell.exe -NoProfile -Command \"Get-Process -Id 11968 | Select-Object Id, ProcessName, Path, StartTime\")",
+      "Bash(powershell.exe -NoProfile -Command \"Stop-Process -Id 11968 -Force\")"
     ]
   }
 }
