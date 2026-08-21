@@ -435,7 +435,15 @@
       "Bash(tasklist)",
       "Bash(taskkill //F //PID 11996)",
       "Bash(taskkill //F //PID 13580)",
-      "Bash(taskkill //F //PID 11068)"
+      "Bash(taskkill //F //PID 11068)",
+      "Bash(python -m pytest -q)",
+      "Bash(python \"C:\\\\Users\\\\SofieThraneSkjødt\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\C--Users-SofieThraneSkj-dt-OneDrive---Poul-Schou-A-S-Skrivebord-L-nsystem\\\\c3b86f7c-3215-4fac-9604-449d273f16b9\\\\scratchpad\\\\link_magne_to_kran.py\")",
+      "Bash(python -m pytest test_dispatcher_group_visibility.py -v)",
+      "Bash(pytest tests/ -v -k \"excludes_dob_overnatning\")",
+      "Bash(pytest tests/test_dob_overnatning.py tests/test_springertillaeg.py -v)",
+      "Bash(pytest tests/test_dob_overnatning.py tests/test_springertillaeg.py tests/test_auto_approval.py tests/test_baseline_updater.py tests/test_ddd_parser.py tests/test_import_ddd.py tests/test_employee_supplements.py)",
+      "Bash(tasklist //FI \"PID eq 23948\")",
+      "Bash(taskkill //PID 23948 //F)"
     ]
   }
 }
