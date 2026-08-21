@@ -61,6 +61,7 @@ let manualPauses = [];
 let _resizeSegState = null;
 let _pauseEditState = null; // { mode: "create"|"activity", idx, activityId? }
 let _absenceConflictConfirmed = false;
+let _manualActivityContext = { vagtplan: false };
 
 const WEEKDAYS = ["Mandag", "Tirsdag", "Onsdag", "Torsdag", "Fredag", "Lørdag", "Søndag"];
 const TYPE_LABELS = { normal: "Normal tid" };
@@ -187,6 +188,42 @@ function navigateVagtplan(direction) {
 function jumpToVagtplanToday() {
   state.vagtplan.weekStart = _isoOfDate(_mondayOf(new Date()));
   loadVagtplan();
+}
+
+function openVagtplanCommentModal(commentId) {
+  const c = state.vagtplan.comments.find(x => x.id === commentId);
+  if (!c) return;
+  const emp = state.employees.find(e => e.id === c.employee_id);
+  document.getElementById("vagtplan-comment-id").value = c.id;
+  document.getElementById("vagtplan-comment-info").textContent =
+    `${emp ? emp.name : "Ukendt medarbejder"} – ${formatDate(c.date)}`;
+  document.getElementById("vagtplan-comment-text").value = c.text;
+  openModal("modal-vagtplan-comment");
+}
+
+async function confirmVagtplanComment() {
+  const id = document.getElementById("vagtplan-comment-id").value;
+  const c = state.vagtplan.comments.find(x => x.id === parseInt(id));
+  if (!c) return;
+  const text = document.getElementById("vagtplan-comment-text").value.trim();
+  if (!text) { toast("Skriv en kommentar", "error"); return; }
+  try {
+    await POST("/api/vagtplan-comments", { employee_id: c.employee_id, date: c.date, text });
+    toast("Kommentar opdateret", "success");
+    closeModal("modal-vagtplan-comment");
+    await loadVagtplan();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function deleteVagtplanComment() {
+  const id = document.getElementById("vagtplan-comment-id").value;
+  if (!id) return;
+  try {
+    await DEL(`/api/vagtplan-comments/${id}`);
+    toast("Kommentar slettet", "success");
+    closeModal("modal-vagtplan-comment");
+    await loadVagtplan();
+  } catch (e) { toast(e.message, "error"); }
 }
 
 function renderVagtplanTable() {
@@ -630,18 +667,36 @@ async function refreshActivities() {
 
 // Opdaterer én aktivitet i state og gentegner med det samme, uden at vente på
 // en fuld genindlæsning fra serveren (undgår synlig forsinkelse efter godkend/deaktiver/genåbn).
+// Aktiviteten kan høre til Aktivitetsoversigtens periode ELLER Vagtplans (potentielt
+// anderledes) datointerval – opdater den rigtige liste og gentegn kun den synlige visning.
 function applyActivityLocally(updated) {
   if (!updated) return;
   const idx = state.activities.findIndex(x => x.id === updated.id);
-  if (idx !== -1) state.activities[idx] = updated;
-  else state.activities.push(updated);
+  if (idx !== -1) {
+    state.activities[idx] = updated;
+    renderActivitiesTable();
+    return;
+  }
+  const vIdx = state.vagtplan.activities.findIndex(x => x.id === updated.id);
+  if (vIdx !== -1) {
+    state.vagtplan.activities[vIdx] = updated;
+    if (state.currentView === "vagtplan") renderVagtplanTable();
+    return;
+  }
+  state.activities.push(updated);
   renderActivitiesTable();
+}
+
+// Aktiviteten kan være indlæst i Aktivitetsoversigtens periode (state.activities) eller
+// kun i Vagtplans (potentielt anderledes) datointerval (state.vagtplan.activities) – slå op i begge.
+function _findLoadedActivity(id) {
+  return state.activities.find(x => x.id === id) || state.vagtplan.activities.find(x => x.id === id);
 }
 
 // ── Activity detail modal ──────────────────────────────────────────────────
 function openActivityDetail(id) {
   state.selectedActivityId = id;
-  const a = state.activities.find(x => x.id === id);
+  const a = _findLoadedActivity(id);
   if (!a) return;
 
   document.getElementById("modal-activity-title").textContent =
@@ -677,7 +732,7 @@ function openActivityDetail(id) {
       <div class="detail-item"><label>Start</label><span>${formatDateTime(a.start_time)}</span></div>
       <div class="detail-item"><label>Slut</label><span>${formatDateTime(a.end_time)}</span></div>
       <div class="detail-item"><label>Sum, effektiv tid</label><span>${formatDuration(a.duration_minutes)}</span></div>
-      <div class="detail-item"><label>Oprettet af</label><span>${a.is_manual ? (a.created_by || "Manuelt") : "System"}</span></div>
+      <div class="detail-item"><label>Oprettet af</label><span>${a.source === "vagtplan" ? "Vagtplan" : (a.is_manual ? (a.created_by || "Manuelt") : "System")}</span></div>
       ${(a.auto_approval_flags && a.auto_approval_flags.length > 0) ? `<div class="auto-approval-flags"><strong>Afvigelser registreret (ikke auto-godkendt):</strong><ul>${a.auto_approval_flags.map(f => `<li>${h(f)}</li>`).join('')}</ul></div>` : ""}
       ${a.status === "approved" && a.approved_by ? `<div class="detail-item"><label>Godkendt af</label><span>${h(a.approved_by)}</span></div>` : ""}
       ${a.status === "deactivated" && (a.deactivated_by || a.approved_by) ? `<div class="detail-item"><label>Deaktiveret af</label><span>${h(a.deactivated_by || a.approved_by)}</span></div>` : ""}
@@ -1020,7 +1075,7 @@ async function saveActivityTimes() {
   const kmEndVal   = document.getElementById("edit-km-end")?.value;
   const saltVal    = document.getElementById("edit-salt")?.checked ?? false;
 
-  const a = state.activities.find(x => x.id === state.selectedActivityId);
+  const a = _findLoadedActivity(state.selectedActivityId);
   const payload = {
     start_time: start + ":00",
     end_time: end + ":00",
@@ -1069,7 +1124,7 @@ function _shiftIsoByDays(isoStr, days) {
 }
 
 function openApproveModal() {
-  const a = state.activities.find(x => x.id === state.selectedActivityId);
+  const a = _findLoadedActivity(state.selectedActivityId);
   if (!a) return;
   document.getElementById("approve-comment").value = "";
   document.getElementById("approve-comment-required").classList.toggle("hidden", !a.is_under_4h);
@@ -1080,7 +1135,7 @@ function openApproveModal() {
 
 async function confirmApprove() {
   const comment = document.getElementById("approve-comment").value.trim();
-  const a = state.activities.find(x => x.id === state.selectedActivityId);
+  const a = _findLoadedActivity(state.selectedActivityId);
   if (a?.is_under_4h && !comment) { toast("Angiv begrundelse for aktivitet under 4 timer", "error"); return; }
 
   try {
@@ -1143,7 +1198,7 @@ async function modalReopen() {
 
 // ── Split modal ────────────────────────────────────────────────────────────
 function openSplitModal() {
-  const a = state.activities.find(x => x.id === state.selectedActivityId);
+  const a = _findLoadedActivity(state.selectedActivityId);
   if (!a) return;
   document.getElementById("split-activity-info").textContent =
     `${a.employee_name}: ${formatDateTime(a.start_time)} – ${formatDateTime(a.end_time)}`;
@@ -1738,19 +1793,32 @@ async function deleteActivityPause(actId, idx) {
   } catch (e) { toast(e.message || "Fejl ved sletning af pause", "error"); }
 }
 
-function openManualActivityModal(empId = null, dateIso = null) {
+function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
+  _manualActivityContext = { vagtplan: !!opts.vagtplan };
   document.getElementById("manual-employee").innerHTML =
     state.employees.filter(e => e.active)
       .slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
       .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
   buildDatetimePicker("manual-start", null);
   buildDatetimePicker("manual-end",   null);
-  ["manual-loading", "manual-unloading", "manual-comment", "manual-km-start", "manual-km-end"]
+  ["manual-loading", "manual-unloading", "manual-comment", "manual-vagtplan-comment", "manual-km-start", "manual-km-end"]
     .forEach(id => document.getElementById(id).value = "");
   document.getElementById("manual-reg").value = "";
   document.getElementById("manual-reg-hint").textContent = "";
   document.getElementById("manual-salt").checked = false;
   document.getElementById("manual-dob").checked = false;
+  document.getElementById("manual-vagtplan-comment-group").style.display = _manualActivityContext.vagtplan ? "" : "none";
+
+  const typeSelect = document.getElementById("manual-type");
+  const existingNoneOpt = typeSelect.querySelector('option[value="__none__"]');
+  if (_manualActivityContext.vagtplan && !existingNoneOpt) {
+    const opt = document.createElement("option");
+    opt.value = "__none__";
+    opt.textContent = "Ingen (kun kommentar)";
+    typeSelect.insertBefore(opt, typeSelect.firstChild);
+  } else if (!_manualActivityContext.vagtplan && existingNoneOpt) {
+    existingNoneOpt.remove();
+  }
   document.getElementById("manual-reg").oninput = function () {
     const reg = this.value.trim().toUpperCase();
     this.value = reg;
@@ -1824,12 +1892,39 @@ function getWeekdayDates(from, to) {
   return dates;
 }
 
+async function _afterManualActivitySaved(empId, dateIso) {
+  if (_manualActivityContext.vagtplan) {
+    const text = document.getElementById("manual-vagtplan-comment").value.trim();
+    if (text && empId && dateIso) {
+      try { await POST("/api/vagtplan-comments", { employee_id: empId, date: dateIso, text }); }
+      catch (e) { toast(`Aktivitet oprettet, men kommentar kunne ikke gemmes: ${e.message}`, "warning"); }
+    }
+    await loadVagtplan();
+  } else {
+    await refreshActivities();
+  }
+}
+
 async function confirmManualActivity() {
   const start   = readDatetimePicker("manual-start");
   const end     = readDatetimePicker("manual-end");
   const actType = document.getElementById("manual-type").value;
   const tilDato = document.getElementById("manual-til-dato").value;
   const empId   = parseInt(document.getElementById("manual-employee").value);
+
+  if (_manualActivityContext.vagtplan && actType === "__none__") {
+    const dateIso = document.getElementById("manual-start")?.querySelector(".dt-date")?.value;
+    const text = document.getElementById("manual-vagtplan-comment").value.trim();
+    if (!dateIso) { toast("Angiv dato", "error"); return; }
+    if (!text) { toast("Skriv en kommentar", "error"); return; }
+    try {
+      await POST("/api/vagtplan-comments", { employee_id: empId, date: dateIso, text });
+      toast("Kommentar gemt", "success");
+      closeModal("modal-manual-activity");
+      await loadVagtplan();
+    } catch (e) { toast(e.message, "error"); }
+    return;
+  }
 
   if (actType === "overnatning") {
     if (!start) { toast("Angiv dato for overnatningen", "error"); return; }
@@ -1842,10 +1937,11 @@ async function confirmManualActivity() {
         activity_type: isDob ? "dob_overnatning" : "overnatning",
         start_time: timeStr,
         end_time:   timeStr,
+        source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
       });
       toast(isDob ? "DOB-overnatning oprettet" : "Overnatning oprettet", "success");
       closeModal("modal-manual-activity");
-      await refreshActivities();
+      await _afterManualActivitySaved(empId, dateStr);
     } catch (e) { toast(e.message, "error"); }
     return;
   }
@@ -1958,6 +2054,7 @@ async function confirmManualActivity() {
           start_time:   iso + "T06:00:00",
           end_time:     iso + "T" + endH + ":" + endM + ":00",
           terminsdato:  terminsdato,
+          source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
         });
         created++;
       }
@@ -1970,7 +2067,7 @@ async function confirmManualActivity() {
       }
       if (created === 0 && skippedNoHours.length === 0) toast("Ingen aktiviteter oprettet", "warning");
       closeModal("modal-manual-activity");
-      await refreshActivities();
+      await _afterManualActivitySaved(empId, dates[dates.length - 1]);
     } catch (e) { toast(e.message, "error"); }
     return;
   }
@@ -2006,6 +2103,7 @@ async function confirmManualActivity() {
       km_end:   parseInt(document.getElementById("manual-km-end").value)   || null,
       salt_supplement: document.getElementById("manual-salt").checked,
       pause_intervals: manualPauses,
+      source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
     });
     if (actType === "barsel" && terminsdato) {
       const emp = state.employees.find(e => e.id === empId);
@@ -2013,7 +2111,7 @@ async function confirmManualActivity() {
     }
     toast("Aktivitet oprettet", "success");
     closeModal("modal-manual-activity");
-    await refreshActivities();
+    await _afterManualActivitySaved(empId, start.slice(0, 10));
   } catch (e) { toast(e.message, "error"); }
 }
 

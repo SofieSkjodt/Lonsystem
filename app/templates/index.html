@@ -814,10 +814,37 @@
         <label>Kommentar</label>
         <textarea id="manual-comment" rows="2"></textarea>
       </div>
+      <div class="form-group" id="manual-vagtplan-comment-group" style="display:none">
+        <label>Vagtplan-kommentar</label>
+        <textarea id="manual-vagtplan-comment" rows="2" placeholder="Synlig som tekst i Vagtplan-cellen"></textarea>
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-manual-activity')">Annuller</button>
       <button class="btn btn-primary" onclick="confirmManualActivity()">Opret aktivitet</button>
+    </div>
+  </div>
+</div>
+
+<!-- Vagtplan comment modal -->
+<div id="modal-vagtplan-comment" class="modal-overlay">
+  <div class="modal" style="width:420px;max-width:95vw">
+    <div class="modal-header">
+      <h2>Kommentar</h2>
+      <button class="modal-close" onclick="closeModal('modal-vagtplan-comment')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="vagtplan-comment-id">
+      <p id="vagtplan-comment-info" style="font-size:13px;color:var(--text-light);margin-bottom:12px"></p>
+      <div class="form-group">
+        <label>Tekst</label>
+        <textarea id="vagtplan-comment-text" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-danger" onclick="deleteVagtplanComment()" style="margin-right:auto">&#10007; Slet</button>
+      <button class="btn btn-secondary" onclick="closeModal('modal-vagtplan-comment')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmVagtplanComment()">Gem</button>
     </div>
   </div>
 </div>
