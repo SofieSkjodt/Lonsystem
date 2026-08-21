@@ -3879,30 +3879,35 @@ async function loadStamdataDispatcherGroups() {
   try {
     const rows = await GET("/api/stamdata/dispatcher-groups");
     if (!rows.length) {
-      tbody.innerHTML = `<tr><td colspan="4" style="padding:20px;text-align:center;color:var(--text-light)">Ingen disponentgrupper oprettet endnu</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="5" style="padding:20px;text-align:center;color:var(--text-light)">Ingen disponentgrupper oprettet endnu</td></tr>`;
       return;
     }
+    const badge = (v, yes, no) => v
+      ? `<span style="color:var(--primary);font-weight:600">${yes}</span>`
+      : `<span style="color:var(--text-light)">${no}</span>`;
     tbody.innerHTML = rows.map(r => `
       <tr style="border-bottom:1px solid var(--border);background:#fff">
         <td style="padding:10px 14px">${h(r.name)}</td>
         <td style="padding:10px 14px;color:var(--text-light)">${h(r.description || "")}</td>
         <td style="padding:10px 14px;text-align:center">${r.employee_count}</td>
+        <td style="padding:10px 14px;text-align:center">${badge(r.visible_in_activity_overview, "Ja", "Nej")}</td>
         <td style="padding:10px 14px;text-align:center">
           <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;margin-right:4px"
-                  onclick="openStamdataDispatcherModal(${r.id},${jq(r.name)},${jq(r.description || "")})">Rediger</button>
+                  onclick="openStamdataDispatcherModal(${r.id},${jq(r.name)},${jq(r.description || "")},${r.visible_in_activity_overview})">Rediger</button>
           <button class="btn btn-danger" style="font-size:12px;padding:4px 10px"
                   onclick="deleteStamdataDispatcher(${r.id},${jq(r.name)},${r.employee_count})">Slet</button>
         </td>
       </tr>`).join("");
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="4" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
   // Ny/ændret gruppe kan påvirke medarbejder-modal og filtre
   try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); fillDispatcherGroupFilter(); } catch (_) {}
 }
 
-function openStamdataDispatcherModal(id, name, description) {
+function openStamdataDispatcherModal(id, name, description, visible) {
   document.getElementById("stamdata-dispatcher-id").value = id || "";
   document.getElementById("stamdata-dispatcher-name").value = name || "";
   document.getElementById("stamdata-dispatcher-description").value = description || "";
+  document.getElementById("stamdata-dispatcher-visible").checked = id ? !!visible : true;
   document.getElementById("stamdata-dispatcher-title").textContent = id ? "Rediger disponentgruppe" : "Ny disponentgruppe";
   openModal("modal-stamdata-dispatcher");
 }
@@ -3911,13 +3916,14 @@ async function confirmStamdataDispatcher() {
   const id   = document.getElementById("stamdata-dispatcher-id").value;
   const name = document.getElementById("stamdata-dispatcher-name").value.trim();
   const description = document.getElementById("stamdata-dispatcher-description").value.trim();
+  const visible = document.getElementById("stamdata-dispatcher-visible").checked;
   if (!name) { toast("Navn er påkrævet", "error"); return; }
   try {
     if (id) {
-      await PATCH(`/api/stamdata/dispatcher-groups/${id}`, { name, description });
+      await PATCH(`/api/stamdata/dispatcher-groups/${id}`, { name, description, visible_in_activity_overview: visible });
       toast("Disponentgruppe opdateret");
     } else {
-      await POST("/api/stamdata/dispatcher-groups", { name, description });
+      await POST("/api/stamdata/dispatcher-groups", { name, description, visible_in_activity_overview: visible });
       toast("Disponentgruppe oprettet");
     }
     closeModal("modal-stamdata-dispatcher");
