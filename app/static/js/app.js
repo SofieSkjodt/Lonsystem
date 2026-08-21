@@ -320,7 +320,7 @@ function renderActivitiesTable() {
     const tr = document.createElement("tr");
     const springerChecked = state.springerFlags?.[emp.id] === true;
     const springerDisabledAttr = (!canToggleSpringer || periodLocked) ? "disabled" : "";
-    let cells = `<td class="emp-cell" title="${h(emp.name)}">
+    let cells = `<td class="emp-cell" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">
       ${h(emp.name)}
       <label class="springer-flag-label">
         <input type="checkbox" class="springer-flag-checkbox" data-emp-id="${emp.id}"
