@@ -418,7 +418,24 @@
       "Bash(git checkout *)",
       "Bash(python -m pytest tests/test_rate_source.py -k blocked -v)",
       "Bash(python -m pytest tests/test_rate_source.py -k \"blocked or allowed\" -v)",
-      "Bash(git status *)"
+      "Bash(git status *)",
+      "Bash(pytest ../tests/test_dob_overnatning.py -v)",
+      "Bash(pytest ../tests/test_dob_overnatning.py -v -k dob_overnight_rate)",
+      "Bash(pytest ../tests/test_dob_overnatning.py -v -k calculate_employee)",
+      "Bash(pytest ../tests/test_springertillaeg.py -v -k export_csv_post_includes_springer)",
+      "Bash(pytest tests/test_springertillaeg.py -v -k export_csv_post_includes_springer)",
+      "Bash(pytest tests/test_dob_overnatning.py -v)",
+      "Bash(pytest tests/ -v -k \"splits_overnight or test_dob_overnatning\")",
+      "Bash(pytest tests/ -v -k proevekoersel)",
+      "Bash(taskkill //PID 22308 //F)",
+      "Bash(netstat -ano)",
+      "Bash(tasklist //FI \"PID eq 22308\")",
+      "PowerShell(Get-Process -Id 22308 -ErrorAction SilentlyContinue)",
+      "PowerShell(Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue)",
+      "Bash(tasklist)",
+      "Bash(taskkill //F //PID 11996)",
+      "Bash(taskkill //F //PID 13580)",
+      "Bash(taskkill //F //PID 11068)"
     ]
   }
 }
