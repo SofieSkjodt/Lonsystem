@@ -25,9 +25,14 @@ ikke-gemt filter man selv vælger ved hvert besøg.
 5. **Skjulte grupper forsvinder helt** fra afdelings-filterets dropdown i
    aktivitetsoversigten — kan ikke midlertidigt "kigges ind i" via filteret.
    De kan stadig ses/redigeres i Stamdata, og deres medarbejdere/aktiviteter er
-   upåvirkede alle andre steder (Medarbejdere, Tillæg, Lønkørsel,
-   Fraværsoversigt, CSV-eksport osv.) — kun selve
-   aktivitetsoversigt-gitteret og dets to filtre påvirkes.
+   upåvirkede i Medarbejdere, Tillæg, Fraværsoversigt og Vagtplan.
+
+   **Opdateret 2026-08-24:** Lønkørsel (preview, prøvekørsel, CSV-eksport og
+   PDF-timesedler) medtager nu KUN medarbejdere med mindst én synlig
+   disponentgruppe — samme regel som aktivitetsoversigten. Dette er en
+   bevidst ændring af den oprindelige beslutning fra 2026-08-21, hvor
+   Lønkørsel/CSV/PDF udtrykkeligt IKKE skulle påvirkes. Fraværsoversigt og
+   Vagtplan er fortsat upåvirkede og viser alle aktive medarbejdere.
 
 **Forudsætning før udrulning:** medarbejder 34362 (Magne Sørensen) har i dag
 ingen disponentgruppe og ville blive skjult fra aktivitetsoversigten med det
@@ -108,8 +113,12 @@ schema-udvidelsen) og returnerer `true` hvis mindst én af `emp`'s grupper har
 
 ## Ikke i scope
 
-- Ingen ændring af Fraværsoversigt, Lønkørsel, medarbejderlisten i Stamdata,
-  CSV/PDF-eksport eller nogen anden visning end selve aktivitetsoversigten.
+- Ingen ændring af Fraværsoversigt, Vagtplan eller medarbejderlisten i
+  Stamdata — disse viser fortsat alle aktive medarbejdere uanset
+  disponentgruppe-synlighed.
 - Ingen personlig/bruger-specifik indstilling — kun den globale Stamdata-flag.
 - Ingen mulighed for midlertidigt at "vise skjulte grupper alligevel" via
   filteret — det kræver at gå ind i Stamdata og slå gruppen til igen.
+
+(Se opdateringen 2026-08-24 ovenfor: Lønkørsel/CSV/PDF er IKKE længere
+undtaget — de filtreres nu på samme måde som aktivitetsoversigten.)
