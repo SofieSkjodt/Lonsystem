@@ -1266,12 +1266,24 @@ def build_bruger():
     heading(doc, "Navigation", 1, "2")
 
     heading(doc, "Venstre menu", 2, "2.1")
+    body(doc, "Menuen er delt i tre grupper. Hvilke punkter du ser afhænger af din rolles rettigheder (se kapitel 11).")
     two_col_table(doc, [
-        ["Aktiviteter",    "Viser aktivitetstabellen for den aktuelle lønperiode."],
-        ["Lønkørsel",      "Åbner lønkørselspanelet med prøvekørsel, PDF og CSV-eksport."],
-        ["Importer .ddd",  "Import af tachografdata fra fil eller mappe."],
-        ["Medarbejdere",   "Oversigt over og redigering af medarbejderstamdata."],
-        ["⚙️ Stamdata",    "Konfiguration af systemets masterdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder (inkl. CSV-kolonneopsætning), fraværstyper, CVR-numre, helligdage og disponentgrupper. Alle typer og koder kan oprettes, redigeres og slettes. Kun synlig for administratorer."],
+        ["📋 Aktiviteter",    "Viser aktivitetstabellen for den aktuelle lønperiode."],
+        ["💰 Lønkørsel",      "Åbner lønkørselspanelet med prøvekørsel, PDF og CSV-eksport. Kræver 'Lønkørsel'-rettigheden."],
+        ["📊 Fraværsoversigt","Samlet oversigt over fravær pr. medarbejder/type, med eksport. Kræver 'Fraværsoversigt'-rettigheden."],
+        ["🗓️ Vagtplan",       "Ugentlig/periodisk vagtplanlægning pr. medarbejder. Kræver 'Se vagtplan'; redigering kræver desuden 'Redigér egen linje' eller 'Redigér alle linjer'."],
+    ])
+    body(doc, "")
+    two_col_table(doc, [
+        ["📥 Importer .ddd",  "Import af tachografdata fra fil eller mappe. Kræver 'Importer .ddd'-rettigheden."],
+        ["👤 Medarbejdere",   "Oversigt over og redigering af medarbejderstamdata. Kræver mindst 'Se medarbejdere'."],
+        ["🚛 Vognpark",       "Oversigt over og redigering af køretøjer. Kræver mindst 'Se vognpark'."],
+        ["💵 Tillæg",         "Administration af individuelle kr/time-tillæg pr. medarbejder. Kræver 'Administrér medarbejdertillæg'."],
+    ])
+    body(doc, "")
+    two_col_table(doc, [
+        ["🔑 Brugere",     "Opret/rediger brugere og roller, se hændelseslog (kapitel 11). Kun synlig med 'Brugerstyring'-rettigheden."],
+        ["⚙️ Stamdata",    "Konfiguration af systemets masterdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder (inkl. CSV-kolonneopsætning), fraværstyper, CVR-numre, helligdage, disponentgrupper og aftaletyper. Alle typer og koder kan oprettes, redigeres og slettes. Kræver 'Stamdata'-rettigheden."],
     ])
 
     heading(doc, "Periodenavigation", 2, "2.2")
@@ -1613,7 +1625,7 @@ def build_bruger():
         "Systemet kontrollerer løbende om medarbejdere har nået 9 måneders anciennitet "
         "og en tilsvarende overenskomsttype med højere sats. Hvis det er tilfældet, vises "
         "et pop-up-varsel. Varslet er styret af tilladelsen 'Anciennitetsvarsel' i Brugerstyring – "
-        "som standard er den slået til for Administrator og Lønbogholder og fra for Disponent. "
+        "som standard er den slået til for Administrator og Lønbogholder og fra for Disponent og Kontor. "
         "En administrator kan klikke tilladelsen til eller fra for enhver rolle. "
         "Husk at opdatere overenskomsttypen for medarbejderen."
     ))
@@ -1880,6 +1892,100 @@ def build_bruger():
         "Udfyld kun fratrædelsesdatoen den dag en medarbejder forlader virksomheden.",
         "HUSK"
     )
+
+    # ── 11. Brugerstyring og roller ───────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Brugerstyring og roller", 1, "11")
+    body(doc, (
+        "Klik på '🔑 Brugere' i venstre menu for at oprette login-brugere, styre hvilke "
+        "roller de har, og se hændelsesloggen. Menupunktet er kun synligt for brugere hvis "
+        "rolle har rettigheden 'Brugerstyring'. Siden har tre faner: Brugere, Roller og "
+        "Hændelseslog."
+    ))
+
+    heading(doc, "Brugere-fanen", 2, "11.1")
+    body(doc, "Klik '+ Opret bruger' og udfyld navn, initialer/brugernavn (bruges til login), mail (valgfri), rolle og adgangskode.")
+    two_col_table(doc, [
+        ["Rediger",                "Ændrer navn, initialer, mail, rolle eller adgangskode på en eksisterende bruger."],
+        ["Aktiver / Deaktiver",    "Slår login til/fra uden at slette brugeren eller dens historik. En deaktiveret bruger kan ikke logge ind."],
+        ["Din egen konto",         "Kan redigeres, men ikke deaktiveres – knappen erstattes af teksten '(dig selv)'."],
+    ])
+    note_box(doc,
+        "Initialer skal være unikke (store/små bogstaver behandles ens) og bruges som "
+        "brugernavn ved login.",
+        "BEMÆRK"
+    )
+
+    heading(doc, "Roller-fanen", 2, "11.2")
+    body(doc, (
+        "En rolle er en navngivet samling af rettigheder. Hver bruger har præcis én rolle "
+        "(sat i Brugere-fanen), og rollen bestemmer hvad brugeren kan se og gøre i systemet."
+    ))
+    header_table(doc,
+        ["Rolle", "Type", "Typiske rettigheder ved oprettelse"],
+        [
+            ["Administrator", "Systemrolle – kan ikke slettes, rettigheder kan ikke redigeres",
+             "Alt: lønkørsel, import, brugerstyring, åbn låst periode, administrér baselines, godkend aktiviteter, se kalender, sæt springertillæg, vagtplan (se + redigér alle linjer)"],
+            ["Lønbogholder", "Almindelig rolle – kan redigeres/slettes",
+             "Lønkørsel, fraværsoversigt, import, se/tilføj medarbejdere, se/tilføj vogne, anciennitetsvarsel, godkend aktiviteter, se kalender, administrér medarbejdertillæg, sæt springertillæg, vagtplan (se + redigér alle linjer)"],
+            ["Disponent", "Almindelig rolle – kan redigeres/slettes",
+             "Se medarbejdere, se vogne, godkend aktiviteter, se kalender, sæt springertillæg, vagtplan (se + redigér alle linjer)"],
+            ["Kontor", "Almindelig rolle – kan redigeres/slettes",
+             "Se vagtplan, redigér egen linje i vagtplan"],
+        ]
+    )
+    note_box(doc,
+        "Kun 'Administrator' er en beskyttet systemrolle. De øvrige roller – herunder "
+        "'Lønbogholder' og 'Disponent' – kan en administrator frit redigere (rettigheder og "
+        "visningsnavn) eller slette, og der kan oprettes helt nye, skræddersyede roller efter "
+        "behov. 'Kontor' er et eksempel på en sådan senere oprettet rolle, målrettet "
+        "medarbejdere der kun skal kunne se og redigere deres egen linje i Vagtplan.",
+        "BEMÆRK"
+    )
+    body(doc, "Klik '+ Opret rolle' for at oprette en ny rolle: angiv et internt rollenavn (kun bogstaver, tal og underscore), et visningsnavn, og afkryds de ønskede rettigheder fra listen nedenfor. Klik 'Rediger' på en eksisterende, ikke-system-rolle for at ændre visningsnavn og rettigheder. En rolle kan kun slettes, hvis ingen brugere har den.")
+
+    heading(doc, "Rettighedsoversigt", 2, "11.3")
+    header_table(doc,
+        ["Rettighed (nøgle)", "Vises som", "Giver adgang til"],
+        [
+            ["payroll",                     "Lønkørsel",                          "Menupunktet 'Lønkørsel': prøvekørsel, PDF-timesedler og Danløn CSV-eksport."],
+            ["absence_overview",            "Fraværsoversigt",                    "Menupunktet 'Fraværsoversigt'."],
+            ["import_ddd",                  "Importer .ddd",                      "Menupunktet 'Importer .ddd' – import af tachografdata."],
+            ["user_management",             "Brugerstyring",                     "Menupunktet '🔑 Brugere' – denne side (brugere, roller, hændelseslog)."],
+            ["reopen_period",               "Åbn låst lønperiode",                "Mulighed for at genåbne en periode hvor der allerede er kørt løn."],
+            ["stamdata",                     "Stamdata",                          "Menupunktet '⚙️ Stamdata' – alle ni faner (se kapitel 7)."],
+            ["view_employees",              "Se medarbejdere",                   "Menupunktet 'Medarbejdere' (læse-adgang)."],
+            ["manage_employees",            "Tilføj medarbejdere",               "Opret/rediger medarbejdere under 'Medarbejdere'."],
+            ["view_vehicles",               "Se vognpark",                       "Menupunktet 'Vognpark' (læse-adgang)."],
+            ["manage_vehicles",             "Tilføj vogn",                       "Opret/rediger køretøjer under 'Vognpark'."],
+            ["manage_employee_supplements", "Administrér medarbejdertillæg",     "Menupunktet 'Tillæg' – oprette/afslutte kr/time-tillæg."],
+            ["manage_holidays",             "Administrér helligdage",            "Stamdata → Helligdage: opret, auto-generer og slet."],
+            ["anciennitet_alert",           "Anciennitetsvarsel",                "Modtag pop-up-varsler om medarbejdere med 9 måneders anciennitet."],
+            ["approve_activities",          "Godkend aktiviteter",               "Godkend/deaktiver/ret/opdel aktiviteter i aktivitetstabellen."],
+            ["view_calendar",               "Se aktivitetskalender",             "Se aktivitetstabellen (kalendervisningen på forsiden)."],
+            ["toggle_springer",             "Sæt springertillæg",                "Afkryds springertillæg-fluebenet i aktivitetsoversigten."],
+            ["vagtplan_view",               "Se vagtplan",                       "Menupunktet 'Vagtplan' (læse-adgang)."],
+            ["vagtplan_edit_own",           "Redigér egen linje i vagtplan",     "Ret kun sin egen række i Vagtplan (matches på initialer)."],
+            ["vagtplan_edit_all",           "Redigér alle linjer i vagtplan",    "Ret alle medarbejderes rækker i Vagtplan."],
+        ],
+        [Cm(3.5), Cm(4), Cm(8.5)]
+    )
+    note_box(doc,
+        "Rettigheder er additive og uafhængige af hinanden – der er ingen indbygget "
+        "hierarki. En rolle med kun 'Se vagtplan' + 'Redigér egen linje i vagtplan' (som "
+        "'Kontor') ser IKKE Aktiviteter, Lønkørsel eller andre menupunkter, uanset hvor "
+        "'lille' rettigheden lyder.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Hændelseslog-fanen", 2, "11.4")
+    body(doc, (
+        "Viser de seneste 500 hændelser i systemet, nyeste øverst: oprettelse/redigering af "
+        "brugere og roller, rolleskift, samt Stamdata-ændringer (opret/redigér/slet). Hver "
+        "linje viser tidspunkt, hvilken bruger der udførte handlingen, selve handlingen og en "
+        "kort detaljetekst. Søgefeltet filtrerer på tværs af bruger, handling og detaljer; "
+        "'⟲ Opdater' genindlæser listen."
+    ))
 
     doc.save(OUT / "Brugervejledning.docx")
     print("Brugervejledning.docx gemt.")
