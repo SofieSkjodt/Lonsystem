@@ -20,6 +20,7 @@ const state = {
   employees: [],
   vehicles: [],
   agreementTypes: [],
+  agreementKinds: [],
   absenceTypes: [],
   selectedActivityId: null,
   currentUser: null,       // { id, name, initials, role, email, permissions }
@@ -3768,7 +3769,7 @@ async function deleteRole(roleId, displayName) {
 // ── Stamdata ────────────────────────────────────────────────────────────────
 
 function switchStamdataTab(tab) {
-  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday", "dispatcher"].forEach(t => {
+  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday", "dispatcher", "agreementkind"].forEach(t => {
     const pane = document.getElementById(`sd-pane-${t}`);
     const btn  = document.getElementById(`sd-tab-${t}`);
     if (pane) pane.style.display = t === tab ? "" : "none";
@@ -3786,6 +3787,7 @@ function switchStamdataTab(tab) {
   document.getElementById("btn-stamdata-add-cvr").style.display        = tab === "cvr"        ? "" : "none";
   document.getElementById("btn-stamdata-add-holiday").style.display    = tab === "holiday"    ? "" : "none";
   document.getElementById("btn-stamdata-add-dispatcher").style.display = tab === "dispatcher" ? "" : "none";
+  document.getElementById("btn-stamdata-add-agreementkind").style.display = tab === "agreementkind" ? "" : "none";
 }
 
 async function loadStamdata() {
@@ -3799,6 +3801,7 @@ async function loadStamdata() {
     loadStamdataCvrNumbers(),
     loadStamdataHolidays(),
     loadStamdataDispatcherGroups(),
+    loadStamdataAgreementKinds(),
   ]);
 }
 
@@ -4177,6 +4180,81 @@ async function deleteStamdataAbsence(id, label) {
     await DEL(`/api/stamdata/absence-types/${id}`);
     toast("Fraværstype slettet");
     await loadStamdataAbsenceTypes();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+// ── Aftaletyper (stamdata) ────────────────────────────────────────────────
+
+async function loadStamdataAgreementKinds() {
+  const tbody = document.getElementById("stamdata-agreementkind-tbody");
+  if (!tbody) return;
+  try {
+    const rows = await GET("/api/stamdata/agreement-kinds");
+    const badge = (v, yes, no) => v
+      ? `<span style="color:var(--primary);font-weight:600">${yes}</span>`
+      : `<span style="color:var(--text-light)">${no}</span>`;
+    tbody.innerHTML = rows.map(r => `
+      <tr style="border-bottom:1px solid var(--border);background:#fff">
+        <td style="padding:10px 14px">${h(r.label)}</td>
+        <td style="padding:10px 14px;text-align:center">
+          <span style="display:inline-block;padding:2px 10px;border-radius:12px;font-size:12px;font-weight:600;
+                       background:${r.is_user_created ? "var(--light-tint)" : "#f5f5f5"};
+                       color:${r.is_user_created ? "var(--primary)" : "var(--text-light)"}">
+            ${r.is_user_created ? "Brugeroprettet" : "System"}
+          </span>
+        </td>
+        <td style="padding:10px 14px;text-align:center">${badge(r.requires_agreement_type, "Ja", "Nej")}</td>
+        <td style="padding:10px 14px;text-align:center">${badge(r.is_active, "Aktiv", "Inaktiv")}</td>
+        <td style="padding:10px 14px;text-align:center">
+          <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;margin-right:4px"
+                  onclick="openStamdataAgreementKindModal(${r.id},${jq(r.label)},${r.is_active},${r.requires_agreement_type},${r.is_user_created})">Rediger</button>
+          ${r.is_user_created
+            ? `<button class="btn btn-danger" style="font-size:12px;padding:4px 10px"
+                       onclick="deleteStamdataAgreementKind(${r.id},${jq(r.label)})">Slet</button>`
+            : ""}
+        </td>
+      </tr>`).join("");
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
+  // Ny/ændret aftaletype skal med det samme kunne vælges i medarbejder-modalen
+  try {
+    state.agreementKinds = await GET("/api/employees/agreement-kinds");
+  } catch (_) {}
+}
+
+function openStamdataAgreementKindModal(id, label, isActive, requiresAgreementType, isUserCreated) {
+  document.getElementById("stamdata-agreementkind-id").value = id || "";
+  document.getElementById("stamdata-agreementkind-label").value = label || "";
+  document.getElementById("stamdata-agreementkind-active").checked = isActive !== false;
+  document.getElementById("stamdata-agreementkind-requires").checked = requiresAgreementType !== false;
+  document.getElementById("stamdata-agreementkind-title").textContent = id ? "Rediger aftaletype" : "Ny aftaletype";
+  openModal("modal-stamdata-agreementkind");
+}
+
+async function confirmStamdataAgreementKind() {
+  const id       = document.getElementById("stamdata-agreementkind-id").value;
+  const label    = document.getElementById("stamdata-agreementkind-label").value.trim();
+  const active   = document.getElementById("stamdata-agreementkind-active").checked;
+  const requires = document.getElementById("stamdata-agreementkind-requires").checked;
+  if (!label) { toast("Betegnelse er påkrævet", "error"); return; }
+  try {
+    if (id) {
+      await PATCH(`/api/stamdata/agreement-kinds/${id}`, { label, is_active: active, requires_agreement_type: requires });
+      toast("Aftaletype opdateret");
+    } else {
+      await POST("/api/stamdata/agreement-kinds", { label, requires_agreement_type: requires });
+      toast("Aftaletype oprettet");
+    }
+    closeModal("modal-stamdata-agreementkind");
+    await loadStamdataAgreementKinds();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function deleteStamdataAgreementKind(id, label) {
+  if (!confirm(`Slet aftaletypen "${label}"?`)) return;
+  try {
+    await DEL(`/api/stamdata/agreement-kinds/${id}`);
+    toast("Aftaletype slettet");
+    await loadStamdataAgreementKinds();
   } catch (e) { toast(e.message, "error"); }
 }
 

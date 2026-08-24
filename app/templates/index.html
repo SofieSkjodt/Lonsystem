@@ -407,6 +407,7 @@
         <button id="btn-stamdata-add-cvr" class="btn btn-primary" style="display:none" onclick="openNewCvrModal()">+ Tilføj</button>
         <button id="btn-stamdata-add-holiday" class="btn btn-primary" style="display:none" onclick="openNewHolidayModal()">+ Tilføj</button>
         <button id="btn-stamdata-add-dispatcher" class="btn btn-primary" style="display:none" onclick="openStamdataDispatcherModal()">+ Tilføj</button>
+        <button id="btn-stamdata-add-agreementkind" class="btn btn-primary" style="display:none" onclick="openStamdataAgreementKindModal()">+ Tilføj</button>
       </div>
 
       <!-- Tab-switcher -->
@@ -443,6 +444,10 @@
         <button id="sd-tab-dispatcher" onclick="switchStamdataTab('dispatcher')"
                 style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
           Disponentgrupper
+        </button>
+        <button id="sd-tab-agreementkind" onclick="switchStamdataTab('agreementkind')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Aftale
         </button>
       </div>
 
@@ -509,6 +514,24 @@
             </thead>
             <tbody id="stamdata-absence-tbody">
               <tr><td colspan="4" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Aftale -->
+        <div id="sd-pane-agreementkind" style="display:none">
+          <table style="width:100%;border-collapse:collapse;font-size:14px;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08)">
+            <thead>
+              <tr style="background:var(--primary);color:#fff">
+                <th style="padding:10px 14px;text-align:left;font-weight:600">Betegnelse</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Type</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Kræver overenskomsttype</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Aktiv</th>
+                <th style="padding:10px 14px;text-align:center;font-weight:600">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody id="stamdata-agreementkind-tbody">
+              <tr><td colspan="5" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
             </tbody>
           </table>
         </div>
@@ -1674,6 +1697,35 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-paytype')">Annuller</button>
       <button class="btn btn-primary" onclick="confirmStamdataPayType()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── Stamdata: Opret/rediger aftaletype ── -->
+<div id="modal-stamdata-agreementkind" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2 id="stamdata-agreementkind-title">Ny aftaletype</h2>
+      <button class="modal-close" onclick="closeModal('modal-stamdata-agreementkind')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="stamdata-agreementkind-id">
+      <div class="form-group">
+        <label>Betegnelse</label>
+        <input type="text" id="stamdata-agreementkind-label" placeholder="fx Månedslønnet">
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="stamdata-agreementkind-requires" style="width:16px;height:16px;cursor:pointer" checked>
+        <label for="stamdata-agreementkind-requires" style="margin:0;cursor:pointer">Kræver overenskomsttype</label>
+      </div>
+      <div class="form-group" style="display:flex;align-items:center;gap:8px">
+        <input type="checkbox" id="stamdata-agreementkind-active" style="width:16px;height:16px;cursor:pointer" checked>
+        <label for="stamdata-agreementkind-active" style="margin:0;cursor:pointer">Aktiv</label>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-stamdata-agreementkind')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmStamdataAgreementKind()">Gem</button>
     </div>
   </div>
 </div>
