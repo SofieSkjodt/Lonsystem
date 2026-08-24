@@ -18,9 +18,14 @@ def test_employee_initials_defaults_to_none(db, employee):
 
 def test_create_employee_persists_initials(db):
     from routers.employees import create_employee
-    from database.models import AppUser, MasterAgreementType
+    from database.models import AppUser, MasterAgreementType, MasterAgreementKind
     from decimal import Decimal
     db.add(MasterAgreementType(name="Standardoverenskomst", hourly_rate=Decimal("150.00")))
+    db.add(MasterAgreementKind(
+        key="hourly_fixed", label="Timelønnet, fast arbejdstid",
+        is_active=True, is_user_created=False,
+        requires_agreement_type=True, sort_order=1,
+    ))
     db.commit()
     body = EmployeeCreate(
         employee_number="9999",

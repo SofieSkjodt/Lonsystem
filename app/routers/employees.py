@@ -10,7 +10,7 @@ from calculators.rates_loader import (
     seniority_variant_exists_from_db,
 )
 from database.session import get_db
-from database.models import AppUser, DispatcherGroup, Employee
+from database.models import AppUser, DispatcherGroup, Employee, MasterAgreementKind
 from database.schemas import (
     AnciennitetsAlert,
     DispatcherGroupResponse,
@@ -88,6 +88,24 @@ def agreement_types(current_user: AppUser = Depends(get_current_user),
     return [{"name": k, "hourly_rate": float(v)} for k, v in types.items()]
 
 
+@router.get("/agreement-kinds")
+def agreement_kinds(current_user: AppUser = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Aktive Aftale-typer fra Stamdata – bruges til at udfylde medarbejder-modalens dropdown."""
+    rows = db.query(MasterAgreementKind).filter(MasterAgreementKind.is_active == True).order_by(
+        MasterAgreementKind.sort_order, MasterAgreementKind.label
+    ).all()
+    return [
+        {"key": r.key, "label": r.label, "requires_agreement_type": r.requires_agreement_type}
+        for r in rows
+    ]
+
+
+def _agreement_type_required(db: Session, agreement_kind: str) -> bool:
+    row = db.query(MasterAgreementKind).filter(MasterAgreementKind.key == agreement_kind).first()
+    return row.requires_agreement_type if row else True
+
+
 @router.get("/dispatcher-groups", response_model=list[DispatcherGroupResponse])
 def dispatcher_groups(current_user: AppUser = Depends(get_current_user),
                       db: Session = Depends(get_db)):
@@ -115,8 +133,13 @@ def create_employee(body: EmployeeCreate,
     if body.tachograph_card_number:
         if db.query(Employee).filter(Employee.tachograph_card_number == body.tachograph_card_number).first():
             raise HTTPException(400, "Førerkortnummer eksisterer allerede")
-    if body.agreement_type not in load_agreement_types_from_db(db):
-        raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
+    if not db.query(MasterAgreementKind).filter(MasterAgreementKind.key == body.agreement_kind).first():
+        raise HTTPException(400, f"Ukendt aftaletype: {body.agreement_kind}")
+    if _agreement_type_required(db, body.agreement_kind):
+        if not body.agreement_type or body.agreement_type not in load_agreement_types_from_db(db):
+            raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
+    else:
+        body.agreement_type = ""
 
     data = body.model_dump(exclude={"dispatcher_group_ids"})
     data["work_schedule"] = body.work_schedule.model_dump()
@@ -186,8 +209,21 @@ def update_employee(employee_id: int, body: EmployeeUpdate,
     emp = db.query(Employee).filter(Employee.id == employee_id).first()
     if not emp:
         raise HTTPException(404, "Medarbejder ikke fundet")
-    if body.agreement_type and body.agreement_type not in load_agreement_types_from_db(db):
-        raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
+    if body.agreement_kind and not db.query(MasterAgreementKind).filter(
+        MasterAgreementKind.key == body.agreement_kind
+    ).first():
+        raise HTTPException(400, f"Ukendt aftaletype: {body.agreement_kind}")
+    effective_kind = body.agreement_kind or emp.agreement_kind
+    effective_agreement_type = (
+        body.agreement_type if body.agreement_type is not None else emp.agreement_type
+    )
+    if _agreement_type_required(db, effective_kind):
+        if not effective_agreement_type or effective_agreement_type not in load_agreement_types_from_db(db):
+            raise HTTPException(400, f"Ukendt overenskomsttype: {effective_agreement_type}")
+    elif body.agreement_type is None and body.agreement_kind and body.agreement_kind != emp.agreement_kind:
+        # Skiftes til en type der ikke kræver Overenskomsttype, uden at et nyt
+        # felt er angivet samtidig – nulstil det gemte felt til "ikke relevant".
+        body.agreement_type = ""
     old_agreement_type = emp.agreement_type
     for field_name, value in body.model_dump(exclude_none=True, exclude={"dispatcher_group_ids"}).items():
         if field_name == "work_schedule":
