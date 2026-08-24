@@ -817,16 +817,16 @@
           </div>
         </div>
         <div class="form-group">
-          <label>Registreringsnummer / Vognnummer</label>
-          <input type="text" id="manual-reg" placeholder="Fx DF67671 eller 1234" autocomplete="off" style="text-transform:uppercase">
-          <div class="form-hint" id="manual-reg-hint" style="margin-top:4px;font-size:12px"></div>
-        </div>
-        <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">
             <input type="checkbox" id="manual-salt" style="width:16px;height:16px;cursor:pointer">
             Salttillæg
           </label>
         </div>
+      </div>
+      <div class="form-group">
+        <label>Registreringsnummer / Vognnummer <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="manual-reg" placeholder="Fx DF67671 eller 1234" autocomplete="off" style="text-transform:uppercase">
+        <div class="form-hint" id="manual-reg-hint" style="margin-top:4px;font-size:12px"></div>
       </div>
       <div class="form-group" id="manual-dob-group" style="display:none">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-weight:500">

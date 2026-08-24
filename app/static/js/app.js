@@ -1603,10 +1603,9 @@ function updateManualTypeVisibility() {
       : `Starttid <span style="color:var(--danger)">*</span>`;
 
   if (isAbsence) {
-    ["manual-loading", "manual-unloading", "manual-km-start", "manual-km-end", "manual-reg"].forEach(id => {
+    ["manual-loading", "manual-unloading", "manual-km-start", "manual-km-end"].forEach(id => {
       document.getElementById(id).value = "";
     });
-    document.getElementById("manual-reg-hint").textContent = "";
     document.getElementById("manual-salt").checked = false;
   }
   document.getElementById("manual-til-dato-group").style.display = tilDatoFieldVisible ? "" : "none";
@@ -2022,11 +2021,16 @@ async function confirmManualActivity() {
   }
 
   const regInput = document.getElementById("manual-reg").value.trim().toUpperCase();
-  const foundVehicle = regInput ? state.vehicles.find(x =>
+  if (!regInput) {
+    toast("Registreringsnummer / Vognnummer er påkrævet", "error");
+    document.getElementById("manual-reg").focus();
+    return;
+  }
+  const foundVehicle = state.vehicles.find(x =>
     x.registration_number.toUpperCase() === regInput ||
     x.vehicle_number.toUpperCase() === regInput
-  ) : null;
-  if (regInput && !foundVehicle) {
+  );
+  if (!foundVehicle) {
     openModal("modal-reg-error");
     return;
   }
