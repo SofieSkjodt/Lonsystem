@@ -12,7 +12,7 @@ from sqlalchemy.orm import Session
 from auth import log_action, require_permission
 from database.models import (
     AppUser, Employee, DispatcherGroup,
-    MasterAgreementType, MasterOvertimeRate,
+    MasterAgreementType, MasterAgreementKind, MasterOvertimeRate,
     MasterSupplementRate, MasterPayType, MasterAbsenceType, MasterCvrNumber,
     Holiday,
 )
@@ -522,6 +522,110 @@ def delete_absence_type(
         raise HTTPException(404, "Ikke fundet")
     log_action(db, current_user, "stamdata_delete", "absence_type", row.id,
                f"Slettet fraværstype: {row.label}")
+    db.delete(row)
+    db.commit()
+
+
+# ── Aftaletyper ───────────────────────────────────────────────────────────
+
+
+class AgreementKindBody(BaseModel):
+    label: Optional[str] = None
+    is_active: Optional[bool] = None
+    requires_agreement_type: Optional[bool] = None
+
+
+def _agreement_kind_row(r) -> dict:
+    return {
+        "id": r.id,
+        "key": r.key,
+        "label": r.label,
+        "is_active": r.is_active,
+        "is_user_created": r.is_user_created,
+        "requires_agreement_type": r.requires_agreement_type,
+    }
+
+
+@router.get("/agreement-kinds")
+def list_agreement_kinds(
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    rows = db.query(MasterAgreementKind).order_by(
+        MasterAgreementKind.sort_order, MasterAgreementKind.label
+    ).all()
+    return [_agreement_kind_row(r) for r in rows]
+
+
+@router.post("/agreement-kinds", status_code=201)
+def create_agreement_kind(
+    body: AgreementKindBody,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    if not body.label:
+        raise HTTPException(400, "Betegnelse er påkrævet")
+    label = body.label.strip()
+    key = _normalize_absence_key(label)  # generisk slug-normalisering, trods navnet
+    if db.query(MasterAgreementKind).filter(MasterAgreementKind.key == key).first():
+        raise HTTPException(400, "En aftaletype med denne betegnelse (eller tilsvarende nøgle) eksisterer allerede")
+    max_order = db.query(MasterAgreementKind).count()
+    row = MasterAgreementKind(
+        key=key, label=label,
+        is_active=True, is_user_created=True,
+        requires_agreement_type=(
+            body.requires_agreement_type if body.requires_agreement_type is not None else True
+        ),
+        sort_order=max_order + 1,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    log_action(db, current_user, "stamdata_create", "agreement_kind", row.id,
+               f"Oprettet aftaletype: {row.label}")
+    db.commit()
+    return _agreement_kind_row(row)
+
+
+@router.patch("/agreement-kinds/{kind_id}")
+def update_agreement_kind(
+    kind_id: int,
+    body: AgreementKindBody,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    row = db.query(MasterAgreementKind).filter(MasterAgreementKind.id == kind_id).first()
+    if not row:
+        raise HTTPException(404, "Ikke fundet")
+    if body.label is not None:
+        row.label = body.label.strip()
+    if body.is_active is not None:
+        row.is_active = body.is_active
+    if body.requires_agreement_type is not None:
+        row.requires_agreement_type = body.requires_agreement_type
+    db.commit()
+    log_action(db, current_user, "stamdata_update", "agreement_kind", row.id,
+               f"Aftaletype opdateret: {row.label}, aktiv={row.is_active}")
+    db.commit()
+    return _agreement_kind_row(row)
+
+
+@router.delete("/agreement-kinds/{kind_id}", status_code=204)
+def delete_agreement_kind(
+    kind_id: int,
+    current_user: AppUser = Depends(_access),
+    db: Session = Depends(get_db),
+):
+    row = db.query(MasterAgreementKind).filter(MasterAgreementKind.id == kind_id).first()
+    if not row:
+        raise HTTPException(404, "Ikke fundet")
+    if not row.is_user_created:
+        raise HTTPException(400, "Systemtyper kan ikke slettes")
+    in_use = db.query(Employee).filter(Employee.agreement_kind == row.key).first()
+    if in_use:
+        raise HTTPException(400, f"Kan ikke slettes – bruges af medarbejderen '{in_use.name}'")
+    log_action(db, current_user, "stamdata_delete", "agreement_kind", row.id,
+               f"Slettet aftaletype: {row.label}")
     db.delete(row)
     db.commit()
 
