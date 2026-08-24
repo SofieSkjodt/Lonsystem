@@ -29,6 +29,7 @@ from calculators.overtime import (
     OT_BEFORE_KEY,
     OT_EXTRA_KEY,
     calculate_overtime,
+    calculate_flat_hours,
 )
 from calculators.day_type import (
     DayType,
@@ -411,6 +412,10 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     totals["overnight_count"] = sum(1 for a in activities if a.activity_type == "overnatning")
     totals["dob_overnight_count"] = sum(1 for a in activities if a.activity_type == "dob_overnatning")
 
+    is_recognized_agreement_kind = emp.agreement_kind in (
+        AgreementKind.hourly_fixed, AgreementKind.hourly_flexible,
+    )
+
     # hourly_flexible: 37t normaltid + 5t OT-1-3 er en ugentlig pulje (mandag-søndag),
     # ikke et dagligt loft – initialiseres her og videreføres/nulstilles i dag-løkken.
     is_hourly_flexible = emp.agreement_kind == AgreementKind.hourly_flexible
@@ -517,7 +522,12 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                             (_dt.fromisoformat(s), _dt.fromisoformat(e))
                             for s, e in (act.pause_intervals or [])
                         ]
-                    if day_type in (DayType.NORMAL, DayType.SATURDAY):
+                    if not is_recognized_agreement_kind:
+                        # Aftale-type uden for de to kendte nøgler – ingen
+                        # automatisk OT-beregning endnu (se
+                        # docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md).
+                        ot = calculate_flat_hours(act.start_time, act.end_time, pauses)
+                    elif day_type in (DayType.NORMAL, DayType.SATURDAY):
                         # Lørdag er ikke længere en særlig dag – den bruger samme
                         # tidsvindues-beregning som en hverdag, med lørdagens egne
                         # garanterede timer (typisk 0) som loft (bekræftet 2026-07-02).
