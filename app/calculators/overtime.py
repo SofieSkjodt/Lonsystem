@@ -199,3 +199,24 @@ def calculate_overtime(
     result.normal_remaining_after = normal_remaining
     result.ot13_remaining_after = ot13_remaining
     return result
+
+
+def calculate_flat_hours(
+    start: datetime,
+    end: datetime,
+    pause_intervals: list[tuple[datetime, datetime]] | None = None,
+) -> OvertimeResult:
+    """
+    Bruges til medarbejdere med en Aftale-type uden for de to kendte nøgler
+    (hourly_fixed/hourly_flexible, jf. AgreementKind i database/models.py) –
+    ingen tillæg eller loft, kun rene arbejdstimer til normal sats.
+    """
+    result = OvertimeResult()
+    work_intervals = _subtract_pauses(start, end, pause_intervals or [])
+    for seg_start, seg_end in work_intervals:
+        duration = Decimal(str((seg_end - seg_start).total_seconds())) / 3600
+        if duration <= 0:
+            continue
+        result.total_hours += duration
+        result.normal_hours += duration
+    return result
