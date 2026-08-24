@@ -2319,6 +2319,24 @@ function onAgreementKindChange() {
   const kind = state.agreementKinds.find(k => k.key === key);
   const requires = kind ? kind.requires_agreement_type : true;
   document.getElementById("emp-agreement-type-required-star").style.display = requires ? "" : "none";
+
+  document.getElementById("emp-agreement-type-group").style.display = requires ? "" : "none";
+  if (!requires) document.getElementById("emp-agreement-type").value = "";
+
+  const isFunktionaer = key === "funktionaer";
+  document.getElementById("emp-card-group").style.display = isFunktionaer ? "none" : "";
+  if (isFunktionaer) document.getElementById("emp-card").value = "";
+
+  const isNewEmployee = !document.getElementById("emp-id").value;
+  if (isNewEmployee && key === "funktionaer") {
+    const container = document.getElementById("emp-dispatcher-groups");
+    const noneChecked = !container.querySelector("input[type=checkbox]:checked");
+    if (noneChecked) {
+      const kontorGroup = state.dispatcherGroups.find(g => /^0\b/.test(g.name.trim()) && /kontor/i.test(g.name));
+      const checkbox = kontorGroup && container.querySelector(`input[type=checkbox][value="${kontorGroup.id}"]`);
+      if (checkbox) checkbox.checked = true;
+    }
+  }
 }
 
 async function _loadEmpCvrDropdown(selectedCvr) {
