@@ -64,11 +64,21 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 |---|---|---|
 | employee_number | String | Lønnummer, unik |
 | tachograph_card_number | String nullable | Førerkortnummer |
-| agreement_kind | Enum(hourly_fixed/hourly_flexible) | |
-| agreement_type | String | Fra Excel-ark |
+| agreement_kind | String(50) | Nøgle fra `master_agreement_kinds.key` (se nedenfor) – IKKE længere en hård `Enum`-kolonne (fra v24) |
+| agreement_type | String | Overenskomsttype fra Stamdata; tom streng `""` hvis den valgte `agreement_kind` har `requires_agreement_type=False` |
 | work_schedule | JSON | `{"even":[0..6],"odd":[0..6]}` timer man-søn |
 | dispatcher_groups | many-to-many via employee_dispatcher_groups | Se DispatcherGroup nedenfor – medarbejder kan have 0-N grupper |
 | hire_date / termination_date | Date | Ansættelses-/slutdato |
+
+### MasterAgreementKind (tabel: master_agreement_kinds) — "Aftale"
+| Felt | Type | Bemærk |
+|---|---|---|
+| key | String unik | Fast fra oprettelsen, kan ALDRIG ændres (heller ikke ved redigering) – `overtime.py`/`payroll_router.py` grener direkte på `"hourly_fixed"`/`"hourly_flexible"` |
+| label | String | Redigerbar, også for systemtyperne |
+| is_active | Boolean | Styrer om typen vises i medarbejder-modalens dropdown (`GET /api/employees/agreement-kinds`, kun aktive) |
+| is_user_created | Boolean | `False` for de 2 seedede systemtyper (kan ikke slettes); `True` for nye |
+| requires_agreement_type | Boolean | Om `agreement_type` er påkrævet for medarbejdere med denne `agreement_kind` (håndhævet i `routers/employees.py`) |
+Seedes ved opstart (`session.py: _seed_agreement_kinds`) med `hourly_fixed`/`hourly_flexible`, IKKE fra Excel. CRUD under Stamdata → "Aftale" (kræver `stamdata`-tilladelse). Overtidsberegning: medarbejdere med en `agreement_kind` uden for de to systemnøgler springes automatisk over i `_calculate_employee()` og får `calculate_flat_hours()` i stedet (ingen tillæg/loft, kun flad normaltid) — se `docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md`.
 
 ### DispatcherGroup (tabel: dispatcher_groups) + EmployeeDispatcherGroup (join-tabel)
 | Felt | Type | Bemærk |
@@ -528,6 +538,26 @@ Ny løntypekode `SPRINGERTILLAEG` (kr/time-sats fra `MasterSupplementRate`, labe
 **Endpoints** (`activities.py`): `GET /api/activities/springer-flags?pay_period_id=` (login, ingen særskilt permission — samme niveau som resten af aktivitetsoversigten), `POST /api/activities/springer-flag` (kræver `toggle_springer`, upsert, afvises med 400 hvis perioden er `closed`).
 
 **Permission `toggle_springer`:** gives til ALLE roller (system og ikke-system) ved migrering, jf. beslutning om at åbne den for alle roller for nu.
+
+---
+
+## Aftale som Stamdata-tabel (2026-08-24, models.py + stamdata.py + employees.py + overtime.py + payroll_router.py)
+
+"Aftale"-feltet på medarbejderen (tidl. hardcoded `<option>`-liste + Python-enum `AgreementKind`) er flyttet til en redigerbar Stamdata-tabel `master_agreement_kinds` (fane "Aftale"). Se `MasterAgreementKind` ovenfor for feltoversigt og `docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md` for det fulde design.
+
+**Nøglen (`key`) er fast for altid** — sættes kun ved oprettelse, kan ikke redigeres bagefter (heller ikke af en admin via UI'et), fordi `overtime.py`/`payroll_router.py` fortsat grener direkte på strengværdierne `"hourly_fixed"`/`"hourly_flexible"`. Kun `label`, `is_active` og `requires_agreement_type` er redigerbare.
+
+**Ingen DB-migration nødvendig** for `Employee.agreement_kind` — kolonnen var allerede en almindelig `VARCHAR(15)` uden CHECK-constraint i SQLite (bekræftet via `sqlite_master`), så ændringen fra `Column(Enum(AgreementKind))` til `Column(String(50))` i `models.py` krævede ingen `ALTER TABLE`. `agreement_type` forbliver `NOT NULL` i DB'en — tom streng `""` bruges som sentinel for "ikke relevant" i stedet for en risikabel tabel-genopbygning til reelt NULL.
+
+**Ny Aftale-type ⇒ intet OT-tillæg:** `_calculate_employee()` (`payroll_router.py`) tjekker `is_recognized_agreement_kind = emp.agreement_kind in (AgreementKind.hourly_fixed, AgreementKind.hourly_flexible)` FØR `day_type`-grenen. Er den `False`, kaldes `calculate_flat_hours(start, end, pauses)` (`overtime.py`) i stedet for `calculate_overtime()`/`calculate_special_day_overtime()` — ren timeopgørelse (arbejdstid minus pauser → `normal_hours`), ingen `ot_before`/`ot_13`/`ot_extra`/`sh_kode8`/`sh_kode9`, uanset dagtype (også søndag/helligdag). Bevidst midlertidig afgrænsning — den fremtidige "gruppe"-logik for nye aftaletyper er endnu ikke defineret.
+
+**`requires_agreement_type` håndhæves i `employees.py`:** `create_employee`/`update_employee` slår den valgte `agreement_kind`s `requires_agreement_type` op (`_agreement_type_required()`) — er den `False`, sættes/tillades `agreement_type = ""`; er den `True`, er et ikke-tomt, gyldigt `agreement_type` påkrævet (400 ellers).
+
+**Seeding:** `session.py: _seed_agreement_kinds()` opretter de to systemrækker (`is_user_created=False`) idempotent ved opstart — IKKE fra Excel, i modsætning til de øvrige master-tabeller.
+
+**Endpoints:** `GET /api/employees/agreement-kinds` (kun aktive, `get_current_user` — bruges til medarbejder-modalens dropdown). Fuld CRUD under `/api/stamdata/agreement-kinds` (kræver `stamdata`): `DELETE` afviser systemtyper (`is_user_created=False`) og typer der er i brug af mindst én medarbejder.
+
+**Frontend:** `fillAgreementKindSelect()` erstatter den tidligere hardcodede `<option>`-liste i `emp-agreement-kind`; `onAgreementKindChange()` viser/skjuler `#emp-agreement-type-required-star` ud fra den valgte types `requires_agreement_type`. `loadStamdataAgreementKinds()` genindlæser `state.agreementKinds` efter hver Stamdata-ændring, så nye typer er valgbare i medarbejder-modalen uden sideopdatering.
 
 ---
 

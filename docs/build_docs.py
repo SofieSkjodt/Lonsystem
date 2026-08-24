@@ -277,7 +277,7 @@ def build_teknisk():
             ["first_name / last_name","String",          "Navn"],
             ["address / postal_code", "String (opt.)",   "Adresse"],
             ["email / phone / mobile","String (opt.)",   "Kontaktoplysninger"],
-            ["agreement_kind",        "Enum",            "hourly_fixed (fast arbejdstid) / hourly_flexible (ikke fastlagt)"],
+            ["agreement_kind",        "String",          "Nøgle fra master_agreement_kinds.key (se afsnit 2.5) – ikke længere en fast enum-kolonne. Systemnøglerne hourly_fixed/hourly_flexible styrer stadig overtidsberegningen (se afsnit 5.5); nye, brugeroprettede nøgler springes automatisk over i den"],
             ["agreement_type",        "String",          "Overenskomsttype fra Excel-filen – bestemmer timesats"],
             ["fuldloennet",           "Boolean",         "Fuldlønnet status"],
             ["active",                "Boolean",         "Aktiv medarbejder (filtreres ved opslag)"],
@@ -346,14 +346,16 @@ def build_teknisk():
 
     heading(doc, "Stamdata – masterdatatabeller", 2, "2.5")
     body(doc, (
-        "Fem tabeller holder systemets masterdata. De seedes automatisk fra Excel-filerne ved "
-        "første opstart og redigeres derefter via Stamdata-modulet i systemets brugerflade. "
-        "Excel-filerne bruges herefter kun som fallback hvis en tabel er tom."
+        "Seks tabeller holder systemets masterdata. De fleste seedes automatisk fra Excel-filerne "
+        "ved første opstart (Excel-filerne bruges herefter kun som fallback hvis en tabel er tom); "
+        "master_agreement_kinds seedes i stedet fra to faste, hardkodede systemrækker (se nedenfor). "
+        "Alle tabeller redigeres derefter via Stamdata-modulet i systemets brugerflade."
     ))
     header_table(doc,
         ["Tabel", "Indhold", "Vigtige felter"],
         [
             ["master_agreement_types",  "Overenskomsttyper og timesatser", "name (unik), hourly_rate"],
+            ["master_agreement_kinds",  "Aftaletyper (\"Aftale\"-feltet på medarbejderen)", "key (unik, fast efter oprettelse), label, is_active, is_user_created, requires_agreement_type, sort_order"],
             ["master_overtime_rates",   "De tre overtidssatser",           "label (unik), rate"],
             ["master_supplement_rates", "Salttillæg, Overnatning, Dagpenge §56", "label (unik), rate"],
             ["master_pay_types",        "Løntypekoder til Danløn CSV",     "code_key (unik), danloen_code, include_in_csv, csv_quantity_type, csv_rate_source, csv_include_rate, csv_include_total, sort_order"],
@@ -364,6 +366,15 @@ def build_teknisk():
         "Normaliserede nøgler i master_absence_types genereres én gang ved oprettelse og ændres "
         "ikke efterfølgende – de bruges internt i beregnings- og aktivitetslogikken. "
         "Alle fraværstyper kan slettes via Stamdata-UI'et."
+    ))
+    body(doc, (
+        "master_agreement_kinds seedes ved opstart med de to systemrækker hourly_fixed og "
+        "hourly_flexible (is_user_created=False) – de kan ikke slettes, men deres label kan redigeres "
+        "frit. key sættes kun ved oprettelse og kan ALDRIG ændres bagefter (heller ikke for "
+        "brugeroprettede rækker), fordi overtidsberegningen i overtime.py/payroll_router.py grener "
+        "direkte på strengværdierne hourly_fixed/hourly_flexible – se afsnit 5.5. Feltet "
+        "requires_agreement_type styrer om Overenskomsttype er påkrævet for medarbejdere med den "
+        "pågældende aftaletype (håndhæves i routers/employees.py)."
     ))
 
     heading(doc, "Holidays – helligdagskalender", 2, "2.6")
@@ -577,6 +588,27 @@ def build_teknisk():
         "BEMÆRK"
     )
 
+    heading(doc, "Aftale-typer uden fast overtidsregel", 2, "5.5")
+    body(doc, (
+        "Fra og med indførelsen af Stamdata-fanen \"Aftale\" (se afsnit 2.5 og 6.2) kan der oprettes "
+        "flere aftaletyper end de to oprindelige, hourly_fixed og hourly_flexible. Kun disse to "
+        "nøgler er kendt af overtidsberegningen ovenfor (afsnit 5.1–5.4)."
+    ))
+    body(doc, (
+        "For en medarbejder hvis agreement_kind IKKE er hourly_fixed eller hourly_flexible, "
+        "springer _calculate_employee() (payroll_router.py) hele den daglige/ugentlige "
+        "loft-beregning og alle tillæg over. I stedet kaldes calculate_flat_hours() "
+        "(calculators/overtime.py), som blot summerer arbejdstiden minus pauser til normal_hours – "
+        "ingen ot_before/ot_13/ot_extra, og ingen søndags-/helligdagstillæg (sh_kode8/sh_kode9). "
+        "Dette gælder for ALLE dagtyper, ikke kun almindelige hverdage."
+    ))
+    note_box(doc,
+        "Dette er en bevidst, midlertidig afgrænsning: den konkrete beregningslogik for nye "
+        "aftaletyper (hvis den overhovedet skal afvige fra flad normaltid) er endnu ikke defineret "
+        "og er ikke en del af denne opgave. Se docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md.",
+        "TEKNISK NOTE"
+    )
+
     # ── 6. Timesatser og overenskomst ─────────────────────────────────────
     heading(doc, "Timesatser og overenskomst", 1, "6")
     body(doc, (
@@ -594,6 +626,7 @@ def build_teknisk():
             ["master_supplement_rates", "load_supplement_rates_from_db(db)","Salttillæg, Overnatning, Dagpenge §56."],
             ["master_pay_types",        "load_pay_types_from_db(db)",       "Løntypekoder og Danløn-koder."],
             ["master_absence_types",    "— (forespørges direkte i routers)", "Fraværstyper der vises i UI."],
+            ["master_agreement_kinds",  "— (forespørges direkte i routers)", "Aftaletyper til medarbejder-modalens 'Aftale'-dropdown."],
         ]
     )
 
@@ -618,7 +651,7 @@ def build_teknisk():
     heading(doc, "Stamdata-modulet i brugerfladen", 2, "6.2")
     body(doc, (
         "Stamdata-menupunktet (⚙️ Stamdata) i venstre menu giver administratorer adgang til "
-        "otte faner med CRUD-funktionalitet for alle masterdatatabeller:"
+        "ni faner med CRUD-funktionalitet for alle masterdatatabeller:"
     ))
     header_table(doc,
         ["Fane", "Indhold", "CRUD-muligheder"],
@@ -631,6 +664,7 @@ def build_teknisk():
             ["CVR nummer",        "master_cvr_numbers",     "Opret, rediger, sæt standard, slet"],
             ["Helligdage",        "holidays",               "Auto-generer for år, opret manuelt, slet. Kræver 'manage_holidays'-rettighed."],
             ["Disponentgrupper",  "dispatcher_groups",      "Opret, omdøb/rediger beskrivelse, slet (fjerner automatisk tilknytning hos medlemmer)"],
+            ["Aftale",            "master_agreement_kinds", "Opret nye, rediger label/aktiv/kræver overenskomsttype. De to systemtyper (hourly_fixed/hourly_flexible) kan ikke slettes; nye typer kan slettes hvis ingen medarbejder bruger dem."],
         ]
     )
     note_box(doc,
@@ -897,11 +931,11 @@ def build_teknisk():
     heading(doc, "Stamdata-view", 2, "9.6")
     body(doc, (
         "Stamdata-view aktiveres fra menupunktet '⚙️ Stamdata' i venstre menu (kræver 'stamdata'-rettighed). "
-        "View'et indeholder en tab-navigator med otte faner – kun én pane er synlig ad gangen:"
+        "View'et indeholder en tab-navigator med ni faner – kun én pane er synlig ad gangen:"
     ))
     two_col_table(doc, [
         ["switchStamdataTab(tab)", "Skifter aktiv pane og opdaterer fane-styling (border, farve, vægt)."],
-        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle otte faner parallelt."],
+        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle ni faner parallelt."],
         ["btn-stamdata-add-*",     "'+Tilføj'-knap i toolbar vises kun for den aktive fane."],
     ])
     body(doc, (
@@ -910,6 +944,16 @@ def build_teknisk():
         "Løntypekoder-fanen giver mulighed for at redigere type (label), Danløn-kode, Medtag i CSV, "
         "Antal-type (Timer/Antal), Sats-kilde, Inkluder sats og Inkluder total samt slette alle koder. "
         "Alle disse felter kan også sættes ved oprettelse af en ny løntypekode."
+    ))
+    body(doc, (
+        "Aftale-fanen viser rækkerne fra master_agreement_kinds med badges for Type "
+        "(System/Brugeroprettet), Kræver overenskomsttype (Ja/Nej) og Aktiv. Systemtyperne har "
+        "kun en Rediger-knap (label/aktiv/kræver overenskomsttype); brugeroprettede typer har "
+        "desuden en Slet-knap. loadStamdataAgreementKinds() genindlæser efter hver ændring også "
+        "state.agreementKinds via GET /api/employees/agreement-kinds, så medarbejder-modalens "
+        "'Aftale'-dropdown (fillAgreementKindSelect()) altid er opdateret uden sideopdatering. "
+        "onAgreementKindChange() slår den valgte types requires_agreement_type op og viser/skjuler "
+        "den røde stjerne ved Overenskomsttype-feltet i medarbejder-modalen."
     ))
 
     heading(doc, "Pausehåndtering i oprettelsesmodalen", 2, "9.7")
@@ -1513,8 +1557,8 @@ def build_bruger():
     header_table(doc,
         ["Felt", "Påkrævet", "Beskrivelse"],
         [
-            ["Aftale",              "Ja", "Timelønnet med fast arbejdstid eller ikke fastlagt arbejdstid."],
-            ["Overenskomsttype",    "Ja", "Bestemmer timesatsen. Vælg fra listen der stammer fra Stamdata (Overenskomsttyper-fanen)."],
+            ["Aftale",              "Ja", "Vælg fra listen der stammer fra Stamdata (Aftale-fanen) – som udgangspunkt 'Timelønnet, fast arbejdstid' eller 'Timelønnet, ikke fastlagt arbejdstid'. Administratorer kan tilføje flere aftaletyper i Stamdata."],
+            ["Overenskomsttype",    "Afhænger af Aftale", "Bestemmer timesatsen. Vælg fra listen der stammer fra Stamdata (Overenskomsttyper-fanen). Feltet er kun obligatorisk (rød *) hvis den valgte Aftale-type kræver det – styres pr. aftaletype i Stamdata."],
             ["Disponentgrupper",    "Nej","Afdeling(er) – afkrydsningsbokse, en medarbejder kan tilhøre flere grupper samtidig. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten."],
             ["Lønnummer",           "Ja", "Unikt lønnummer (bruges i Danløn-eksporten)."],
             ["Førerkortnummer",     "Nej","EU-førerkortnummer – påkrævet for at importere .ddd-filer korrekt."],
@@ -1526,6 +1570,14 @@ def build_bruger():
             ["Aktiv",               "—", "Afkryd for at medarbejderen er aktiv i systemet."],
             ["Fuldlønnet",          "—", "Afkryd hvis medarbejderen er fuldlønnet."],
         ]
+    )
+    note_box(doc,
+        "De tilgængelige aftaletyper administreres i Stamdata-modulet under fanen 'Aftale'. Her "
+        "kan en administrator ændre teksten på de to oprindelige typer, samt tilføje flere "
+        "aftaletyper og bestemme om Overenskomsttype skal være påkrævet for hver af dem. "
+        "Vælges en type der ikke kræver Overenskomsttype, forsvinder den røde stjerne ved feltet, "
+        "og det kan stå tomt.",
+        "GODT AT VIDE"
     )
     note_box(doc,
         "Hvis navn (for- og efternavn) eller førerkortnummer allerede findes på en anden medarbejder "
