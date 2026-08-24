@@ -1585,6 +1585,11 @@ function updateManualTypeVisibility() {
   document.getElementById("manual-comment-group").style.display = isCommentOnly ? "none" : "";
   document.getElementById("manual-normal-fields").style.display = (isAbsence || isCommentOnly) ? "none" : "";
   document.getElementById("manual-end-group").style.display     = (isDateOnly || isCommentOnly) ? "none" : "";
+  document.getElementById("manual-reg-group").style.display     = isCommentOnly ? "none" : "";
+  if (isCommentOnly) {
+    document.getElementById("manual-reg").value = "";
+    document.getElementById("manual-reg-hint").textContent = "";
+  }
   document.getElementById("manual-barsel-group").style.display  = isBarsel ? "" : "none";
   document.getElementById("manual-dob-group").style.display     = isOvernatning ? "" : "none";
   if (!isOvernatning) document.getElementById("manual-dob").checked = false;
