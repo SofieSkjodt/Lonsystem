@@ -1573,13 +1573,18 @@ function updateManualTypeVisibility() {
   const isFeriefri     = (type === "feriefri");
   const isBarsel       = (type === "barsel");
   const isOvernatning  = (type === "overnatning");
+  const isCommentOnly  = (type === "__none__");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
   const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode;
   const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
-  document.getElementById("manual-normal-fields").style.display = isAbsence ? "none" : "";
-  document.getElementById("manual-end-group").style.display     = isDateOnly ? "none" : "";
+  // "Ingen (kun kommentar)" skal kun vise Medarbejder + Type + Vagtplan-kommentar –
+  // resten af felterne er irrelevante, når der ikke oprettes en rigtig aktivitet.
+  document.getElementById("manual-start-group").style.display   = isCommentOnly ? "none" : "";
+  document.getElementById("manual-comment-group").style.display = isCommentOnly ? "none" : "";
+  document.getElementById("manual-normal-fields").style.display = (isAbsence || isCommentOnly) ? "none" : "";
+  document.getElementById("manual-end-group").style.display     = (isDateOnly || isCommentOnly) ? "none" : "";
   document.getElementById("manual-barsel-group").style.display  = isBarsel ? "" : "none";
   document.getElementById("manual-dob-group").style.display     = isOvernatning ? "" : "none";
   if (!isOvernatning) document.getElementById("manual-dob").checked = false;
@@ -1611,7 +1616,7 @@ function updateManualTypeVisibility() {
   document.getElementById("manual-til-dato-group").style.display = tilDatoFieldVisible ? "" : "none";
   if (!tilDatoFieldVisible) document.getElementById("manual-til-dato").value = "";
   const pauseSection = document.getElementById("manual-pause-section");
-  if (pauseSection) pauseSection.style.display = isDateOnly ? "none" : "";
+  if (pauseSection) pauseSection.style.display = (isDateOnly || isCommentOnly) ? "none" : "";
 
   if (isFerie)        applyFerieDefaults();
   if (isSygdom)       applySygdomDefaults();
