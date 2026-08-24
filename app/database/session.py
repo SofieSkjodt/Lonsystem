@@ -229,11 +229,28 @@ def _normalize_absence_key(label: str) -> str:
     return s.strip("_")
 
 
+def _seed_agreement_kinds(db):
+    from database.models import MasterAgreementKind
+    if db.query(MasterAgreementKind).count() == 0:
+        db.add(MasterAgreementKind(
+            key="hourly_fixed", label="Timelønnet, fast arbejdstid",
+            is_active=True, is_user_created=False,
+            requires_agreement_type=True, sort_order=1,
+        ))
+        db.add(MasterAgreementKind(
+            key="hourly_flexible", label="Timelønnet, ikke fastlagt arbejdstid",
+            is_active=True, is_user_created=False,
+            requires_agreement_type=True, sort_order=2,
+        ))
+        db.commit()
+
+
 def _seed_master_data():
     from decimal import Decimal
     from database.models import (
         MasterAgreementType, MasterOvertimeRate,
         MasterSupplementRate, MasterPayType, MasterAbsenceType,
+        MasterAgreementKind,
     )
     db = SessionLocal()
     try:
@@ -333,6 +350,8 @@ def _seed_master_data():
             except Exception as e:
                 db.rollback()
                 logging.warning(f"Fraværstyper – seeding fra Excel slog fejl: {e}")
+
+        _seed_agreement_kinds(db)
 
     except Exception as e:
         db.rollback()
