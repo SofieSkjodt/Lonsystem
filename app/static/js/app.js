@@ -1875,6 +1875,9 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   } else if (!_manualActivityContext.vagtplan && existingNoneOpt) {
     existingNoneOpt.remove();
   }
+  // "Normal tid" er en kørselsregistrering og skal ikke kunne oprettes fra Vagtplan.
+  const normalOpt = typeSelect.querySelector('option[value="normal"]');
+  if (normalOpt) normalOpt.hidden = _manualActivityContext.vagtplan;
   document.getElementById("manual-reg").oninput = function () {
     const reg = this.value.trim().toUpperCase();
     this.value = reg;
@@ -1892,7 +1895,7 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
       hint.style.color = "var(--danger, #dc2626)";
     }
   };
-  document.getElementById("manual-type").value = "normal";
+  document.getElementById("manual-type").value = _manualActivityContext.vagtplan ? "ferie" : "normal";
   document.getElementById("manual-terminsdato").value = "";
   document.getElementById("manual-til-dato").value = "";
   manualPauses = [];
@@ -1928,6 +1931,9 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
     setDatetimePicker("manual-start", dateIso + "T06:00");
     setDatetimePicker("manual-end",   dateIso + "T06:00");
   }
+  // Genkør type-afhængige standardværdier nu hvor medarbejder+dato er udfyldt
+  // (relevant for Vagtplans "ferie"-default, som skal kende dato/medarbejder for at beregne timer).
+  updateManualTypeVisibility();
   openModal("modal-manual-activity");
 }
 
