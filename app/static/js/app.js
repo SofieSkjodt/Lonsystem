@@ -235,6 +235,15 @@ async function openVagtplanTomorrowModal() {
   document.getElementById("vagtplan-tomorrow-title").textContent =
     `Fravær i morgen – ${tomorrow.toLocaleDateString("da-DK", { day: "numeric", month: "short", year: "numeric" })}`;
 
+  // Samme filtre som selve griddet (disponentgruppe + medarbejder), så modalen kun
+  // viser de medarbejdere brugeren aktuelt har valgt at se.
+  const empFilter = document.getElementById("vagtplan-filter-employee")?.value || "";
+  const groupIds = state.vagtplan.groupFilterIds; // null = alle
+  let visibleEmps = state.employees.filter(e => e.active);
+  if (groupIds) visibleEmps = visibleEmps.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  if (empFilter) visibleEmps = visibleEmps.filter(e => e.id === parseInt(empFilter));
+  const visibleEmpIds = new Set(visibleEmps.map(e => e.id));
+
   let activities = [], comments = [];
   try {
     [activities, comments] = await Promise.all([
@@ -242,7 +251,8 @@ async function openVagtplanTomorrowModal() {
       GET(`/api/vagtplan-comments?date_from=${iso}&date_to=${iso}`),
     ]);
   } catch (e) { toast(e.message, "error"); return; }
-  activities = activities.filter(a => a.activity_type !== "normal" && !a.hidden_from_vagtplan);
+  activities = activities.filter(a => a.activity_type !== "normal" && !a.hidden_from_vagtplan && visibleEmpIds.has(a.employee_id));
+  comments = comments.filter(c => visibleEmpIds.has(c.employee_id));
 
   const rows = [];
   for (const a of activities) {
