@@ -69,7 +69,10 @@ class Employee(Base):
     phone = Column(String, nullable=True)
     mobile = Column(String, nullable=True)
     initials = Column(String(10), nullable=True)  # matcher app_users.initials for "egen linje"-rettighed i Vagtplan
-    agreement_kind = Column(Enum(AgreementKind), nullable=False, default=AgreementKind.hourly_fixed)
+    # Nøgle fra master_agreement_kinds.key – ikke længere en hård enum-kolonne,
+    # da nye Aftale-typer kan tilføjes via Stamdata (se AgreementKind for de to
+    # systemnøgler, som overtidsberegningen fortsat kender).
+    agreement_kind = Column(String(50), nullable=False, default="hourly_fixed")
     agreement_type = Column(String, nullable=False)  # Overenskomsttype fra Excel-arket
     fuldloennet = Column(Boolean, default=True, nullable=False)
     active = Column(Boolean, default=True, nullable=False)
@@ -273,6 +276,18 @@ class MasterAgreementType(Base):
     id = Column(Integer, primary_key=True)
     name = Column(String(200), unique=True, nullable=False)
     hourly_rate = Column(Numeric(10, 2), nullable=False)
+
+
+class MasterAgreementKind(Base):
+    __tablename__ = "master_agreement_kinds"
+
+    id = Column(Integer, primary_key=True)
+    key = Column(String(50), unique=True, nullable=False)
+    label = Column(String(200), nullable=False)
+    is_active = Column(Boolean, default=True, nullable=False)
+    is_user_created = Column(Boolean, default=False, nullable=False)
+    requires_agreement_type = Column(Boolean, default=True, nullable=False)
+    sort_order = Column(Integer, default=0, nullable=False)
 
 
 class MasterCvrNumber(Base):

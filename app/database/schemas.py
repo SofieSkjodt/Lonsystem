@@ -6,7 +6,7 @@ from typing import Annotated, Optional
 
 from pydantic import BaseModel, Field, model_validator
 
-from database.models import ActivitySource, ActivityStatus, ActivityType, AgreementKind
+from database.models import ActivitySource, ActivityStatus, ActivityType
 
 
 class WorkSchedule(BaseModel):
@@ -38,7 +38,7 @@ class EmployeeCreate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     mobile: Optional[str] = None
-    agreement_kind: AgreementKind = AgreementKind.hourly_fixed
+    agreement_kind: str = "hourly_fixed"
     agreement_type: str                        # Overenskomsttype fra Excel-ark
     fuldloennet: bool = True
     active: bool = True
@@ -60,7 +60,7 @@ class EmployeeUpdate(BaseModel):
     email: Optional[str] = None
     phone: Optional[str] = None
     mobile: Optional[str] = None
-    agreement_kind: Optional[AgreementKind] = None
+    agreement_kind: Optional[str] = None
     agreement_type: Optional[str] = None
     fuldloennet: Optional[bool] = None
     active: Optional[bool] = None
@@ -84,7 +84,7 @@ class EmployeeResponse(BaseModel):
     email: Optional[str]
     phone: Optional[str]
     mobile: Optional[str]
-    agreement_kind: AgreementKind
+    agreement_kind: str
     agreement_type: str
     hourly_rate: Optional[float]
     fuldloennet: bool
