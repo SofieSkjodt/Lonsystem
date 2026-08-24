@@ -2301,6 +2301,26 @@ function fillAgreementTypeSelect(selected = null) {
     .join("");
 }
 
+async function loadAgreementKinds() {
+  state.agreementKinds = await GET("/api/employees/agreement-kinds");
+}
+
+function fillAgreementKindSelect(selected = null) {
+  const sel = document.getElementById("emp-agreement-kind");
+  const placeholder = selected ? "" : `<option value="">[Vælg aftale]</option>`;
+  sel.innerHTML = placeholder + state.agreementKinds
+    .map(k => `<option value="${k.key}" ${k.key === selected ? "selected" : ""}>${h(k.label)}</option>`)
+    .join("");
+  onAgreementKindChange();
+}
+
+function onAgreementKindChange() {
+  const key = document.getElementById("emp-agreement-kind").value;
+  const kind = state.agreementKinds.find(k => k.key === key);
+  const requires = kind ? kind.requires_agreement_type : true;
+  document.getElementById("emp-agreement-type-required-star").style.display = requires ? "" : "none";
+}
+
 async function _loadEmpCvrDropdown(selectedCvr) {
   const group = document.getElementById("emp-cvr-group");
   const sel   = document.getElementById("emp-cvr");
@@ -2332,12 +2352,13 @@ function _renderDispatcherGroupCheckboxes(selectedIds) {
 
 async function openNewEmployeeModal() {
   await loadAgreementTypes();
+  await loadAgreementKinds();
   document.getElementById("emp-modal-title").textContent = "Opret medarbejder";
   document.getElementById("emp-save-btn").textContent = "Opret";
   document.getElementById("emp-id").value = "";
   ["emp-number","emp-card","emp-initials","emp-firstname","emp-lastname","emp-address","emp-postal",
    "emp-email","emp-phone","emp-mobile"].forEach(id => document.getElementById(id).value = "");
-  document.getElementById("emp-agreement-kind").value = "";
+  fillAgreementKindSelect();
   fillAgreementTypeSelect();
   _renderDispatcherGroupCheckboxes([]);
   buildDatePicker("emp-hire", "");
@@ -2352,6 +2373,7 @@ async function openNewEmployeeModal() {
 
 async function openEditEmployee(id) {
   await loadAgreementTypes();
+  await loadAgreementKinds();
   const e = state.employees.find(x => x.id === id);
   if (!e) return;
   document.getElementById("emp-modal-title").textContent = "Rediger medarbejder";
@@ -2367,7 +2389,7 @@ async function openEditEmployee(id) {
   document.getElementById("emp-email").value = e.email || "";
   document.getElementById("emp-phone").value = e.phone || "";
   document.getElementById("emp-mobile").value = e.mobile || "";
-  document.getElementById("emp-agreement-kind").value = e.agreement_kind;
+  fillAgreementKindSelect(e.agreement_kind);
   fillAgreementTypeSelect(e.agreement_type);
   _renderDispatcherGroupCheckboxes((e.dispatcher_groups || []).map(g => g.id));
   buildDatePicker("emp-hire", e.hire_date);

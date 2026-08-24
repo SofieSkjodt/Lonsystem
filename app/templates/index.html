@@ -1244,14 +1244,10 @@
       <div class="form-row">
         <div class="form-group">
           <label>Aftale <span style="color:var(--danger)">*</span></label>
-          <select id="emp-agreement-kind">
-            <option value="">[Vælg aftale]</option>
-            <option value="hourly_fixed">Timelønnet, fast arbejdstid</option>
-            <option value="hourly_flexible">Timelønnet, ikke fastlagt arbejdstid</option>
-          </select>
+          <select id="emp-agreement-kind" onchange="onAgreementKindChange()"></select>
         </div>
         <div class="form-group">
-          <label>Overenskomsttype <span style="color:var(--danger)">*</span></label>
+          <label>Overenskomsttype <span id="emp-agreement-type-required-star" style="color:var(--danger)">*</span></label>
           <select id="emp-agreement-type"></select>
         </div>
       </div>
