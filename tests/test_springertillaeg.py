@@ -113,6 +113,16 @@ def test_resolve_rate_springer_defaults_to_zero_when_missing():
     assert _resolve_rate("springer", calc) == 0
 
 
+def _give_visible_dispatcher_group(db, employee):
+    """_active_employees() udelukker medarbejdere uden en synlig disponentgruppe
+    (jf. payroll_router.py) — testens employee-fixture har ingen, så CSV-export
+    ville ellers stille og roligt give 0 medarbejdere."""
+    from database.models import DispatcherGroup
+    group = DispatcherGroup(name="Testgruppe", visible_in_activity_overview=True)
+    employee.dispatcher_groups.append(group)
+    db.commit()
+
+
 def _setup_rates(db, employee, hourly=Decimal("150.00")):
     from database.models import MasterAgreementType, MasterOvertimeRate
     from calculators.overtime import OT_BEFORE_KEY, OT_13_KEY, OT_EXTRA_KEY
@@ -176,6 +186,7 @@ def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_p
     from conftest import make_activity
 
     employee.cvr_number = "13246505"
+    _give_visible_dispatcher_group(db, employee)
     _setup_rates(db, employee)
     db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("20.00")))
     db.add(MasterPayType(
@@ -214,6 +225,7 @@ def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_pat
     from conftest import make_activity
 
     employee.cvr_number = "13246505"
+    _give_visible_dispatcher_group(db, employee)
     _setup_rates(db, employee)
     db.add(MasterSupplementRate(label="Springertillæg", rate=Decimal("20.00")))
     db.add(MasterPayType(
