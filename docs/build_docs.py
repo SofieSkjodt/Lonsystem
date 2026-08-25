@@ -1220,6 +1220,103 @@ def build_teknisk():
         "OBS"
     )
 
+    # ── 13. Lønafregning ──────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Lønafregning", 1, "13")
+    body(doc, (
+        "Lønafregning (routers/payroll_settlement_router.py) er en selvstændig fane placeret "
+        "under 'Lønkørsel' i venstre menu. Den viser periodetotaler og en 14-dages tabel pr. "
+        "medarbejder, og genbruger _calculate_employee() (payroll_router.py) som eneste "
+        "beregningskilde – ingen lønmatematik er duplikeret."
+    ))
+    body(doc, (
+        "I modsætning til de fleste andre visninger har Lønafregning ingen egen "
+        "periode-navigation. Siden følger i stedet den globale periode (state.currentPeriodStart), "
+        "som vælges via frem/tilbage-pilene i Aktivitetsoversigten – nøjagtig samme mekanisme "
+        "som Lønkørsel allerede bruger. Uden valgt periode falder den tilbage til dagens periode."
+    ))
+
+    heading(doc, "API-endepunkter", 2, "13.1")
+    header_table(doc,
+        ["Endepunkt", "Metode", "Beskrivelse"],
+        [
+            ["/api/payroll-settlement/preview",          "GET",  "JSON med periodetotaler og pr.-medarbejder headline + 14-dages tabel. Parameter period_start (valgfri, default dagens periode)."],
+            ["/api/payroll-settlement/downloads-folder", "GET",  "Returnerer stien til brugerens Downloads-mappe som forslag."],
+            ["/api/payroll-settlement/browse-folder",    "GET",  "Åbner Windows-mappe-dialog (tkinter) og returnerer valgt sti."],
+            ["/api/payroll-settlement/export-csv",       "POST", "Genererer og gemmer CSV-filen i valgt mappe. Kræver låst periode – se afsnit 13.3."],
+        ]
+    )
+    body(doc, (
+        "Alle fire endepunkter kræver rettigheden payroll_settlement_view; export-csv kræver "
+        "derudover payroll_settlement_export. Se afsnit 11.3/rettighedsoversigten i Brugervejledningen."
+    ))
+
+    heading(doc, "Beregningslogik og fraværsbetaling", 2, "13.2")
+    body(doc, (
+        "_employee_settlement_data() (payroll_settlement_router.py) kalder _calculate_employee() "
+        "og lægger to ting oveni: (1) overenskomstsats og personligt tillæg vises som to adskilte "
+        "tal i stedet for kun den kombinerede hourly_rate, og (2) springertillæg (normalt usynligt "
+        "i Lønkørsel-visningen) lægges til medarbejderens totale løn med eget kr-beløb."
+    ))
+    body(doc, (
+        "Fraværstyper med en etableret betalingsregel viser deres egne timer og beløb i dagens "
+        "række (i stedet for 0,00) OG tæller med i medarbejderens 'Total løn' samt periodens "
+        "samlede total. Følgende typer er dækket, hver med sin egen linje i topsummeringen "
+        "'Total sum for perioden' (kun vist hvis beløbet er større end 0 kr):"
+    ))
+    header_table(doc,
+        ["Fraværstype", "Sats der bruges"],
+        [
+            ["Sygdom, Barn 1.sygedag, Graviditetsbetinget sygdom", "Medarbejderens timesats (hourly_rate)"],
+            ["§56 syg, Barn 1.sygedag u. 8 uger", "Dagpengesats (Stamdata → Tillæg, 'Dagpenge §56')"],
+            ["Sygdom u. 8 uger", "Ulønnet – altid 0 kr., men timerne vises"],
+            ["Barsel, Feriefri, Ferie, Skole/kursus, Afspadsering", "Medarbejderens timesats (hourly_rate)"],
+        ]
+    )
+    note_box(doc,
+        "Feriefri vises som ÉN samlet linje uanset om medarbejderen er fuldlønnet eller "
+        "timelønnet – emp.fuldloennet afgør i den almindelige Danløn-CSV kun hvilken kode "
+        "(FERIEFRI_FULDLOENNET/-TIMELOENNET) timerne rapporteres under, ikke selve beløbet, "
+        "som beregnes ens i begge tilfælde (hours × hourly_rate). Bekræftet af bruger 2026-08-25.",
+        "TEKNISK NOTE"
+    )
+    body(doc, (
+        "Selvbetalt fridag, Barn 2-3.sygedag, Barsel u. løn og typen 'Fri' har ingen etableret "
+        "betalingsregel i systemet (samme som i den almindelige Danløn CSV) og har derfor hverken "
+        "beløb i dagsrækken eller egen linje i topsummeringen."
+    ))
+    body(doc, (
+        "'Total uden fravær' er en delsum der lægger Grundtimeløn inkl. tillæg, Overtid Timen "
+        "før, Overtid 1-3 time efter og Øvrig overtid sammen – IKKE salttillæg eller nogen "
+        "fraværstype. Den samlede 'Total sum for denne periode' er summen af alle medarbejderes "
+        "fulde total_kr (arbejdstid + salt + springer + al fraværsbetaling)."
+    ))
+
+    heading(doc, "CSV-eksportformat", 2, "13.3")
+    body(doc, (
+        "CSV-filen (semikolon-separeret, UTF-8) indeholder KUN data pr. medarbejder – "
+        "topsummeringen 'Total sum for perioden' skrives ikke med. For hver medarbejder skrives "
+        "én række pr. dag i perioden (alle 14, også dage uden aktivitet), efterfulgt af én "
+        "'Total løn for [navn]'-række:"
+    ))
+    header_table(doc,
+        ["Kolonne", "Indhold"],
+        [
+            ["Dato",                        "dd-mm-åååå"],
+            ["Lønnummer",                   "Medarbejderens employee_number"],
+            ["Normal timer … Øvrig overtid","Format T:mm (fx '7:30'), ikke decimaltal"],
+            ["Total tid",                   "Decimaltal med komma (fx '7,50')"],
+            ["Total i kr. / Beløb",         "Dansk kr-format (fx '1.234,56'), identiske værdier"],
+            ["Vognnummer",                  "Aktivitetens vognnummer – overskrives af fraværstypens navn på fraværsdage"],
+        ]
+    )
+    body(doc, (
+        "Eksport kræver at den valgte periode er låst (status 'closed') – knappen giver en "
+        "fejlbesked og udfører intet, hvis perioden stadig er åben. Administratorer er undtaget "
+        "og kan altid eksportere, uanset periodens status. Eksport LÅSER ikke selv perioden "
+        "(det gør kun 'Kør løn' under Lønkørsel)."
+    ))
+
     doc.save(OUT / "Teknisk dokumentation.docx")
     print("Teknisk dokumentation.docx gemt.")
 
@@ -1967,6 +2064,8 @@ def build_bruger():
             ["vagtplan_view",               "Se vagtplan",                       "Menupunktet 'Vagtplan' (læse-adgang)."],
             ["vagtplan_edit_own",           "Redigér egen linje i vagtplan",     "Ret kun sin egen række i Vagtplan (matches på initialer)."],
             ["vagtplan_edit_all",           "Redigér alle linjer i vagtplan",    "Ret alle medarbejderes rækker i Vagtplan."],
+            ["payroll_settlement_view",     "Lønafregning (se)",                 "Menupunktet 'Lønafregning': periodetotaler og pr.-medarbejder oversigt (se kapitel 12)."],
+            ["payroll_settlement_export",   "Lønafregning (eksport)",            "Eksportér Lønafregning som CSV. Kræver låst periode, medmindre brugeren er administrator."],
         ],
         [Cm(3.5), Cm(4), Cm(8.5)]
     )
@@ -1986,6 +2085,87 @@ def build_bruger():
         "kort detaljetekst. Søgefeltet filtrerer på tværs af bruger, handling og detaljer; "
         "'⟲ Opdater' genindlæser listen."
     ))
+
+    # ── 12. Lønafregning ──────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Lønafregning", 1, "12")
+    body(doc, (
+        "Klik på '🧾 Lønafregning' i venstre menu, lige under 'Lønkørsel'. Fanen giver et samlet "
+        "overblik over periodens løn: én total-tabel øverst for hele perioden, og derunder én "
+        "tabel pr. medarbejder med alle 14 dage. Menupunktet kræver rettigheden "
+        "'Lønafregning (se)', og eksportknappen kræver derudover 'Lønafregning (eksport)' "
+        "(se afsnit 11.3)."
+    ))
+
+    heading(doc, "Periodetotalen øverst", 2, "12.1")
+    body(doc, (
+        "Den øverste tabel 'Total sum for perioden' viser: Grundtimeløn inkl. tillæg, Overtid "
+        "Timen før, Overtid 1-3 time efter og Øvrig overtid, efterfulgt af delsummen "
+        "'Total uden fravær'. Herunder følger op til 11 fraværstyper (Sygdom, Sygdom u. 8 uger, "
+        "Barn 1.sygedag, Barn 1.sygedag u. 8 uger, Graviditetsbetinget sygdom, §56 syg, Barsel, "
+        "Feriefri, Ferie, Skole/kursus og Afspadsering) og til sidst 'Total sum for denne "
+        "periode'. En linje vises KUN hvis den har et beløb større end 0 kr for den viste "
+        "periode – har ingen medarbejder fx haft barsel, udelades 'Barsel'-linjen helt."
+    ))
+
+    heading(doc, "Medarbejder-tabellerne", 2, "12.2")
+    body(doc, (
+        "Hver medarbejders kort viser i overskriften: overenskomsttype med sats i kr/time, "
+        "personligt tillæg (hvis medarbejderen har et) og springertillæg (hvis aktiveret for "
+        "perioden) – alle tre vist som separate tal, ikke lagt sammen. Derunder følger en "
+        "tabel med én række pr. dag i perioden (også dage uden aktivitet, som vises med 0)."
+    ))
+    header_table(doc,
+        ["Kolonne", "Indhold"],
+        [
+            ["Normal timer / Overtid 1 time før / Overtid 1-3 timer efter / Øvrig overtid",
+             "Vist som timer:minutter (fx '7:30'), ikke decimaltal."],
+            ["Total tid",     "Dagens samlede tid som decimaltal (fx '7,50')."],
+            ["Total i kr. / Beløb", "Dagens samlede løn i kr. På en fraværsdag med en betalt "
+             "fraværstype (se afsnit 12.1) vises fraværstimernes egen værdi her i stedet for 0,00."],
+            ["Vognnummer",    "Aktivitetens vognnummer – på en fraværsdag vises i stedet "
+             "fraværstypens navn (fx 'Sygdom'), selvom aktiviteten har et udfyldt vognnummer-felt."],
+        ]
+    )
+    body(doc, (
+        "Nederst i hver medarbejders tabel står 'Total løn for [navn]' – den fulde sum for "
+        "medarbejderen i perioden: arbejdstid, overtid, salttillæg, springertillæg OG al "
+        "fraværsbetaling med et beregnet beløb (se afsnit 12.1 for hvilke typer det gælder)."
+    ))
+
+    heading(doc, "Periode-visning", 2, "12.3")
+    body(doc, (
+        "Lønafregning har ingen egen periodevælger – siden følger i stedet den periode du "
+        "senest har navigeret til med pilene (‹ ›) i Aktivitetsoversigten, ligesom Lønkørsel "
+        "allerede gør. Har du ikke navigeret til en bestemt periode, vises dagens periode. "
+        "Skal du fx tjekke eller eksportere en periode der er kørt løn for og siden er blevet "
+        "'gammel' (dagens periode er rykket videre), skal du først gå til Aktiviteter og "
+        "bladre tilbage til den ønskede periode med '‹', og derefter klikke på Lønafregning."
+    ))
+
+    heading(doc, "Eksportér CSV", 2, "12.4")
+    body(doc, (
+        "Knappen '💾 Eksportér CSV' åbner en mappevælger (samme mønster som Lønkørsels "
+        "'Kør løn') og gemmer én CSV-fil for hele den viste periode med data for alle "
+        "medarbejdere – ikke topsummeringen."
+    ))
+    bullet(doc, "Naviger til den ønskede periode (se afsnit 12.3).")
+    bullet(doc, "Klik '💾 Eksportér CSV'.")
+    bullet(doc, "Vælg en mappe (forslået: din Downloads-mappe), eller klik 'Gennemse' for at vælge en anden.")
+    bullet(doc, "Klik 'Eksportér'.")
+    body(doc, (
+        "CSV-filen (semikolon-separeret) indeholder kolonnerne Dato, Lønnummer, Normal timer, "
+        "Overtid 1 time før, Overtid 1-3 timer efter, Øvrig overtid, Total tid, Total i kr., "
+        "Vognnummer og Beløb – én række pr. dag pr. medarbejder, efterfulgt af en "
+        "'Total løn for [navn]'-række."
+    ))
+    note_box(doc,
+        "Eksport kræver at den viste periode er låst (der er kørt løn for den under "
+        "Lønkørsel) – ellers vises en fejlbesked, og der eksporteres ikke. Administratorer "
+        "er undtaget og kan altid eksportere, uanset periodens status. Selve eksporten LÅSER "
+        "ikke perioden – det sker kun ved 'Kør løn' under Lønkørsel.",
+        "VIGTIGT"
+    )
 
     doc.save(OUT / "Brugervejledning.docx")
     print("Brugervejledning.docx gemt.")
