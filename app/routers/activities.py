@@ -456,6 +456,7 @@ def create_manual_activity(body: ActivityCreate,
 
     period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"
+    can_auto_approve = user_has_permission(db, current_user, "auto_approve_manual_activities")
     activity = Activity(
         employee_id=body.employee_id,
         pay_period_id=period.id,
@@ -472,12 +473,21 @@ def create_manual_activity(body: ActivityCreate,
         km_end=body.km_end,
         salt_supplement=body.salt_supplement,
         pause_intervals=body.pause_intervals,
-        status=ActivityStatus.approved if is_absence else ActivityStatus.pending,
-        approved_by=current_user.initials if is_absence else None,
-        approved_at=datetime.utcnow() if is_absence else None,
+        status=ActivityStatus.pending,
     )
     db.add(activity)
     db.flush()
+
+    if is_absence or can_auto_approve:
+        activity.status = ActivityStatus.approved
+        activity.approved_by = current_user.initials
+        activity.approved_at = datetime.utcnow()
+
+        if can_auto_approve and not activity.comment:
+            dur = _duration_minutes(activity)
+            if dur < FOUR_HOURS and not _day_reaches_4h_with_approved(activity, dur):
+                activity.comment = current_user.initials
+
     log_action(db, current_user, "create_activity", "activity", activity.id,
                f"Manuelt oprettet for {emp.name}")
     db.commit()
