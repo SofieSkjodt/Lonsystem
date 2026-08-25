@@ -51,6 +51,7 @@ def init_db():
     _ensure_anciennitet_alert_permission()
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
+    _ensure_auto_approve_permission()
     _ensure_vagtplan_permissions()
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
@@ -188,7 +189,7 @@ def _seed_roles():
                 Role(name="admin", display_name="Administrator", is_system=True,
                      permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines", "approve_activities", "view_calendar"]),
                 Role(name="lonbogholder", display_name="Lønbogholder", is_system=False,
-                     permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert", "approve_activities", "view_calendar"]),
+                     permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert", "approve_activities", "view_calendar", "auto_approve_manual_activities"]),
                 Role(name="disponent", display_name="Disponent", is_system=False,
                      permissions=["approve_activities", "view_calendar"]),
             ]:
@@ -565,6 +566,25 @@ def _ensure_manage_baselines_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af manage_baselines-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_auto_approve_permission():
+    """Tilføjer auto_approve_manual_activities til lonbogholder-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "lonbogholder").first()
+        if role:
+            perms = list(role.permissions or [])
+            if "auto_approve_manual_activities" not in perms:
+                perms.append("auto_approve_manual_activities")
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af auto_approve_manual_activities-tilladelse: {e}")
     finally:
         db.close()
 

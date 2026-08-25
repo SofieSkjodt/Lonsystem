@@ -50,6 +50,7 @@ const PERMISSION_LABELS = {
   manage_holidays:     "Administrér helligdage",
   anciennitet_alert:   "Anciennitetsvarsel",
   approve_activities:  "Godkend aktiviteter",
+  auto_approve_manual_activities: "Auto-godkend ved oprettelse",
   view_calendar:       "Se aktivitetskalender",
   manage_employee_supplements: "Administrér medarbejdertillæg",
   toggle_springer:     "Sæt springertillæg",
