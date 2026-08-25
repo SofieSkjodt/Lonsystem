@@ -645,6 +645,29 @@ input:focus, select:focus, textarea:focus {
 .payroll-row.total { font-weight: 700; background: #f0fdf4; }
 .payroll-row .label { color: var(--text-light); }
 
+/* ── Payroll settlement (Lønafregning) day table ── */
+.settlement-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.settlement-table th {
+  background: #d4edcc;
+  color: var(--primary-dark);
+  font-weight: 700;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.settlement-table td {
+  padding: 5px 8px;
+  border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.settlement-table td.num { text-align: right; }
+.settlement-table tr:last-child td { border-bottom: none; }
+.settlement-table tr.settlement-total-row td { font-weight: 700; background: #f0fdf4; }
+
 /* ── Alert banner ── */
 .alert-banner {
   background: #fff7ed;

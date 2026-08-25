@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PS Løn – Poul Schou A/S</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=9">
+  <link rel="stylesheet" href="/static/css/style.css?v=10">
   <script src="/static/js/msal-browser.min.js"></script>
   <script>
     const ENTRA_TENANT_ID = "{{ entra_tenant_id }}";
@@ -89,6 +89,9 @@
       </div>
       <div class="sidebar-item" data-view="payroll" data-perm-require="payroll">
         <span class="icon">💰</span> Lønkørsel
+      </div>
+      <div class="sidebar-item" data-view="payroll-settlement" data-perm-require="payroll_settlement_view">
+        <span class="icon">🧾</span> Lønafregning
       </div>
       <div class="sidebar-item" data-view="absence-overview" data-perm-require="absence_overview">
         <span class="icon">📊</span> Fraværsoversigt
@@ -183,6 +186,21 @@
         <button id="btn-koer-loen" class="btn btn-success" onclick="exportCsv()" title="Alle aktiviteter skal være godkendt eller deaktiveret først">&#9654; Kør løn (Danløn CSV)</button>
       </div>
       <div id="payroll-preview-container"></div>
+    </div>
+
+    <!-- ══════════════ PAYROLL SETTLEMENT VIEW ══════════════ -->
+    <div class="view hidden" data-view="payroll-settlement">
+      <div class="toolbar" style="flex-wrap:nowrap">
+        <h2 style="font-size:16px;font-weight:600;white-space:nowrap">Lønafregning –
+          <span id="settlement-period-label" style="font-weight:400;color:var(--text-light)">indlæser...</span>
+        </h2>
+        <div class="spacer"></div>
+        <button class="btn btn-secondary" onclick="loadPayrollSettlement()">&#128260; Opdater</button>
+        <button id="btn-settlement-export" class="btn btn-success" onclick="exportSettlementCsv()"
+                data-perm-require="payroll_settlement_export"
+                title="Kræver at lønperioden er låst (medmindre du er administrator)">&#128190; Eksportér CSV</button>
+      </div>
+      <div id="settlement-preview-container"></div>
     </div>
 
     <!-- ══════════════ ABSENCE OVERVIEW VIEW ══════════════ -->
@@ -1227,6 +1245,31 @@
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-csv')">Nej</button>
       <button class="btn btn-success" onclick="confirmExportCsv()">Ja, lås periode og eksportér</button>
+    </div>
+  </div>
+</div>
+
+<!-- Lønafregning CSV-eksport-modal -->
+<div id="modal-settlement-csv" class="modal-overlay">
+  <div class="modal" style="width:480px">
+    <div class="modal-header">
+      <h2>Eksportér lønafregning (CSV)</h2>
+      <button class="modal-close" onclick="closeModal('modal-settlement-csv')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <p style="margin-bottom:16px;font-size:14px;line-height:1.5">CSV-filen indeholder timer, kr. og vognnummer pr. dag for hver medarbejder i den aktuelle lønperiode.</p>
+      <div class="form-group">
+        <label>Gem CSV-fil i mappe <span style="color:var(--danger)">*</span></label>
+        <div style="display:flex;gap:8px">
+          <input type="text" id="settlement-csv-folder" placeholder="Sti til mappe..." style="flex:1">
+          <button type="button" class="btn btn-secondary" onclick="browseSettlementCsvFolder()" id="settlement-csv-browse-btn">Gennemse</button>
+        </div>
+      </div>
+      <div id="settlement-csv-result" style="font-size:13px;color:var(--text-light)"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-settlement-csv')">Annuller</button>
+      <button class="btn btn-success" onclick="confirmExportSettlementCsv()">Eksportér</button>
     </div>
   </div>
 </div>

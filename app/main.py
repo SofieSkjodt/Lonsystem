@@ -12,7 +12,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.middleware.sessions import SessionMiddleware
 
 from database.session import init_db
-from routers import import_ddd, employees, activities, payroll_router, vehicles, employee_supplements, vagtplan_comments
+from routers import import_ddd, employees, activities, payroll_router, vehicles, employee_supplements, vagtplan_comments, payroll_settlement_router
 from routers import auth as auth_router
 from routers import users as users_router
 from routers import roles as roles_router
@@ -93,6 +93,7 @@ app.include_router(import_ddd.router)
 app.include_router(employees.router)
 app.include_router(activities.router)
 app.include_router(payroll_router.router)
+app.include_router(payroll_settlement_router.router)
 app.include_router(absence_overview_router.router)
 app.include_router(timeseddel_router.router)
 app.include_router(vehicles.router)

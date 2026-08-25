@@ -479,33 +479,68 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
             for act in acts_today:
                 label = _ABSENCE_LABELS.get(act.activity_type)
                 if label:
+                    # absence_hours/absence_kr er KUN til visning i Lønafregning
+                    # (payroll_settlement_router.py) – de indgår IKKE i totals{}
+                    # eller total_kr her, og påvirker derfor ikke Lønkørsel,
+                    # Excel-prøvekørslen, PDF-timesedlen eller Danløn-CSV'en.
+                    absence_hours = None
+                    absence_kr = None
                     if act.activity_type == "afspadsering":
                         dur = _afspadsering_hours(emp, act)
                         totals["afspadsering"] += dur
+                        absence_hours = dur
+                        absence_kr = dur * hourly_rate
+                    elif act.activity_type == "ferie":
+                        dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        absence_hours = dur
+                        absence_kr = dur * hourly_rate
                     elif act.activity_type in ("sygdom", "barn_1sygedag", "graviditetsbetinget_sygdom"):
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["sygdom"] += dur
+                        absence_hours = dur
+                        absence_kr = dur * hourly_rate
                     elif act.activity_type == "paragraf_56_syg":
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["paragraf_56_syg"] += dur
+                        absence_hours = dur
+                        absence_kr = dur * dagpenge_sats
                     elif act.activity_type == "feriefri":
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["feriefri"] += dur
+                        absence_hours = dur
+                        # Fuldlønnet/timelønnet afgør kun hvilken Danløn-kode feriefri
+                        # rapporteres under (FERIEFRI_FULDLOENNET/-TIMELOENNET, se
+                        # export_csv_post) – selve beløbet regnes ens for begge
+                        # (bekræftet af bruger 2026-08-25), så Lønafregning viser én
+                        # samlet "Feriefri"-linje uanset emp.fuldloennet.
+                        absence_kr = dur * hourly_rate
                     elif act.activity_type == "barsel":
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["barsel"] += dur
+                        absence_hours = dur
+                        absence_kr = dur * hourly_rate
                     elif act.activity_type == "barn_1sygedag_u_8uger":
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["barn_1sygedag_u_loen"] += dur
+                        absence_hours = dur
+                        absence_kr = dur * dagpenge_sats
                     elif act.activity_type == "skole_kursus":
                         dur = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
                         totals["skole_kursus"] += dur
-                    # sygdom_u_8uger / barn_2_3sygedag / selvbetalt_fridag / barsel_u_loen: ikke i CSV
+                        absence_hours = dur
+                        absence_kr = dur * hourly_rate
+                    elif act.activity_type == "sygdom_u_8uger":
+                        # Ulønnet – vises med timer i Lønafregning, men altid 0 kr.
+                        absence_hours = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
+                        absence_kr = Decimal("0")
+                    # barn_2_3sygedag / selvbetalt_fridag / barsel_u_loen: ikke i CSV
                     days.append({
                         "date": cur.isoformat(),
                         "normal": 0.0, "ot_before": 0.0, "ot_13": 0.0,
                         "ot_extra": 0.0, "total_hours": 0.0, "total_kr": 0.0,
                         "absence_type": label,
+                        "absence_hours": float(absence_hours) if absence_hours is not None else None,
+                        "absence_kr": float(_round2(absence_kr)) if absence_kr is not None else None,
                         "start_time": None, "end_time": None,
                         "vehicle_number": None,
                         "overnight": overnight_today,

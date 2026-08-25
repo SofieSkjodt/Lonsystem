@@ -26,6 +26,8 @@ ALL_PERMISSIONS = {
     "vagtplan_view":       "Se vagtplan",
     "vagtplan_edit_own":   "Redigér egen linje i vagtplan",
     "vagtplan_edit_all":   "Redigér alle linjer i vagtplan",
+    "payroll_settlement_view":   "Lønafregning (se)",
+    "payroll_settlement_export": "Lønafregning (eksport)",
 }
 
 

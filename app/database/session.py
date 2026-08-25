@@ -54,6 +54,7 @@ def init_db():
     _ensure_vagtplan_permissions()
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
+    _ensure_payroll_settlement_permissions()
     _ensure_springer_pay_type()
     _ensure_feriefri_fuldloennet_pay_type()
     _migrate_dispatcher_groups()
@@ -649,5 +650,28 @@ def _ensure_toggle_springer_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af toggle_springer-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_payroll_settlement_permissions():
+    """Tilføjer payroll_settlement_view + payroll_settlement_export til lonbogholder-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "lonbogholder").first()
+        if role and not role.is_system:
+            perms = list(role.permissions or [])
+            changed = False
+            for p in ("payroll_settlement_view", "payroll_settlement_export"):
+                if p not in perms:
+                    perms.append(p)
+                    changed = True
+            if changed:
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af payroll_settlement-tilladelser: {e}")
     finally:
         db.close()

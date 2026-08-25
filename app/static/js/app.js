@@ -56,6 +56,8 @@ const PERMISSION_LABELS = {
   vagtplan_view:       "Se vagtplan",
   vagtplan_edit_own:   "Redigér egen linje i vagtplan",
   vagtplan_edit_all:   "Redigér alle linjer i vagtplan",
+  payroll_settlement_view:   "Lønafregning (se)",
+  payroll_settlement_export: "Lønafregning (eksport)",
 };
 
 let manualPauses = [];
@@ -125,6 +127,7 @@ function setView(view) {
   if (view === "activities")        loadActivities();
   if (view === "employees")         loadEmployees();
   if (view === "payroll")           loadPayrollPreview();
+  if (view === "payroll-settlement") loadPayrollSettlement();
   if (view === "absence-overview")  loadAbsenceOverview();
   if (view === "vehicles")          loadVehicles();
   if (view === "employee-supplements") loadEmployeeSupplementsView();
@@ -3106,6 +3109,174 @@ async function confirmExportCsv() {
     closeModal("modal-csv");
     await loadPeriodInfo(state.currentPeriodStart);
     await loadActivities();
+  } catch (e) { toast(e.message, "error"); }
+  finally { setLoading(false); }
+}
+
+// ── Lønafregning ─────────────────────────────────────────────────────────
+async function loadPayrollSettlement() {
+  setLoading(true);
+  try {
+    const qs = state.currentPeriodStart ? `?period_start=${state.currentPeriodStart}` : "";
+    const data = await GET(`/api/payroll-settlement/preview${qs}`);
+    renderPayrollSettlement(data);
+  } catch (e) { toast(e.message, "error"); }
+  finally { setLoading(false); }
+}
+
+function fmtHM(hours) {
+  const totalMinutes = Math.round((hours || 0) * 60);
+  const hh = Math.floor(totalMinutes / 60), mm = totalMinutes % 60;
+  return `${hh}:${String(mm).padStart(2, "0")}`;
+}
+
+function fmtDecimalComma(v) {
+  return (v || 0).toFixed(2).replace(".", ",");
+}
+
+function renderPayrollSettlement(data) {
+  state.settlementPeriodClosed = data.period_status === "closed";
+  document.getElementById("settlement-period-label").textContent =
+    `${formatDateShort(data.period_start)} – ${formatDateShort(data.period_end)}`;
+
+  const container = document.getElementById("settlement-preview-container");
+  container.innerHTML = "";
+
+  if (!state.settlementPeriodClosed) {
+    const info = document.createElement("div");
+    info.className = "alert-banner mb-16";
+    info.innerHTML = `<span class="icon">ℹ️</span><div class="text"><h4>Perioden er ikke låst endnu</h4>Eksport kræver, at lønnen er kørt for perioden under Lønkørsel (administratorer kan eksportere alligevel).</div>`;
+    container.appendChild(info);
+  }
+
+  const t = data.page_totals;
+  const settlementLineItems = [
+    ["Grundtimeløn inkl. tillæg", t.grundtimeloen_incl_tillaeg_kr],
+    ["Overtid Timen før", t.ot_before_kr],
+    ["Overtid 1-3 time efter", t.ot_13_kr],
+    ["Øvrig overtid", t.ot_extra_kr],
+  ];
+  const settlementAbsenceItems = [
+    ["Salttillæg", t.salt_kr],
+    ["Sygdom", t.sygdom_kr],
+    ["Sygdom u. 8 uger", t.sygdom_u_8_uger_kr],
+    ["Barn 1.sygedag", t.barn_1sygedag_kr],
+    ["Barn 1.sygedag u. 8 uger", t.barn_1sygedag_u_8_uger_kr],
+    ["Graviditetsbetinget sygdom", t.graviditetsbetinget_sygdom_kr],
+    ["§56 syg", t.paragraf_56_syg_kr],
+    ["Barsel", t.barsel_kr],
+    ["Feriefri", t.feriefri_kr],
+    ["Ferie", t.ferie_kr],
+    ["Skole/kursus", t.skole_kursus_kr],
+    ["Afspadsering", t.afspadsering_kr],
+  ];
+  const settlementRow = ([label, kr]) =>
+    `<div class="payroll-row"><div class="label">${h(label)}</div><div></div><div></div><div class="text-right">${fmtKr(kr)}</div></div>`;
+  const totalCard = document.createElement("div");
+  totalCard.className = "payroll-employee";
+  totalCard.innerHTML = `
+    <div class="payroll-emp-header"><div class="payroll-emp-info"><h3>Total sum for perioden</h3></div></div>
+    <div class="payroll-rows">
+      ${settlementLineItems.filter(([, kr]) => kr > 0).map(settlementRow).join("")}
+      <div class="payroll-row total"><div>Total uden fravær</div><div></div><div></div><div class="text-right">${fmtKr(t.total_excl_absence_kr)}</div></div>
+      ${settlementAbsenceItems.filter(([, kr]) => kr > 0).map(settlementRow).join("")}
+      <div class="payroll-row total"><div>Total sum for denne periode</div><div></div><div></div><div class="text-right">${fmtKr(t.total_kr)}</div></div>
+    </div>`;
+  container.appendChild(totalCard);
+
+  if (data.employees.length === 0) {
+    container.innerHTML += `<div class="empty-state"><div class="icon">🧾</div><h3>Ingen aktive medarbejdere</h3></div>`;
+    return;
+  }
+
+  for (const emp of data.employees) {
+    const el = document.createElement("div");
+    el.className = "payroll-employee";
+    const headlineParts = [`${h(emp.agreement_type)} (${emp.agreement_rate.toFixed(2)} kr/t)`];
+    if (emp.personal_supplement_rate > 0) {
+      headlineParts.push(`Personligt tillæg: ${emp.personal_supplement_rate.toFixed(2)} kr/t`);
+    }
+    if (emp.springer_enabled) {
+      headlineParts.push(`Springertillæg: ${emp.springer_rate.toFixed(2)} kr/t`);
+    }
+    const dayRows = emp.days.map(day => {
+      const vognnummer = day.absence_type || day.vehicle_number || "";
+      return `<tr>
+        <td>${formatDate(day.date)}</td>
+        <td class="num">${fmtHM(day.normal)}</td>
+        <td class="num">${fmtHM(day.ot_before)}</td>
+        <td class="num">${fmtHM(day.ot_13)}</td>
+        <td class="num">${fmtHM(day.ot_extra)}</td>
+        <td class="num">${fmtDecimalComma(day.total_hours)}</td>
+        <td class="num">${fmtKr(day.total_kr)}</td>
+        <td>${h(vognnummer)}</td>
+        <td class="num">${fmtKr(day.total_kr)}</td>
+      </tr>`;
+    }).join("");
+    el.innerHTML = `
+      <div class="payroll-emp-header">
+        <div class="emp-avatar" style="width:34px;height:34px;font-size:13px">${h(emp.employee_name.split(" ").map(w => w[0]).slice(0, 2).join("").toUpperCase())}</div>
+        <div class="payroll-emp-info">
+          <h3>${h(emp.employee_name)}</h3>
+          <div class="emp-meta">${h(emp.employee_number)} · ${headlineParts.map(h).join(" · ")}</div>
+        </div>
+      </div>
+      <div style="overflow-x:auto">
+        <table class="settlement-table">
+          <thead><tr>
+            <th>Dato</th><th>Normal timer</th><th>Overtid 1 time før</th>
+            <th>Overtid 1-3 timer efter</th><th>Øvrig overtid</th><th>Total tid</th>
+            <th>Total i kr.</th><th>Vognnummer</th><th>Beløb</th>
+          </tr></thead>
+          <tbody>
+            ${dayRows}
+            <tr class="settlement-total-row">
+              <td colspan="6">Total løn for ${h(emp.employee_name)}</td>
+              <td class="num">${fmtKr(emp.total_kr)}</td><td></td><td class="num">${fmtKr(emp.total_kr)}</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>`;
+    container.appendChild(el);
+  }
+}
+
+async function exportSettlementCsv() {
+  const isAdmin = state.currentUser?.role === "admin";
+  if (state.settlementPeriodClosed === false && !isAdmin) {
+    toast("Lønperioden skal være låst, før den kan eksporteres. Kør løn under Lønkørsel-fanen først.", "error");
+    return;
+  }
+  document.getElementById("settlement-csv-result").textContent = "";
+  try {
+    const res = await GET("/api/payroll-settlement/downloads-folder");
+    document.getElementById("settlement-csv-folder").value = res.path;
+  } catch { /* lad feltet stå tomt */ }
+  openModal("modal-settlement-csv");
+}
+
+async function browseSettlementCsvFolder() {
+  const btn = document.getElementById("settlement-csv-browse-btn");
+  btn.disabled = true; btn.textContent = "Venter...";
+  try {
+    const current = document.getElementById("settlement-csv-folder").value.trim();
+    const res = await GET(`/api/payroll-settlement/browse-folder?initial=${encodeURIComponent(current)}`);
+    if (res.path) document.getElementById("settlement-csv-folder").value = res.path;
+  } catch { toast("Kunne ikke åbne mappevælger", "error"); }
+  finally { btn.disabled = false; btn.textContent = "Gennemse"; }
+}
+
+async function confirmExportSettlementCsv() {
+  const folder = document.getElementById("settlement-csv-folder").value.trim();
+  if (!folder) { toast("Angiv en mappe at gemme CSV-filen i", "error"); return; }
+  setLoading(true);
+  try {
+    const result = await POST("/api/payroll-settlement/export-csv", {
+      period_start: state.currentPeriodStart || null,
+      output_folder: folder,
+    });
+    toast(`Lønafregning eksporteret: ${result.filename}`, "success");
+    closeModal("modal-settlement-csv");
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
 }
