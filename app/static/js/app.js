@@ -1760,6 +1760,27 @@ function addManualPause() {
   openModal("modal-pause");
 }
 
+function _validateAndStoreManualPause(startIso, endIso) {
+  const actStart = readDatetimePicker("manual-start");
+  const actEnd   = readDatetimePicker("manual-end");
+  if (actStart && startIso < actStart) {
+    toast(`Pausen starter (${startIso.slice(11, 16)}) før vagten begynder (${actStart.slice(11, 16)})`, "error");
+    return false;
+  }
+  if (actEnd && endIso > actEnd) {
+    toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${actEnd.slice(11, 16)})`, "error");
+    return false;
+  }
+  const entry = [startIso + ":00", endIso + ":00"];
+  if (_pauseEditState?.idx != null) {
+    manualPauses[_pauseEditState.idx] = entry;
+  } else {
+    manualPauses.push(entry);
+  }
+  renderManualPauses();
+  return true;
+}
+
 function confirmPause() {
   const startIso = readDatetimePicker("pause-start");
   const endIso   = readDatetimePicker("pause-end");
@@ -1769,24 +1790,17 @@ function confirmPause() {
     _confirmActivityPauseEdit(startIso, endIso);
     return;
   }
-  const actStart = readDatetimePicker("manual-start");
-  const actEnd   = readDatetimePicker("manual-end");
-  if (actStart && startIso < actStart) {
-    toast(`Pausen starter (${startIso.slice(11, 16)}) før vagten begynder (${actStart.slice(11, 16)})`, "error");
-    return;
+  if (_validateAndStoreManualPause(startIso, endIso)) {
+    closeModal("modal-pause");
   }
-  if (actEnd && endIso > actEnd) {
-    toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${actEnd.slice(11, 16)})`, "error");
-    return;
-  }
-  const entry = [startIso + ":00", endIso + ":00"];
-  if (_pauseEditState?.idx != null) {
-    manualPauses[_pauseEditState.idx] = entry;
-  } else {
-    manualPauses.push(entry);
-  }
-  renderManualPauses();
-  closeModal("modal-pause");
+}
+
+function addPauseSuggestion(startHHMM, endHHMM) {
+  const actStartIso = readDatetimePicker("manual-start");
+  if (!actStartIso) { toast("Angiv starttidspunkt for aktiviteten først", "error"); return; }
+  const dateStr = actStartIso.slice(0, 10);
+  _pauseEditState = { mode: "create", idx: null };
+  _validateAndStoreManualPause(dateStr + "T" + startHHMM, dateStr + "T" + endHHMM);
 }
 
 function deleteManualPause(idx) {
