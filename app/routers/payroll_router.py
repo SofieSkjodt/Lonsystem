@@ -557,6 +557,11 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                             (_dt.fromisoformat(s), _dt.fromisoformat(e))
                             for s, e in (act.pause_intervals or [])
                         ]
+                    pause_minutes = sum(
+                        (Decimal(str((p_end - p_start).total_seconds())) / Decimal("60")
+                         for p_start, p_end in pauses),
+                        Decimal("0"),
+                    )
                     if not is_recognized_agreement_kind:
                         # Aftale-type uden for de to kendte nøgler – ingen
                         # automatisk OT-beregning endnu (se
@@ -622,6 +627,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "ot_extra":     float(_round2(ot.ot_extra_hours)),
                         "total_hours":  float(_round2(ot.total_hours)),
                         "total_kr":     float(_round2(day_kr)),
+                        "pause_minutes": float(pause_minutes.quantize(Decimal("1"), rounding=ROUND_HALF_UP)),
                         "absence_type": None,
                         "sh_kode8":     float(_round2(ot.sh_kode8_hours)),
                         "sh_kode9":     float(_round2(ot.sh_kode9_hours)),
@@ -728,7 +734,7 @@ def payroll_preview(period_start: Optional[str] = None,
 def _build_proevekoersel_workbook(employees, period, db):
     """Bygger prøvekørsel-Excel-arbejdsbog og returnerer den (fælles for download og gem)."""
     import openpyxl
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import Alignment, Font, PatternFill
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -737,17 +743,25 @@ def _build_proevekoersel_workbook(employees, period, db):
     header_fill = PatternFill(start_color="317423", end_color="317423", fill_type="solid")
     row_fill = PatternFill(start_color="D4EDCC", end_color="D4EDCC", fill_type="solid")
 
-    headers = ["Medarbejder", "Lønnr", "Vognnr.", "Dag", "Starttid", "Sluttid", "Normal tid",
-               "Overtid 1 time før", "Overtid 1-3 timer efter", "Øvrig overtid",
-               "Salttillæg (t)", "Salttillæg (kr.)", "Overnatning", "Total tid", "Total kr."]
+    headers = ["Medarbejder", "Lønnr", "Vognnr.", "Dag", "Starttid", "Sluttid", "Total tid",
+               "Pause i alt (min)", "Normal tid", "Overtid 1 time før", "Overtid 1-3 timer efter",
+               "Øvrig overtid", "Salttillæg (t)", "Salttillæg (kr.)", "Overnatning", "Total kr."]
     ws.append(headers)
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
+        # Overskrifterne er længere end de fleste dataceller (fx "Overtid
+        # 1-3 timer efter") – ombryd dem i stedet for at gøre kolonnen
+        # unødvendigt bred, så hele tabellen kan ses uden vandret scroll.
+        cell.alignment = Alignment(wrap_text=True, vertical="center", horizontal="center")
+    ws.row_dimensions[1].height = 30
     ws.freeze_panes = "A2"
 
     for emp in employees:
         calc = _calculate_employee(emp, period.start_date, period.end_date, db)
+        # Markør så brugeren kan se med det samme, at medarbejderen har fået
+        # springertillæg i denne periode, uden at det kræver en ekstra kolonne.
+        emp_name = calc["employee_name"] + (" (springer)" if calc.get("springer_enabled") else "")
         first_row = True
         for day in calc["days"]:
             vn = day.get("vehicle_number") or ""
@@ -755,32 +769,44 @@ def _build_proevekoersel_workbook(employees, period, db):
             et = day.get("end_time") or ""
             on = day.get("overnight", 0) or ""
             if day["absence_type"]:
-                row = [calc["employee_name"], calc["employee_number"], "", day["date"],
-                       "", "", day["absence_type"], "", "", "", "", "",
-                       on, "", ""]
+                row = [emp_name, calc["employee_number"], "", day["date"],
+                       "", "", "", "", day["absence_type"], "", "", "", "", "",
+                       on, ""]
             else:
                 salt_t = day.get("salt_hours", 0) or ""
                 salt_kr = day.get("salt_kr", 0) or ""
-                row = [calc["employee_name"], calc["employee_number"], vn, day["date"],
+                day_ot13 = day["ot_13"] + day.get("sh_kode8", 0)
+                day_ot_extra = day["ot_extra"] + day.get("sh_kode9", 0)
+                # "Normal tid" skal kun være timer der IKKE udløser overtidstillæg.
+                # day["normal"] indeholder alle arbejdede timer (tillæggene er
+                # additive oveni, se calculators/overtime.py), så tillægstimerne
+                # trækkes fra her for at vise den rene normaltid.
+                day_normal = round(day["normal"] - day["ot_before"] - day_ot13 - day_ot_extra, 2) + 0.0
+                row = [emp_name, calc["employee_number"], vn, day["date"],
                        st, et,
-                       day["normal"], day["ot_before"],
-                       day["ot_13"] + day.get("sh_kode8", 0),
-                       day["ot_extra"] + day.get("sh_kode9", 0),
+                       day["total_hours"], day.get("pause_minutes", 0.0),
+                       day_normal, day["ot_before"],
+                       day_ot13,
+                       day_ot_extra,
                        salt_t, salt_kr, on,
-                       day["total_hours"], day["total_kr"]]
+                       day["total_kr"]]
             ws.append(row)
             if first_row:
                 for cell in ws[ws.max_row]:
                     cell.fill = row_fill
                 first_row = False
-        total_row = [calc["employee_name"], calc["employee_number"], "", "TOTAL",
+        total_ot13 = calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0)
+        total_ot_extra = calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0)
+        total_normal = round(calc["normal_hours"] - calc["ot_before_hours"] - total_ot13 - total_ot_extra, 2) + 0.0
+        total_pause = sum(d.get("pause_minutes", 0.0) for d in calc["days"])
+        total_row = [emp_name, calc["employee_number"], "", "TOTAL",
                      "", "",
-                     calc["normal_hours"], calc["ot_before_hours"],
-                     calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),
-                     calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),
+                     calc["total_hours"], total_pause, total_normal, calc["ot_before_hours"],
+                     total_ot13,
+                     total_ot_extra,
                      calc.get("salt_hours", 0) or "", calc.get("salt_kr", 0) or "",
                      calc.get("overnight_count", 0) or "",
-                     calc["total_hours"], calc["total_kr"]]
+                     calc["total_kr"]]
         ws.append(total_row)
         for cell in ws[ws.max_row]:
             cell.font = bold
@@ -788,14 +814,14 @@ def _build_proevekoersel_workbook(employees, period, db):
         sh_tl = calc.get("sh_timeloennet_hours", 0)
         hr = calc["hourly_rate"]
         if sh_fl > 0:
-            sh_row = [calc["employee_name"], calc["employee_number"], "", "Søgnehelligdag",
-                      "", "", sh_fl, "", "", "", "", "", "", sh_fl, round(sh_fl * hr, 2)]
+            sh_row = [emp_name, calc["employee_number"], "", "Søgnehelligdag",
+                      "", "", sh_fl, "", sh_fl, "", "", "", "", "", "", round(sh_fl * hr, 2)]
             ws.append(sh_row)
             for cell in ws[ws.max_row]:
                 cell.font = bold
         if sh_tl > 0:
-            sh_row = [calc["employee_name"], calc["employee_number"], "", "SH-Udbetaling",
-                      "", "", sh_tl, "", "", "", "", "", "", sh_tl, round(sh_tl * hr, 2)]
+            sh_row = [emp_name, calc["employee_number"], "", "SH-Udbetaling",
+                      "", "", sh_tl, "", sh_tl, "", "", "", "", "", "", round(sh_tl * hr, 2)]
             ws.append(sh_row)
             for cell in ws[ws.max_row]:
                 cell.font = bold
@@ -810,25 +836,45 @@ def _build_proevekoersel_workbook(employees, period, db):
             ("Kursus/Skole",    calc.get("skole_kursus_hours", 0),        hr),
         ]:
             if abs_h > 0:
-                ws.append([calc["employee_name"], calc["employee_number"], "", abs_lbl,
-                           "", "", abs_h, "", "", "", "", "", "", abs_h, round(abs_h * abs_rate, 2)])
+                ws.append([emp_name, calc["employee_number"], "", abs_lbl,
+                           "", "", abs_h, "", abs_h, "", "", "", "", "", "", round(abs_h * abs_rate, 2)])
                 for cell in ws[ws.max_row]:
                     cell.font = bold
         if on_kr > 0:
-            ws.append([calc["employee_name"], calc["employee_number"], "", "Overnatning (kr.)",
-                       "", "", "", "", "", "", "", "", "", "", round(on_kr, 2)])
+            ws.append([emp_name, calc["employee_number"], "", "Overnatning (kr.)",
+                       "", "", "", "", "", "", "", "", "", "", "", round(on_kr, 2)])
             for cell in ws[ws.max_row]:
                 cell.font = bold
         dob_on_kr = calc.get("dob_overnight_kr", 0.0)
         if dob_on_kr > 0:
-            ws.append([calc["employee_name"], calc["employee_number"], "", "DOB Overnatning (kr.)",
-                       "", "", "", "", "", "", "", "", "", "", round(dob_on_kr, 2)])
+            ws.append([emp_name, calc["employee_number"], "", "DOB Overnatning (kr.)",
+                       "", "", "", "", "", "", "", "", "", "", "", round(dob_on_kr, 2)])
             for cell in ws[ws.max_row]:
                 cell.font = bold
         ws.append([])
 
-    for col in "ABCDEFGHIJKLMNO":
-        ws.column_dimensions[col].width = 22
+    # Bredder tilpasset dataindholdet (ikke de – ofte længere – ombrudte
+    # overskrifter), så alle 16 kolonner kan ses uden vandret scroll.
+    column_widths = {
+        "A": 24,  # Medarbejder
+        "B": 8,   # Lønnr
+        "C": 9,   # Vognnr.
+        "D": 12,  # Dag
+        "E": 8,   # Starttid
+        "F": 8,   # Sluttid
+        "G": 9,   # Total tid
+        "H": 10,  # Pause i alt (min)
+        "I": 9,   # Normal tid
+        "J": 9,   # Overtid 1 time før
+        "K": 10,  # Overtid 1-3 timer efter
+        "L": 9,   # Øvrig overtid
+        "M": 9,   # Salttillæg (t)
+        "N": 10,  # Salttillæg (kr.)
+        "O": 10,  # Overnatning
+        "P": 10,  # Total kr.
+    }
+    for col, width in column_widths.items():
+        ws.column_dimensions[col].width = width
     return wb
 
 
