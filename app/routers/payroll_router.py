@@ -712,7 +712,7 @@ def _active_employees(db: Session, employee_id: Optional[int] = None):
     if employee_id:
         q = q.filter(Employee.id == employee_id)
     employees = q.order_by(Employee.first_name, Employee.last_name).all()
-    return [e for e in employees if any(g.visible_in_activity_overview for g in e.dispatcher_groups)]
+    return [e for e in employees if e.dispatcher_group and e.dispatcher_group.visible_in_activity_overview]
 
 
 @router.get("/preview")

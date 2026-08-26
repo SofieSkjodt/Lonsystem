@@ -119,7 +119,7 @@ def _give_visible_dispatcher_group(db, employee):
     ville ellers stille og roligt give 0 medarbejdere."""
     from database.models import DispatcherGroup
     group = DispatcherGroup(name="Testgruppe", visible_in_activity_overview=True)
-    employee.dispatcher_groups.append(group)
+    employee.dispatcher_group = group
     db.commit()
 
 

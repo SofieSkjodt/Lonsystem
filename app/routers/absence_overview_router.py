@@ -189,11 +189,11 @@ def employee_options(
         .order_by(Employee.first_name, Employee.last_name)
         .all()
     )
-    used_group_ids = {g.id for e in emps for g in e.dispatcher_groups}
+    used_group_ids = {e.dispatcher_group_id for e in emps if e.dispatcher_group_id}
     groups = db.query(DispatcherGroup).filter(DispatcherGroup.id.in_(used_group_ids)).order_by(DispatcherGroup.name).all()
     return {
         "employees": [
-            {"id": e.id, "name": e.name, "dispatcher_group_ids": [g.id for g in e.dispatcher_groups]}
+            {"id": e.id, "name": e.name, "dispatcher_group_id": e.dispatcher_group_id}
             for e in emps
         ],
         "dispatcher_groups": [{"id": g.id, "name": g.name} for g in groups],
@@ -223,11 +223,10 @@ def export_per_employee(
     elif dispatcher_group_id:
         group = db.query(DispatcherGroup).filter(DispatcherGroup.id == dispatcher_group_id).first()
         group_name = group.name if group else None
-        # Medarbejderen vises under alle sine tilknyttede grupper
         group_emp_ids = {
             e.id for e in db.query(Employee).filter(
                 Employee.active == True,
-                Employee.dispatcher_groups.any(DispatcherGroup.id == dispatcher_group_id),
+                Employee.dispatcher_group_id == dispatcher_group_id,
             ).all()
         }
         employees = [e for e in employees if e["employee_id"] in group_emp_ids]

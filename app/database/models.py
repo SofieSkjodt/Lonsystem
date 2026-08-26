@@ -88,11 +88,8 @@ class Employee(Base):
 
     activities = relationship("Activity", back_populates="employee")
     baselines = relationship("EmployeeBaseline", back_populates="employee")
-    dispatcher_groups = relationship(
-        "DispatcherGroup",
-        secondary="employee_dispatcher_groups",
-        back_populates="employees"
-    )
+    dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), nullable=True)
+    dispatcher_group = relationship("DispatcherGroup", back_populates="employees")
 
     @property
     def name(self) -> str:
@@ -178,19 +175,14 @@ class DispatcherGroup(Base):
     name = Column(String, nullable=False, unique=True)
     description = Column(Text, nullable=True)
     visible_in_activity_overview = Column(Boolean, nullable=False, default=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
 
-    employees = relationship(
-        "Employee",
-        secondary="employee_dispatcher_groups",
-        back_populates="dispatcher_groups"
-    )
+    employees = relationship("Employee", back_populates="dispatcher_group")
+    vehicle = relationship("Vehicle")
 
-
-class EmployeeDispatcherGroup(Base):
-    __tablename__ = "employee_dispatcher_groups"
-
-    employee_id = Column(Integer, ForeignKey("employees.id"), primary_key=True)
-    dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), primary_key=True)
+    @property
+    def vehicle_number(self) -> str | None:
+        return self.vehicle.vehicle_number if self.vehicle else None
 
 
 class VagtplanComment(Base):

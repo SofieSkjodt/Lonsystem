@@ -59,6 +59,7 @@ def init_db():
     _ensure_springer_pay_type()
     _ensure_feriefri_fuldloennet_pay_type()
     _migrate_dispatcher_groups()
+    _migrate_dispatcher_group_to_single()
 
 
 def _migrate():
@@ -111,6 +112,9 @@ def _migrate():
         if "initials" not in emp_cols:
             conn.execute("ALTER TABLE employees ADD COLUMN initials VARCHAR(10)")
             conn.commit()
+        if "dispatcher_group_id" not in emp_cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN dispatcher_group_id INTEGER")
+            conn.commit()
         act_cols2 = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
         if "deactivated_by" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN deactivated_by VARCHAR")
@@ -141,6 +145,9 @@ def _migrate():
             )
             conn.commit()
         dg_cols = {row[1] for row in conn.execute("PRAGMA table_info(dispatcher_groups)")}
+        if "vehicle_id" not in dg_cols:
+            conn.execute("ALTER TABLE dispatcher_groups ADD COLUMN vehicle_id INTEGER")
+            conn.commit()
         if "visible_in_activity_overview" not in dg_cols:
             conn.execute(
                 "ALTER TABLE dispatcher_groups ADD COLUMN visible_in_activity_overview "
@@ -504,7 +511,7 @@ def _migrate_dispatcher_groups():
     Idempotent – dropper legacy-kolonnen efter migrering.
     """
     import sqlite3 as _sqlite3
-    from database.models import DispatcherGroup, EmployeeDispatcherGroup
+    from database.models import DispatcherGroup
 
     db = SessionLocal()
     try:
@@ -536,12 +543,16 @@ def _migrate_dispatcher_groups():
                     db.refresh(g)
                     groups_by_name[group_name] = g.id
                     group_id = g.id
-                already_linked = db.query(EmployeeDispatcherGroup).filter_by(
-                    employee_id=emp_id, dispatcher_group_id=group_id
-                ).first()
+                already_linked = conn.execute(
+                    "SELECT 1 FROM employee_dispatcher_groups WHERE employee_id = ? AND dispatcher_group_id = ?",
+                    (emp_id, group_id),
+                ).fetchone()
                 if not already_linked:
-                    db.add(EmployeeDispatcherGroup(employee_id=emp_id, dispatcher_group_id=group_id))
-            db.commit()
+                    conn.execute(
+                        "INSERT INTO employee_dispatcher_groups (employee_id, dispatcher_group_id) VALUES (?, ?)",
+                        (emp_id, group_id),
+                    )
+            conn.commit()
             conn.execute("ALTER TABLE employees DROP COLUMN dispatcher_group")
             conn.commit()
     except Exception as e:
@@ -549,6 +560,47 @@ def _migrate_dispatcher_groups():
         logging.error(f"Fejl ved migrering af disponentgrupper: {e}")
     finally:
         db.close()
+
+
+def _migrate_dispatcher_group_to_single():
+    """
+    Reducerer disponentgruppe fra mange-til-mange til én gruppe pr. medarbejder.
+    Har en medarbejder i dag flere grupper, beholdes den alfabetisk først
+    sorterede (efter gruppenavn). Idempotent – dropper employee_dispatcher_groups
+    efter migrering; kører derfor kun data-trinnet én gang (tabellen er væk bagefter).
+    Kolonnerne dispatcher_group_id/vehicle_id oprettes af _migrate(), som kører
+    før denne funktion, så de findes allerede når vi når hertil.
+    """
+    import sqlite3 as _sqlite3
+
+    try:
+        with _sqlite3.connect(str(DB_PATH)) as conn:
+            tables = {row[0] for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table'"
+            )}
+            if "employee_dispatcher_groups" not in tables:
+                return
+
+            rows = conn.execute(
+                "SELECT edg.employee_id, dg.id "
+                "FROM employee_dispatcher_groups edg "
+                "JOIN dispatcher_groups dg ON dg.id = edg.dispatcher_group_id "
+                "ORDER BY edg.employee_id, dg.name"
+            ).fetchall()
+            primary_by_employee = {}
+            for emp_id, group_id in rows:
+                primary_by_employee.setdefault(emp_id, group_id)
+            for emp_id, group_id in primary_by_employee.items():
+                conn.execute(
+                    "UPDATE employees SET dispatcher_group_id = ? "
+                    "WHERE id = ? AND dispatcher_group_id IS NULL",
+                    (group_id, emp_id),
+                )
+            conn.commit()
+            conn.execute("DROP TABLE employee_dispatcher_groups")
+            conn.commit()
+    except Exception as e:
+        logging.error(f"Fejl ved migrering af disponentgruppe til én-til-én: {e}")
 
 
 def _ensure_manage_baselines_permission():

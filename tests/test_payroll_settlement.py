@@ -326,7 +326,7 @@ def _assign_visible_dispatcher_group(db, employee):
     db.add(group)
     db.commit()
     db.refresh(group)
-    employee.dispatcher_groups.append(group)
+    employee.dispatcher_group = group
     db.commit()
 
 

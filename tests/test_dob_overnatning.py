@@ -160,7 +160,7 @@ def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, t
     employee.cvr_number = "13246505"
     # _active_employees() udelukker medarbejdere uden en synlig disponentgruppe
     # (payroll_router.py) — employee-fixture har ingen, så CSV-export ellers giver 0 medarbejdere.
-    employee.dispatcher_groups.append(DispatcherGroup(name="Testgruppe", visible_in_activity_overview=True))
+    employee.dispatcher_group = DispatcherGroup(name="Testgruppe", visible_in_activity_overview=True)
     _setup_rates(db, employee)
     dob_supp = db.query(MasterSupplementRate).filter(MasterSupplementRate.label == "DOB_overnatning").first()
     db.add(MasterPayType(
