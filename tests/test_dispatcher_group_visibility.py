@@ -61,3 +61,62 @@ def test_dispatcher_group_row_includes_visibility_key(db):
         DispatcherGroupBody(name="Rå række"), current_user=_dummy_user(), db=db
     )
     assert "visible_in_activity_overview" in created
+
+
+from database.models import Vehicle
+
+
+def _make_vehicle(db, reg="AB12345", num="99"):
+    v = Vehicle(registration_number=reg, vehicle_number=num)
+    db.add(v)
+    db.commit()
+    db.refresh(v)
+    return v
+
+
+def test_create_dispatcher_group_with_vehicle(db):
+    vehicle = _make_vehicle(db)
+    result = create_dispatcher_group(
+        DispatcherGroupBody(name="Med vogn", vehicle_id=vehicle.id),
+        current_user=_dummy_user(), db=db,
+    )
+    assert result["vehicle_id"] == vehicle.id
+    assert result["vehicle_number"] == "99"
+
+
+def test_create_dispatcher_group_rejects_unknown_vehicle(db):
+    import pytest
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        create_dispatcher_group(
+            DispatcherGroupBody(name="Ukendt vogn", vehicle_id=999999),
+            current_user=_dummy_user(), db=db,
+        )
+    assert exc.value.status_code == 400
+
+
+def test_update_dispatcher_group_can_set_and_clear_vehicle(db):
+    vehicle = _make_vehicle(db)
+    created = create_dispatcher_group(DispatcherGroupBody(name="Skal have vogn"), current_user=_dummy_user(), db=db)
+    assert created["vehicle_id"] is None
+
+    updated = update_dispatcher_group(
+        created["id"], DispatcherGroupBody(vehicle_id=vehicle.id), current_user=_dummy_user(), db=db,
+    )
+    assert updated["vehicle_id"] == vehicle.id
+
+    cleared = update_dispatcher_group(
+        created["id"], DispatcherGroupBody(vehicle_id=None), current_user=_dummy_user(), db=db,
+    )
+    assert cleared["vehicle_id"] is None
+
+
+def test_update_dispatcher_group_without_vehicle_field_leaves_it_unchanged(db):
+    vehicle = _make_vehicle(db)
+    created = create_dispatcher_group(
+        DispatcherGroupBody(name="Uændret vogn", vehicle_id=vehicle.id), current_user=_dummy_user(), db=db,
+    )
+    updated = update_dispatcher_group(
+        created["id"], DispatcherGroupBody(description="Ny beskrivelse"), current_user=_dummy_user(), db=db,
+    )
+    assert updated["vehicle_id"] == vehicle.id
