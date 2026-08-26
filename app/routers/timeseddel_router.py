@@ -78,6 +78,16 @@ def _v(val):
         return ''
 
 
+def _day_normal_hours(day: dict) -> float:
+    """Timer der IKKE udløser noget overtidstillæg – day['normal'] indeholder alle
+    arbejdede timer (tillæggene er additive, se calculators/overtime.py), så
+    tillægstimerne (inkl. søgnehelligdagskode 8/9) trækkes fra. Samme formel som
+    _build_proevekoersel_workbook() i payroll_router.py."""
+    ot13 = day.get('ot_13', 0) + day.get('sh_kode8', 0)
+    ot_extra = day.get('ot_extra', 0) + day.get('sh_kode9', 0)
+    return round(day.get('normal', 0) - day.get('ot_before', 0) - ot13 - ot_extra, 2)
+
+
 def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
     calc["days"] = _enrich_days(calc["days"])
 
@@ -276,7 +286,7 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
 
         day_rows.append([
             _p(_esc(date_str), cs),        _p(_esc(wday), cs),
-            _p(_v(day.get('normal')),      csr),
+            _p(_v(_day_normal_hours(day)), csr),
             _p(_v(day.get('ot_before')),   csr),
             _p(_v(day.get('ot_13')),       csr),
             _p(_v(day.get('ot_extra')),    csr),

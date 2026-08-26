@@ -541,7 +541,14 @@
       "Bash(powershell -Command \"Stop-Process -Id 25572 -Force\")",
       "Read(//c/Users/SOFIET~1/AppData/Local/Temp/claude/pdf_browser_test//**)",
       "Read(//c/Users/SOFIET~1/AppData/Local/Temp/claude/pdf_browser_test/**)",
-      "Bash(rm -rf \"/c/Users/SOFIET~1/AppData/Local/Temp/claude/pdf_browser_test\")"
+      "Bash(rm -rf \"/c/Users/SOFIET~1/AppData/Local/Temp/claude/pdf_browser_test\")",
+      "Bash(git fetch *)",
+      "Bash(python -c \"import pdfplumber\")",
+      "Bash(python -c \"import PyPDF2\")",
+      "Bash(python -c \"import fitz\")",
+      "Bash(python3)",
+      "Read(//c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem/app/**)",
+      "Bash(python _extract_pdf_text.py)"
     ]
   }
 }
