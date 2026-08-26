@@ -1302,15 +1302,13 @@ function _stackDatetimePicker(id) {
   const el = document.getElementById(id);
   if (!el) return;
   const dateEl = el.querySelector(".dt-date");
-  const hourEl = el.querySelector(".dt-hour");
-  const sepEl  = el.querySelector(".dt-sep");
-  const minEl  = el.querySelector(".dt-min");
-  if (!dateEl || !hourEl || !sepEl || !minEl) return;
+  const timeEl = el.querySelector(".dt-time");
+  if (!dateEl || !timeEl) return;
   el.style.cssText = "display:flex;flex-direction:column;gap:6px;";
   dateEl.style.width = "100%";
   const timeRow = document.createElement("div");
   timeRow.style.cssText = "display:flex;align-items:center;gap:6px;";
-  timeRow.append(hourEl, sepEl, minEl);
+  timeRow.append(timeEl);
   el.append(timeRow);
 }
 
@@ -1318,16 +1316,13 @@ function buildDatetimePicker(id, isoValue) {
   const el = document.getElementById(id);
   if (!el) return;
   const date = isoValue ? isoValue.slice(0, 10) : "";
-  const hh   = isoValue ? isoValue.slice(11, 13) : "06";
-  const mm   = isoValue ? isoValue.slice(14, 16) : "00";
+  const time = isoValue ? isoValue.slice(11, 16) : "06:00";
   const S = "padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius);font-size:13px;background:var(--surface);color:var(--text);box-sizing:border-box;";
-  const N = `${S}width:62px;flex:0 0 62px;text-align:center;`;
+  const N = `${S}width:110px;flex:0 0 110px;`;
   el.style.cssText = "display:flex;align-items:center;gap:6px;flex-wrap:nowrap;";
   el.innerHTML = `
-    <input type="date"   class="dt-date" value="${date}" style="${S}flex:1 1 0;min-width:0;">
-    <input type="text" inputmode="numeric" class="dt-hour" maxlength="2" value="${hh}" style="${N}" placeholder="tt">
-    <span  class="dt-sep" style="font-weight:600;color:var(--text-light);flex-shrink:0;">:</span>
-    <input type="text" inputmode="numeric" class="dt-min"  maxlength="2" value="${mm}" style="${N}" placeholder="mm">
+    <input type="date" class="dt-date" value="${date}" style="${S}flex:1 1 0;min-width:0;">
+    <input type="time" class="dt-time" value="${time}" style="${N}">
   `;
 }
 
@@ -1335,19 +1330,15 @@ function readDatetimePicker(id) {
   const el = document.getElementById(id);
   if (!el) return null;
   const date = el.querySelector(".dt-date")?.value;
-  const hRaw = el.querySelector(".dt-hour")?.value;
-  const mRaw = el.querySelector(".dt-min")?.value;
-  const hh = String(Math.min(23, Math.max(0, parseInt(hRaw, 10) || 0))).padStart(2, "0");
-  const mm = String(Math.min(59, Math.max(0, parseInt(mRaw, 10) || 0))).padStart(2, "0");
-  return date ? `${date}T${hh}:${mm}` : null;
+  const time = el.querySelector(".dt-time")?.value;
+  return date ? `${date}T${time || "00:00"}` : null;
 }
 
 function setDatetimePicker(id, isoValue) {
   const el = document.getElementById(id);
   if (!el || !isoValue) return;
-  el.querySelector(".dt-date").value  = isoValue.slice(0, 10);
-  el.querySelector(".dt-hour").value  = isoValue.slice(11, 13);
-  el.querySelector(".dt-min").value   = isoValue.slice(14, 16);
+  el.querySelector(".dt-date").value = isoValue.slice(0, 10);
+  el.querySelector(".dt-time").value = isoValue.slice(11, 16);
 }
 
 // ── Date picker (årstal-dropdown + kalender) ───────────────────────────────
@@ -1598,13 +1589,11 @@ function updateManualTypeVisibility() {
   document.getElementById("manual-dob-group").style.display     = isOvernatning ? "" : "none";
   if (!isOvernatning) document.getElementById("manual-dob").checked = false;
 
-  // Skjul/vis tidsfelterne i startpickeren (kun dato for ferie og sygdom)
+  // Skjul/vis tidsfeltet i startpickeren (kun dato for ferie og sygdom)
   const startEl = document.getElementById("manual-start");
   if (startEl) {
-    [".dt-hour", ".dt-sep", ".dt-min"].forEach(sel => {
-      const el = startEl.querySelector(sel);
-      if (el) el.style.display = isDateOnly ? "none" : "";
-    });
+    const timeEl = startEl.querySelector(".dt-time");
+    if (timeEl) timeEl.style.display = isDateOnly ? "none" : "";
     startEl.style.maxWidth = isDateOnly ? "220px" : "";
   }
 
