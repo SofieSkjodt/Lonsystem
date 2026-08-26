@@ -430,14 +430,14 @@ def test_export_settlement_csv_content_has_lonnummer_column_and_all_14_days(db, 
     result = export_settlement_csv(ExportSettlementCsvRequest(output_folder=str(tmp_path)),
                                     current_user=_dummy_user(), db=db)
 
-    content = (tmp_path / result["filename"]).read_text(encoding="utf-8")
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
     lines = [l for l in content.splitlines() if l]
     header = lines[0].split(";")
     assert header == ["Dato", "Lønnummer", "Normal timer", "Overtid 1 time før",
                        "Overtid 1-3 timer efter", "Øvrig overtid", "Total tid",
                        "Total i kr.", "Vognnummer", "Beløb"]
-    # 14 dagsrækker + 1 "Total løn for"-række for den ene medarbejder
-    assert len(lines) == 1 + 14 + 1
+    # 14 dagsrækker for den ene medarbejder – ingen "Total løn for"-række
+    assert len(lines) == 1 + 14
     assert employee.employee_number in lines[1]
 
 
@@ -457,7 +457,7 @@ def test_export_settlement_csv_content_shows_sygdom_hours_and_beloeb(db, employe
         ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
         current_user=_dummy_user(), db=db)
 
-    content = (tmp_path / result["filename"]).read_text(encoding="utf-8")
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
     sygdom_line = next(l for l in content.splitlines() if l.startswith("05-01-2026"))
     cols = sygdom_line.split(";")
     # Dato;Lønnummer;Normal timer;OT-før;OT-1-3;Øvrig OT;Total tid;Total i kr.;Vognnummer;Beløb
@@ -484,7 +484,7 @@ def test_export_settlement_csv_content_shows_skole_kursus_hours_and_beloeb(db, e
         ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
         current_user=_dummy_user(), db=db)
 
-    content = (tmp_path / result["filename"]).read_text(encoding="utf-8")
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
     line = next(l for l in content.splitlines() if l.startswith("05-01-2026"))
     cols = line.split(";")
     assert cols[2:6] == ["0:00", "0:00", "0:00", "0:00"]
@@ -492,3 +492,158 @@ def test_export_settlement_csv_content_shows_skole_kursus_hours_and_beloeb(db, e
     assert cols[7] == "1.200,00"      # Total i kr. (8t * 150,00 kr)
     assert cols[8] == "Skole/kursus"  # Vognnummer overskrevet af fraværstypen
     assert cols[9] == "1.200,00"      # Beløb
+
+
+@pytest.mark.parametrize("activity_type, label", [
+    ("ferie", "Ferie"),
+    ("afspadsering", "Afspadsering"),
+])
+def test_export_settlement_csv_zeroes_ferie_and_afspadsering_but_keeps_vognnummer(
+    db, employee, tmp_path, activity_type, label,
+):
+    """Bekræftet af bruger 2026-08-26: Ferie og Afspadsering skal ALTID vise
+    0 i CSV'en (uanset fuldlønnet/timelønnet), men Vognnummer viser stadig
+    fraværstypens navn. Siden selv (test_employee_settlement_data_*) er upåvirket."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  activity_type=activity_type, status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    line = next(l for l in lines if l.startswith("05-01-2026"))
+    cols = line.split(";")
+    assert cols[2:8] == ["0:00", "0:00", "0:00", "0:00", "0,00", "0,00"]
+    assert cols[8] == label
+    assert cols[9] == "0,00"
+
+
+def test_export_settlement_csv_zeroes_feriefri_for_timeloennet_employee(db, employee, tmp_path):
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    employee.fuldloennet = False
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  activity_type="feriefri", status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    line = next(l for l in lines if l.startswith("05-01-2026"))
+    cols = line.split(";")
+    assert cols[6:8] == ["0,00", "0,00"]
+    assert cols[8] == "Feriefri"
+    assert cols[9] == "0,00"
+
+
+def test_export_settlement_csv_keeps_feriefri_value_for_fuldloennet_employee(db, employee, tmp_path):
+    """employee-fixturen er fuldlønnet som standard (fuldloennet defaulter til True) –
+    for fuldlønnede medarbejdere skal Feriefri IKKE zeroes i CSV'en."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    assert employee.fuldloennet is True
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  activity_type="feriefri", status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    line = next(l for l in lines if l.startswith("05-01-2026"))
+    cols = line.split(";")
+    assert cols[6:8] == ["8,00", "1.200,00"]
+    assert cols[9] == "1.200,00"
+
+
+def test_export_settlement_csv_ferie_zeroing_does_not_affect_page_preview(db, employee):
+    """Regressionsværn: CSV-specifik zeroing (_csv_days) må aldrig lække ind i
+    _employee_settlement_data(), som bruges af selve siden."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  activity_type="ferie", status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    day = _find_day(data, "2026-01-05")
+    assert day["total_hours"] == pytest.approx(8.0)
+    assert day["total_kr"] == pytest.approx(8.0 * 150.00)
+    assert data["total_kr"] == pytest.approx(8.0 * 150.00)
+
+
+def test_export_settlement_csv_ferie_day_zeroed_normal_day_unaffected(db, employee, tmp_path):
+    """En medarbejder med både en normal arbejdsdag og en feriedag: feriedagens
+    række skal være 0, mens den normale arbejdsdags række er upåvirket."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  activity_type="ferie", status=ActivityStatus.approved)
+    make_activity(db, employee, datetime(2026, 1, 6, 6, 0), datetime(2026, 1, 6, 14, 0),
+                  activity_type="normal", status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    ferie_cols = next(l for l in lines if l.startswith("05-01-2026")).split(";")
+    normal_cols = next(l for l in lines if l.startswith("06-01-2026")).split(";")
+    assert ferie_cols[6:10] == ["0,00", "0,00", "Ferie", "0,00"]
+    assert normal_cols[2] == "8:00"       # normal timer, upåvirket
+    assert normal_cols[7] == "1.200,00"   # 8t * 150,00 kr, upåvirket
+    assert not any(l.startswith("Total løn for") for l in lines)
+
+
+def test_export_settlement_csv_is_written_with_utf8_bom_for_excel(db, employee, tmp_path):
+    """Excel fejltolker æ/ø/å som ANSI, hvis filen mangler en UTF-8 BOM –
+    bekræftet af bruger 2026-08-26 ('Lønnummer' viste forkert i Excel)."""
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+
+    result = export_settlement_csv(ExportSettlementCsvRequest(output_folder=str(tmp_path)),
+                                    current_user=_dummy_user(), db=db)
+
+    raw = (tmp_path / result["filename"]).read_bytes()
+    assert raw.startswith(b"\xef\xbb\xbf")
+    header = raw.decode("utf-8-sig").splitlines()[0]
+    assert header == "Dato;Lønnummer;Normal timer;Overtid 1 time før;Overtid 1-3 timer efter;Øvrig overtid;Total tid;Total i kr.;Vognnummer;Beløb"

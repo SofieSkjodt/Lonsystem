@@ -222,14 +222,35 @@ class ExportSettlementCsvRequest(BaseModel):
     output_folder: str
 
 
+def _csv_zeroed_absence_types(emp) -> set:
+    """Fraværstyper der vises som 0 kr/0 timer i CSV-eksporten (men IKKE på
+    siden selv) – Vognnummer-kolonnen viser stadig typens navn. Feriefri
+    zeroes kun for timelønnede medarbejdere. Bekræftet af bruger 2026-08-26."""
+    types = {"Ferie", "Afspadsering"}
+    if not emp.fuldloennet:
+        types.add("Feriefri")
+    return types
+
+
+def _csv_days(emp, employee_data: dict) -> list:
+    """Bygger CSV-specifikke dagsrækker hvor de zero'ede fraværstypers timer/
+    beløb er nulstillet (Vognnummer beholder stadig typens navn)."""
+    zero_types = _csv_zeroed_absence_types(emp)
+    return [
+        {**day, "total_hours": 0, "total_kr": 0} if day.get("absence_type") in zero_types else day
+        for day in employee_data["days"]
+    ]
+
+
 @router.post("/export-csv")
 def export_settlement_csv(body: ExportSettlementCsvRequest,
                           current_user: AppUser = Depends(_export_access),
                           db: Session = Depends(get_db)):
     """
     Eksporterer Lønafregning som CSV: én række pr. dag pr. medarbejder (alle 14
-    dage) plus en 'Total løn for'-række, med lønnummer tilføjet. Kræver at den
-    valgte periode er låst – administratorer kan altid eksportere.
+    dage), med lønnummer tilføjet – ingen 'Total løn for'-rækker og ingen
+    topsummering. Kræver at den valgte periode er låst – administratorer kan
+    altid eksportere.
     """
     period = _resolve_period(body.period_start, db)
     is_admin = current_user.role == "admin"
@@ -240,16 +261,21 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
         )
 
     employees = _active_employees(db)
-    employees_data = [_employee_settlement_data(e, period.start_date, period.end_date, db) for e in employees]
-    employees_data.sort(key=lambda e: e["employee_name"] or "")
+    employee_pairs = sorted(
+        (
+            (e, _employee_settlement_data(e, period.start_date, period.end_date, db))
+            for e in employees
+        ),
+        key=lambda pair: pair[1]["employee_name"] or "",
+    )
 
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
     writer.writerow(["Dato", "Lønnummer", "Normal timer", "Overtid 1 time før",
                       "Overtid 1-3 timer efter", "Øvrig overtid", "Total tid",
                       "Total i kr.", "Vognnummer", "Beløb"])
-    for e in employees_data:
-        for day in e["days"]:
+    for emp, e in employee_pairs:
+        for day in _csv_days(emp, e):
             d = date.fromisoformat(day["date"])
             vognnummer = day["absence_type"] or day["vehicle_number"] or ""
             writer.writerow([
@@ -259,8 +285,6 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
                 _fmt_decimal_comma(day["total_hours"]), _fmt_kr_da(day["total_kr"]),
                 vognnummer, _fmt_kr_da(day["total_kr"]),
             ])
-        writer.writerow([f"Total løn for {e['employee_name']}", "", "", "", "", "", "",
-                          "", "", _fmt_kr_da(e["total_kr"])])
 
     filename = f"lonafregning_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
     save_dir = _safe_save_dir(body.output_folder)
@@ -270,7 +294,7 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
         logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
         raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
     try:
-        (save_dir / filename).write_bytes(output.getvalue().encode("utf-8"))
+        (save_dir / filename).write_bytes(output.getvalue().encode("utf-8-sig"))
     except PermissionError:
         raise HTTPException(
             400,
