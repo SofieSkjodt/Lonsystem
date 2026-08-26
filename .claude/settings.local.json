@@ -548,7 +548,8 @@
       "Bash(python -c \"import fitz\")",
       "Bash(python3)",
       "Read(//c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem/app/**)",
-      "Bash(python _extract_pdf_text.py)"
+      "Bash(python _extract_pdf_text.py)",
+      "Bash(python -m pytest ../tests/ -q)"
     ]
   }
 }
