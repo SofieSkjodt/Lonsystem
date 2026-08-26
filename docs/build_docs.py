@@ -793,12 +793,45 @@ def build_teknisk():
         bullet(doc, step)
 
     heading(doc, "Excel-formatering i prøvekørsel", 2, "7.3")
-    body(doc, "Excel-filen der genereres ved prøvekørsel har følgende formatering:")
+    body(doc, (
+        "Excel-filen (_build_proevekoersel_workbook() i payroll_router.py) har 16 kolonner, "
+        "i denne rækkefølge:"
+    ))
+    header_table(doc,
+        ["#", "Kolonne", "Indhold"],
+        [
+            ["1",  "Medarbejder",              "Navn – suffikset ' (springer)' tilføjes hvis medarbejderen har springertillæg aktiveret for perioden (afsnit 6.4)."],
+            ["2",  "Lønnr",                    "Medarbejderens lønnummer."],
+            ["3",  "Vognnr.",                  "Køretøjsnummer for dagens aktivitet (blank ved fravær/totallinjer)."],
+            ["4",  "Dag",                      "Dato (ÅÅÅÅ-MM-DD), eller 'TOTAL'/en tillægslabel (fx 'Søgnehelligdag', 'Sygdom med løn') på de fede opsummeringslinjer."],
+            ["5",  "Starttid",                 "Aktivitetens starttidspunkt."],
+            ["6",  "Sluttid",                  "Aktivitetens sluttidspunkt."],
+            ["7",  "Total tid",                "Alle arbejdede timer den dag (efter fratrukne pauser), uanset om de udløser tillæg."],
+            ["8",  "Pause i alt (min)",        "Summen af registrerede pauser den dag, i minutter. Segmenter der er rettet fra pause til arbejde via 'Ret linje' (activities.py: correct_segment) tælles ikke med."],
+            ["9",  "Normal tid",               "Kun de timer af Total tid der IKKE udløser et overtidstillæg (kolonne 7 minus kolonne 10-12). Ved fravær vises fraværstypen her i stedet for et tal."],
+            ["10", "Overtid 1 time før",       "Timer i 05-06-vinduet (OT_BEFORE)."],
+            ["11", "Overtid 1-3 timer efter",  "OT_13-timer, inkl. søndags-/helligdagskode 8."],
+            ["12", "Øvrig overtid",            "OT_EXTRA-timer, inkl. søndags-/helligdagskode 9."],
+            ["13", "Salttillæg (t)",           "Timer med salttillæg, hvis aktiveret på aktiviteten."],
+            ["14", "Salttillæg (kr.)",         "Beregnet salttillæg i kr."],
+            ["15", "Overnatning",              "1 hvis dagen har en overnatnings-aktivitet, ellers blank."],
+            ["16", "Total kr.",                "Dagens/totallinjens samlede kronebeløb."],
+        ],
+        [Cm(0.8), Cm(3.5), Cm(11.7)]
+    )
+    note_box(doc,
+        "Excel-kolonnen 'Normal tid' er IKKE det samme som calc['normal_hours'] i beregnings-"
+        "resultatet (afsnit 7.2), som indeholder ALLE arbejdede timer (tillæg er additive, se "
+        "afsnit 5.2). Excel-kolonnen trækker OT_BEFORE, OT_13 (+ kode 8) og OT_EXTRA (+ kode 9) "
+        "fra, så den udelukkende viser timer der udbetales til ren normalsats uden tillæg oveni "
+        "– til brug for kontrolformål.",
+        "TEKNISK NOTE"
+    )
     two_col_table(doc, [
-        ["Grøn første række",    "Første datalinje for hver medarbejder markeres med grøn baggrund (farve #C6EFCE) for nem identifikation af ny medarbejder."],
+        ["Grøn første række",    "Første datalinje for hver medarbejder markeres med grøn baggrund (farve #D4EDCC, samme lyse brandtint som resten af systemet) for nem identifikation af ny medarbejder."],
         ["Tom skillerække",      "Efter hver medarbejders totallinje indsættes en tom række som visuel adskillelse."],
-        ["Frossen headerrække",  "Headerrækken (række 1) er frossen og følger med ved lodret scroll."],
-        ["Fraværstyper",         "Fraværsdage (ferie, fri, afspadsering, skole/kursus) vises med typenavn i Normal tid-kolonnen; øvrige kolonner er blanke."],
+        ["Frossen headerrække",  "Headerrækken (række 1) er frossen og følger med ved lodret scroll. Overskrifter der er længere end dataindholdet (fx 'Overtid 1-3 timer efter') ombrydes over flere linjer i stedet for at gøre kolonnen unødvendigt bred."],
+        ["Kolonnebredder",       "Hver kolonne har en bredde tilpasset dataindholdet (8-24 enheder), så alle 16 kolonner kan ses uden vandret scroll på en almindelig skærm."],
         ["Nul-dage",             "Dage uden aktivitet vises med 0 på alle talkolonner."],
     ])
 
@@ -1829,13 +1862,21 @@ def build_bruger():
     bullet(doc, "Klik 'Prøvekørsel'.")
     bullet(doc, "Vælg evt. en bestemt medarbejder, eller lad feltet stå tomt for alle.")
     bullet(doc, "Klik 'Gennemse' for at vælge hvilken mappe filen skal gemmes i (foreslår Downloads-mappen).")
-    bullet(doc, "Klik 'Kør prøvekørsel'. Filen gemmes og pop-up-vinduet lukker automatisk.")
+    bullet(doc, "Klik 'Dan Excel'. Filen gemmes og pop-up-vinduet lukker automatisk.")
 
-    body(doc, "Excel-filen viser alle 14 dage i perioden for hver medarbejder:")
-    bullet(doc, "Dage med normal aktivitet: timer fordelt på Normal tid, Tillæg 05-06, Tillæg OT1-3 og Øvrigt OT.")
+    body(doc, "Excel-filen viser alle 14 dage i perioden for hver medarbejder, med bl.a. disse kolonner:")
+    bullet(doc, "Total tid: alle arbejdede timer den dag.")
+    bullet(doc, "Pause i alt (min): summen af medarbejderens pauser den dag, i minutter.")
+    bullet(doc, "Normal tid, Tillæg 05-06, Tillæg OT1-3 og Øvrigt OT: fordeling af Total tid – Normal tid er de timer der IKKE udløser noget tillæg.")
     bullet(doc, "Fraværsdage (Ferie, Fri, Afspadsering, Skole/kursus): vises med fraværstype i Normal tid-kolonnen.")
     bullet(doc, "Dage uden registrering: vises med 0 på alle kolonner.")
+    bullet(doc, "Medarbejdere med springertillæg i perioden: får ' (springer)' tilføjet efter navnet.")
     bullet(doc, "Første linje pr. medarbejder er markeret med grøn baggrund. Tom linje adskiller medarbejdere.")
+    note_box(doc,
+        "Kolonnerne er gjort så smalle som muligt, og lange overskrifter ombrydes over flere "
+        "linjer, så hele tabellen kan ses uden at skulle scrolle vandret.",
+        "GODT AT VIDE"
+    )
 
     heading(doc, "Dan PDF'er", 2, "9.2")
     body(doc, "Genererer individuelle timesedler til alle medarbejdere som PDF-filer.")
