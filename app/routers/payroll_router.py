@@ -1234,17 +1234,9 @@ def pdf_timesedler(body: PdfRequest,
     """
     Dan PDF-timesedler for valgt datointerval.
     PDF'erne gemmes i output/timesedler/ (e-mail-afsendelse tilføjes senere).
+    Bruger samme layout som /api/timeseddel (routers/timeseddel_router.py _build_pdf).
     """
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4, landscape
-        from reportlab.lib.units import mm
-        from reportlab.platypus import (
-            Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle,
-        )
-        from reportlab.lib.styles import getSampleStyleSheet
-    except ImportError:
-        raise HTTPException(500, "reportlab er ikke installeret (pip install reportlab)")
+    from routers.timeseddel_router import _build_pdf
 
     if body.to_date < body.from_date:
         raise HTTPException(400, "Til-dato skal være efter fra-dato")
@@ -1260,7 +1252,6 @@ def pdf_timesedler(body: PdfRequest,
         import logging; logging.error(f"Kan ikke oprette mappe '{pdf_dir}': {exc}")
         raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
 
-    styles = getSampleStyleSheet()
     created = []
     skipped = []
 
@@ -1273,57 +1264,8 @@ def pdf_timesedler(body: PdfRequest,
         filename = f"timeseddel_{emp.employee_number}_{body.from_date.isoformat()}_{body.to_date.isoformat()}.pdf"
         path = pdf_dir / filename
 
-        doc = SimpleDocTemplate(str(path), pagesize=landscape(A4),
-                                topMargin=15 * mm, bottomMargin=15 * mm,
-                                leftMargin=15 * mm, rightMargin=15 * mm)
-        elements = [
-            Paragraph(f"Timeseddel – {calc['employee_name']} (lønnr. {calc['employee_number']})", styles["Title"]),
-            Paragraph(f"Periode: {body.from_date.strftime('%d-%m-%Y')} til {body.to_date.strftime('%d-%m-%Y')}", styles["Normal"]),
-            Paragraph(f"Overenskomst: {calc['agreement_type']}", styles["Normal"]),
-            Spacer(1, 8 * mm),
-        ]
-
-        header = ["Dag", "Vognnr.", "Starttid", "Sluttid", "Normal tid", "Overtid 1 time før",
-                  "Overtid 1-3 timer efter", "Øvrig overtid", "Salttillæg (t)", "Total tid", "Total kr."]
-        rates_row = ["Satser", "", "", "", f"{calc['hourly_rate']:.2f}",
-                     f"{calc['ot_rates'][OT_BEFORE_KEY]:.2f}",
-                     f"{calc['ot_rates'][OT_13_KEY]:.2f}",
-                     f"{calc['ot_rates'][OT_EXTRA_KEY]:.2f}",
-                     f"{calc.get('salt_rate', 0):.2f}", "", ""]
-        data = [header, rates_row]
-        for day in calc["days"]:
-            d = date.fromisoformat(day["date"])
-            vn = day.get("vehicle_number") or ""
-            st = day.get("start_time") or ""
-            et = day.get("end_time") or ""
-            if day["absence_type"]:
-                data.append([d.strftime("%d-%m-%Y"), "", "", "", day["absence_type"], "", "", "", "", "", ""])
-            else:
-                data.append([
-                    d.strftime("%d-%m-%Y"), vn, st, et,
-                    f"{day['normal']:.2f}", f"{day['ot_before']:.2f}",
-                    f"{day['ot_13']:.2f}", f"{day['ot_extra']:.2f}",
-                    f"{day.get('salt_hours', 0):.2f}",
-                    f"{day['total_hours']:.2f}", f"{day['total_kr']:.2f}",
-                ])
-        data.append(["Total for perioden, kr.", "", "", "", "", "", "", "", "", "", f"{calc['total_kr']:.2f}"])
-
-        col_widths = [25*mm, 20*mm, 19*mm, 19*mm, 24*mm, 27*mm, 31*mm, 23*mm, 21*mm, 20*mm, 22*mm]
-        table = Table(data, colWidths=col_widths, repeatRows=2)
-        table.setStyle(TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#317423")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 1), "Helvetica-Bold"),
-            ("FONTNAME", (0, -1), (-1, -1), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 8),
-            ("GRID", (0, 0), (-1, -1), 0.5, colors.grey),
-            ("BACKGROUND", (0, 1), (-1, 1), colors.HexColor("#d4edcc")),
-            ("BACKGROUND", (0, -1), (-1, -1), colors.HexColor("#d4edcc")),
-            ("ALIGN", (2, 2), (3, -1), "CENTER"),
-            ("ALIGN", (4, 1), (-1, -1), "RIGHT"),
-        ]))
-        elements.append(table)
-        doc.build(elements)
+        pdf_bytes = _build_pdf(calc, _get_employee_cvr(emp, db))
+        path.write_bytes(pdf_bytes)
         created.append({"employee": calc["employee_name"], "email": calc["email"], "file": str(path)})
 
     return {
