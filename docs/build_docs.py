@@ -1693,7 +1693,17 @@ def build_bruger():
     heading(doc, "Medarbejdere", 1, "7")
     body(doc, "Klik på 'Medarbejdere' i venstre menu for at se og redigere medarbejderstamdata.")
 
-    heading(doc, "Opret ny medarbejder", 2, "7.1")
+    heading(doc, "Søg og filtrér", 2, "7.1")
+    body(doc, "Øverst på siden kan medarbejderlisten indsnævres på tre måder, som kan kombineres frit:")
+    bullet(doc, "skriv et navn eller lønnummer for hurtigt at finde en bestemt medarbejder.", "Søgefelt: ")
+    bullet(doc, (
+        "vælg én afdeling for kun at se dens medarbejdere, eller 'Ingen gruppe' for at se "
+        "medarbejdere uden en tilknyttet afdeling. Alle afdelinger er med i listen, også dem der "
+        "i Stamdata er sat til ikke at vises i aktivitetsoversigten."
+    ), "Afdeling: ")
+    bullet(doc, "medtag fratrådte/deaktiverede medarbejdere i listen.", "Vis inaktive: ")
+
+    heading(doc, "Opret ny medarbejder", 2, "7.2")
     body(doc, "Klik '+ Opret medarbejder' og udfyld felterne:")
 
     header_table(doc,
@@ -1730,7 +1740,7 @@ def build_bruger():
         "BEMÆRK"
     )
 
-    heading(doc, "Timefordeling", 2, "7.2")
+    heading(doc, "Timefordeling", 2, "7.3")
     body(doc, (
         "Timefordelingen angiver medarbejderens normaltimer pr. ugedag i en 14-dages periode "
         "(uge A og uge B, svarende til ulige og lige ISO-uger). Standardværdier er:"
@@ -1750,7 +1760,7 @@ def build_bruger():
         "Normaltimerne bruges til beregning af overtidstillæg og til at auto-udfylde sluttidspunktet ved registrering af ferie."
     ))
 
-    heading(doc, "Anciennitetsvarsler", 2, "7.3")
+    heading(doc, "Anciennitetsvarsler", 2, "7.4")
     body(doc, (
         "Systemet kontrollerer løbende om medarbejdere har nået 9 måneders anciennitet "
         "og en tilsvarende overenskomsttype med højere sats. Hvis det er tilfældet, vises "
@@ -1766,7 +1776,7 @@ def build_bruger():
         "så varslet kan dukke op igen hvis ancienniteten stadig er relevant."
     ))
 
-    heading(doc, "Tillæg", 2, "7.4")
+    heading(doc, "Tillæg", 2, "7.5")
     body(doc, (
         "Ud over overenskomsttypens timesats kan en medarbejder have et individuelt kr/time-tillæg. "
         "Klik på 'Tillæg' i venstre menu for at administrere dette (kræver rettigheden 'Administrér "
