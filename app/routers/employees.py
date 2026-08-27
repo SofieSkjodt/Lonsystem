@@ -33,6 +33,16 @@ def _months_employed(hire_date: date, today: date = None) -> int:
     return max(0, months)
 
 
+def _validate_paragraf_56(active: bool, start: Optional[date], end: Optional[date]) -> tuple:
+    if not active:
+        return None, None
+    if not start or not end:
+        raise HTTPException(400, "Start- og slutdato for §56 skal udfyldes")
+    if end < start:
+        raise HTTPException(400, "§56 slutdato skal være efter startdato")
+    return start, end
+
+
 def _to_response(emp: Employee, db) -> EmployeeResponse:
     try:
         rate = float(load_agreement_types_from_db(db).get(emp.agreement_type, 0)) or None
@@ -64,6 +74,9 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         anciennitet_dismissed_at=emp.anciennitet_dismissed_at,
         terminsdato=emp.terminsdato,
         initials=emp.initials,
+        paragraf_56=emp.paragraf_56,
+        paragraf_56_start_date=emp.paragraf_56_start_date,
+        paragraf_56_end_date=emp.paragraf_56_end_date,
     )
 
 
@@ -139,6 +152,9 @@ def create_employee(body: EmployeeCreate,
             raise HTTPException(400, f"Ukendt overenskomsttype: {body.agreement_type}")
     else:
         body.agreement_type = ""
+    body.paragraf_56_start_date, body.paragraf_56_end_date = _validate_paragraf_56(
+        body.paragraf_56, body.paragraf_56_start_date, body.paragraf_56_end_date
+    )
 
     data = body.model_dump(exclude={"dispatcher_group_id"})
     data["work_schedule"] = body.work_schedule.model_dump()
@@ -224,12 +240,20 @@ def update_employee(employee_id: int, body: EmployeeUpdate,
         # felt er angivet samtidig – nulstil det gemte felt til "ikke relevant".
         body.agreement_type = ""
     old_agreement_type = emp.agreement_type
-    for field_name, value in body.model_dump(exclude_none=True, exclude={"dispatcher_group_id"}).items():
+    _paragraf56_excludes = {"dispatcher_group_id", "paragraf_56", "paragraf_56_start_date", "paragraf_56_end_date"}
+    for field_name, value in body.model_dump(exclude_none=True, exclude=_paragraf56_excludes).items():
         if field_name == "work_schedule":
             value = body.work_schedule.model_dump()
         setattr(emp, field_name, value)
     if "dispatcher_group_id" in body.model_fields_set:
         emp.dispatcher_group = _resolve_dispatcher_group(db, body.dispatcher_group_id)
+    if "paragraf_56" in body.model_fields_set:
+        start, end = _validate_paragraf_56(
+            bool(body.paragraf_56), body.paragraf_56_start_date, body.paragraf_56_end_date
+        )
+        emp.paragraf_56 = bool(body.paragraf_56)
+        emp.paragraf_56_start_date = start
+        emp.paragraf_56_end_date = end
     # Nulstil afvist anciennitetsadvarsel hvis overenskomsttype er ændret
     if body.agreement_type and body.agreement_type != old_agreement_type:
         emp.anciennitet_dismissed_at = None

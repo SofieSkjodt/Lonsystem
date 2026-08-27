@@ -50,6 +50,9 @@ class EmployeeCreate(BaseModel):
     dispatcher_group_id: Optional[int] = None
     cvr_number: Optional[str] = None
     initials: Optional[str] = None
+    paragraf_56: bool = False
+    paragraf_56_start_date: Optional[date] = None
+    paragraf_56_end_date: Optional[date] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -72,6 +75,9 @@ class EmployeeUpdate(BaseModel):
     dispatcher_group_id: Optional[int] = None
     cvr_number: Optional[str] = None
     initials: Optional[str] = None
+    paragraf_56: Optional[bool] = None
+    paragraf_56_start_date: Optional[date] = None
+    paragraf_56_end_date: Optional[date] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -100,6 +106,9 @@ class EmployeeResponse(BaseModel):
     anciennitet_dismissed_at: Optional[datetime] = None
     terminsdato: Optional[date] = None
     initials: Optional[str] = None
+    paragraf_56: bool
+    paragraf_56_start_date: Optional[date] = None
+    paragraf_56_end_date: Optional[date] = None
 
     model_config = {"from_attributes": True}
 
