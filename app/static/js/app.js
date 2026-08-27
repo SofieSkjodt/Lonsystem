@@ -28,6 +28,7 @@ const state = {
   usersAdminTab: "users",  // aktiv fane i users-admin view
   holidays: [],            // { date: "YYYY-MM-DD", name: string, half_day_from: string|null }
   dispatcherGroups: [],    // { id, name, description }
+  autoApprovalEnabled: true, // global til/fra-kontakt, hentet ved app-bootstrap
   vagtplan: {
     weekStart: null,       // ISO date (Monday) of the first of the 4 displayed weeks
     activities: [],
@@ -52,6 +53,7 @@ const PERMISSION_LABELS = {
   paragraf_56_alert:   "§56-advarsel",
   approve_activities:  "Godkend aktiviteter",
   auto_approve_manual_activities: "Auto-godkend ved oprettelse",
+  manage_auto_approval: "Slå auto-godkendelse til/fra",
   view_calendar:       "Se aktivitetskalender",
   manage_employee_supplements: "Administrér medarbejdertillæg",
   toggle_springer:     "Sæt springertillæg",
@@ -4219,7 +4221,7 @@ async function deleteRole(roleId, displayName) {
 // ── Stamdata ────────────────────────────────────────────────────────────────
 
 function switchStamdataTab(tab) {
-  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday", "dispatcher", "agreementkind"].forEach(t => {
+  ["agreement", "overtime", "supplement", "paytype", "absence", "cvr", "holiday", "dispatcher", "agreementkind", "autoapproval"].forEach(t => {
     const pane = document.getElementById(`sd-pane-${t}`);
     const btn  = document.getElementById(`sd-tab-${t}`);
     if (pane) pane.style.display = t === tab ? "" : "none";
@@ -4252,7 +4254,49 @@ async function loadStamdata() {
     loadStamdataHolidays(),
     loadStamdataDispatcherGroups(),
     loadStamdataAgreementKinds(),
+    loadStamdataAutoApproval(),
   ]);
+}
+
+async function loadStamdataAutoApproval() {
+  const badge = document.getElementById("auto-approval-status-badge");
+  const btn = document.getElementById("btn-toggle-auto-approval");
+  if (!badge || !btn) return;
+  try {
+    const settings = await GET("/api/auto-approval/settings");
+    state.autoApprovalEnabled = settings.enabled;
+    renderAutoApprovalStatus();
+  } catch (e) {
+    badge.textContent = "Kunne ikke hente status";
+  }
+}
+
+function renderAutoApprovalStatus() {
+  const badge = document.getElementById("auto-approval-status-badge");
+  const btn = document.getElementById("btn-toggle-auto-approval");
+  if (!badge || !btn) return;
+  if (state.autoApprovalEnabled) {
+    badge.textContent = "Slået til";
+    badge.className = "stat-chip approved";
+    btn.textContent = "Slå fra";
+    btn.className = "btn btn-danger";
+  } else {
+    badge.textContent = "Slået fra";
+    badge.className = "stat-chip deact";
+    btn.textContent = "Slå til";
+    btn.className = "btn btn-success";
+  }
+}
+
+async function toggleAutoApproval() {
+  const newValue = !state.autoApprovalEnabled;
+  try {
+    const result = await POST("/api/auto-approval/settings", { enabled: newValue });
+    state.autoApprovalEnabled = result.enabled;
+    renderAutoApprovalStatus();
+    applyAutoApprovalVisibility();
+    toast(state.autoApprovalEnabled ? "Auto-godkendelse slået til" : "Auto-godkendelse slået fra");
+  } catch (e) { toast(e.message, "error"); }
 }
 
 async function loadStamdataAgreementTypes() {
@@ -5336,10 +5380,21 @@ async function loadApp() {
     fillEmployeeFilter();
   } catch (e) { console.error(e); }
 
+  try {
+    const settings = await GET("/api/auto-approval/settings");
+    state.autoApprovalEnabled = settings.enabled;
+  } catch (e) { console.error(e); }
+  applyAutoApprovalVisibility();
+
   await loadAbsenceTypes();
   await setView("activities");
   await checkAnciennitetsAlerts();
   await checkParagraf56Alerts();
+}
+
+function applyAutoApprovalVisibility() {
+  const btn = document.getElementById("btn-auto-approve");
+  if (btn) btn.style.display = state.autoApprovalEnabled ? "" : "none";
 }
 
 async function init() {

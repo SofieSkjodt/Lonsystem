@@ -471,6 +471,11 @@
                 style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
           Aftale
         </button>
+        <button id="sd-tab-autoapproval" onclick="switchStamdataTab('autoapproval')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer"
+                data-perm-require="manage_auto_approval">
+          Auto-godkendelse
+        </button>
       </div>
 
       <div style="max-width:1050px">
@@ -636,6 +641,23 @@
               <tr><td colspan="6" style="padding:24px;text-align:center;color:var(--text-light)">Indlæser...</td></tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Auto-godkendelse -->
+        <div id="sd-pane-autoapproval" style="display:none">
+          <div style="background:#fff;border-radius:8px;box-shadow:0 1px 4px rgba(0,0,0,.08);padding:20px;max-width:600px">
+            <div style="font-weight:600;font-size:14px;margin-bottom:6px">Automatisk godkendelse</div>
+            <div style="font-size:13px;color:var(--text-light);margin-bottom:16px;max-width:480px">
+              Styrer om aktiviteter kan blive godkendt automatisk – både ved DDD-import
+              (baseret på medarbejderens historiske mønster) og ved manuel oprettelse for
+              brugere med rettigheden "Auto-godkend ved oprettelse". Fraværstyper som ferie
+              og sygdom påvirkes ikke og godkendes altid automatisk ved oprettelse som i dag.
+            </div>
+            <div style="display:flex;align-items:center;gap:12px">
+              <span id="auto-approval-status-badge" class="stat-chip">Indlæser...</span>
+              <button id="btn-toggle-auto-approval" class="btn btn-secondary" onclick="toggleAutoApproval()">...</button>
+            </div>
+          </div>
         </div>
 
       </div>
