@@ -23,6 +23,7 @@ ALL_PERMISSIONS = {
     "paragraf_56_alert":   "§56-advarsel",
     "approve_activities":  "Godkend aktiviteter",
     "auto_approve_manual_activities": "Auto-godkend ved oprettelse",
+    "manage_auto_approval": "Slå auto-godkendelse til/fra",
     "view_calendar":       "Se aktivitetskalender",
     "toggle_springer":     "Sæt springertillæg",
     "vagtplan_view":       "Se vagtplan",

@@ -53,6 +53,8 @@ def init_db():
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
     _ensure_auto_approve_permission()
+    _ensure_manage_auto_approval_permission()
+    _ensure_system_settings()
     _ensure_vagtplan_permissions()
     _ensure_employee_supplements_permission()
     _ensure_toggle_springer_permission()
@@ -200,7 +202,7 @@ def _seed_roles():
         if db.query(Role).count() == 0:
             for r in [
                 Role(name="admin", display_name="Administrator", is_system=True,
-                     permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines", "approve_activities", "view_calendar"]),
+                     permissions=["payroll", "import_ddd", "user_management", "reopen_period", "manage_baselines", "manage_auto_approval", "approve_activities", "view_calendar"]),
                 Role(name="lonbogholder", display_name="Lønbogholder", is_system=False,
                      permissions=["payroll", "absence_overview", "import_ddd", "anciennitet_alert", "approve_activities", "view_calendar", "auto_approve_manual_activities"]),
                 Role(name="disponent", display_name="Disponent", is_system=False,
@@ -643,6 +645,40 @@ def _ensure_manage_baselines_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af manage_baselines-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_manage_auto_approval_permission():
+    """Tilføjer manage_auto_approval til admin-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "admin").first()
+        if role:
+            perms = list(role.permissions or [])
+            if "manage_auto_approval" not in perms:
+                perms.append("manage_auto_approval")
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af manage_auto_approval-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_system_settings():
+    """Opretter singleton-recorden for systemindstillinger hvis den mangler (idempotent)."""
+    from database.models import SystemSettings
+    db = SessionLocal()
+    try:
+        if db.query(SystemSettings).filter(SystemSettings.id == 1).first() is None:
+            db.add(SystemSettings(id=1, auto_approval_enabled=True))
+            db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved oprettelse af systemindstillinger: {e}")
     finally:
         db.close()
 
