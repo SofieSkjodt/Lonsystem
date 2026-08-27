@@ -3,7 +3,7 @@ from math import sqrt
 from sqlalchemy.orm import Session
 
 from database.models import Activity, ActivitySource, ActivityStatus, EmployeeBaseline
-from calculators.baseline_updater import _effective_duration_minutes
+from calculators.baseline_updater import _effective_duration_minutes, is_auto_approval_enabled
 
 MIN_SAMPLES = 5
 DURATION_STD_MULTIPLIER = 2.5
@@ -21,6 +21,8 @@ def should_auto_approve(activity: Activity, db: Session) -> tuple[bool, list[str
         return False, ["Kun normale tachograf-aktiviteter auto-godkendes"]
     if activity.source != ActivitySource.tachograph:
         return False, ["Kun tachograf-aktiviteter auto-godkendes"]
+    if not is_auto_approval_enabled(db):
+        return False, ["Automatisk godkendelse er slået fra i systemindstillinger"]
 
     weekday = activity.start_time.weekday()
     baseline = db.query(EmployeeBaseline).filter_by(

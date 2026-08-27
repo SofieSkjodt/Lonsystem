@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 from database.models import ActivitySource, ActivityStatus, EmployeeBaseline
 from calculators.auto_approval import should_auto_approve
 from calculators.baseline_updater import update_baseline_from_activity
-from conftest import make_activity
+from conftest import make_activity, set_auto_approval_enabled
 
 
 def _seed_baseline(db, employee, n=6, start_hour=7.0, duration_minutes=480):
@@ -82,6 +82,19 @@ def test_auto_approve_not_enough_data(db, employee):
     ok, flags = should_auto_approve(act, db)
     assert ok is False
     assert any("data" in f.lower() for f in flags)
+
+
+def test_auto_approve_disabled_globally_even_with_matching_baseline(db, employee):
+    _seed_baseline(db, employee, n=6)
+    set_auto_approval_enabled(db, False)
+    act = make_activity(
+        db, employee,
+        start=datetime(2026, 6, 8, 7, 0),   # matcher baseline perfekt
+        end=datetime(2026, 6, 8, 15, 0),
+    )
+    ok, flags = should_auto_approve(act, db)
+    assert ok is False
+    assert any("slået fra" in f.lower() for f in flags)
 
 
 def test_auto_approve_skips_absence_types(db, employee):
