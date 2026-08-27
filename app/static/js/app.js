@@ -1624,6 +1624,23 @@ function updateManualTypeVisibility() {
     applySygdomDefaults();
     applyBarselTerminsdatoDefault();
   }
+  applyDispatcherGroupVehicleDefault();
+}
+
+// Foreslår vognnummeret fra medarbejderens disponentgruppe ved fraværsregistrering.
+// Overskriver ikke et allerede udfyldt felt.
+function applyDispatcherGroupVehicleDefault() {
+  const type = document.getElementById("manual-type").value;
+  if (!ABSENCE_TYPES.has(type)) return;
+  const regField = document.getElementById("manual-reg");
+  if (regField.value.trim()) return;
+  const empId = parseInt(document.getElementById("manual-employee").value);
+  const emp = state.employees.find(e => e.id === empId);
+  const vehicleNumber = emp?.dispatcher_group?.vehicle_number;
+  if (vehicleNumber) {
+    regField.value = vehicleNumber;
+    regField.dispatchEvent(new Event("input"));
+  }
 }
 
 // Foreslår medarbejderens seneste registrerede terminsdato ved oprettelse af en ny barsel-aktivitet.
@@ -1928,6 +1945,9 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
     if (t === "barsel")                             applyBarselTerminsdatoDefault(true);
+    document.getElementById("manual-reg").value = "";
+    document.getElementById("manual-reg-hint").textContent = "";
+    applyDispatcherGroupVehicleDefault();
   };
   // Lyt på dato-ændring inde i dt-picker containeren
   document.getElementById("manual-start").addEventListener("change", () => {
@@ -2138,6 +2158,7 @@ async function confirmManualActivity() {
           start_time:   iso + "T06:00:00",
           end_time:     iso + "T" + endH + ":" + endM + ":00",
           terminsdato:  terminsdato,
+          vehicle_number: foundVehicle?.vehicle_number || null,
           source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
         });
         created++;
