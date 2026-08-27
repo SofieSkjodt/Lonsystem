@@ -955,7 +955,7 @@ function renderSegmentTable(a) {
   }).join("");
   return `
   <div class="mt-16">
-    ${hasCorrectable ? `<button class="btn btn-secondary" onclick="correctAllSegments(${a.id})" style="margin-bottom:8px">Al pause til andet arbejde</button>` : ""}
+    ${hasCorrectable ? `<button class="btn btn-success" onclick="correctAllSegments(${a.id})" style="margin-bottom:8px">Al pause til andet arbejde</button>` : ""}
     <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;display:block">Detaljeret information om dagen</label>
     <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
       <table style="font-size:12px">
