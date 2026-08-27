@@ -736,6 +736,20 @@
   </div>
 </div>
 
+<div id="modal-paragraf56-sygdom-confirm" class="modal-overlay" onclick="if(event.target===this)_resolveParagraf56SygdomChoice('cancel')">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>&#9888; Aktiv §56-aftale</h2>
+      <button class="modal-close" onclick="_resolveParagraf56SygdomChoice('cancel')">&#215;</button>
+    </div>
+    <div class="modal-body" id="paragraf56-sygdom-confirm-body"></div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="_resolveParagraf56SygdomChoice('keep')">Ja, behold sygdom</button>
+      <button class="btn btn-primary" onclick="_resolveParagraf56SygdomChoice('switch')">Nej, ændre til §56</button>
+    </div>
+  </div>
+</div>
+
 <!-- Activity detail modal -->
 <div id="modal-activity" class="modal-overlay">
   <div class="modal" style="width:680px;max-width:95vw">

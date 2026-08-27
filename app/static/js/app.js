@@ -2048,7 +2048,36 @@ async function _afterManualActivitySaved(empId, dateIso) {
   }
 }
 
+let _paragraf56SygdomResolve = null;
+
+function _confirmParagraf56SygdomOverride(emp) {
+  return new Promise(resolve => {
+    _paragraf56SygdomResolve = resolve;
+    document.getElementById("paragraf56-sygdom-confirm-body").innerHTML =
+      `<p style="font-size:14px">Medarbejder <strong>${h(emp.name)}</strong> har en aktiv §56-aftale. ` +
+      `Skal aktiviteten oprettes som almindelig sygdom, eller ændres til §56 syg?</p>`;
+    openModal("modal-paragraf56-sygdom-confirm");
+  });
+}
+
+function _resolveParagraf56SygdomChoice(choice) {
+  closeModal("modal-paragraf56-sygdom-confirm");
+  if (_paragraf56SygdomResolve) {
+    const r = _paragraf56SygdomResolve;
+    _paragraf56SygdomResolve = null;
+    r(choice);
+  }
+}
+
 async function confirmManualActivity() {
+  if (document.getElementById("manual-type").value === "sygdom") {
+    const empForCheck = state.employees.find(e => e.id === parseInt(document.getElementById("manual-employee").value));
+    if (empForCheck?.paragraf_56) {
+      const choice = await _confirmParagraf56SygdomOverride(empForCheck);
+      if (choice === "cancel") return;
+      if (choice === "switch") document.getElementById("manual-type").value = "paragraf_56_syg";
+    }
+  }
   const start   = readDatetimePicker("manual-start");
   const end     = readDatetimePicker("manual-end");
   const actType = document.getElementById("manual-type").value;
