@@ -1721,6 +1721,7 @@ def build_bruger():
             ["Fratrædelsesdato",    "Nej","Udfyldes KUN ved fratrædelse. Default er 31-12-9999. Klik på feltet for at åbne kalender-pickeren."],
             ["Aktiv",               "—", "Afkryd for at medarbejderen er aktiv i systemet."],
             ["Fuldlønnet",          "—", "Afkryd hvis medarbejderen er fuldlønnet."],
+            ["§56",                 "—", "Afkryd hvis medarbejderen har en §56-aftale. Herefter skal start- og slutdato udfyldes (begge påkrævede, rød *) – slutdatoen skal ligge efter startdatoen. Se afsnit 7.6 om §56-advarslen."],
         ]
     )
     note_box(doc,
@@ -1817,6 +1818,29 @@ def build_bruger():
         "Overenskomsttype, når du åbner medarbejderen under fanen 'Medarbejdere'. Feltet kan ikke "
         "redigeres derfra – kun under fanen 'Tillæg'."
     ))
+
+    heading(doc, "§56-advarsel", 2, "7.6")
+    body(doc, (
+        "Nærmer en medarbejders §56-slutdato (jf. §56-feltet i afsnit 7.2) sig, kan systemet advare "
+        "brugere med tilladelsen '§56-advarsel' i Brugerstyring – som standard slået til for "
+        "Lønbogholder, fra for Disponent og Kontor. En administrator kan klikke tilladelsen til eller "
+        "fra for enhver rolle."
+    ))
+    bullet(doc, (
+        "vises fra 30 dage før slutdatoen og indeholder medarbejderens navn og den aktuelle slutdato."
+    ), "Advarsel om snarlig udløb: ")
+    bullet(doc, (
+        "overskrides slutdatoen uden at nogen har grebet ind, sætter systemet automatisk §56-feltet "
+        "til fra på medarbejderen. Brugere med tilladelsen får i stedet en informationsbesked om at "
+        "det er sket."
+    ), "Automatisk deaktivering: ")
+    note_box(doc,
+        "Begge popups afvises PR. BRUGER, ikke pr. medarbejder – ser du en advarsel og afviser den, "
+        "vises den stadig for kolleger med samme tilladelse, indtil de selv afviser den. Ændres "
+        "medarbejderens §56-slutdato bagefter, nulstilles alle brugeres afvisning automatisk, så "
+        "advarslen kan dukke op igen.",
+        "BEMÆRK"
+    )
 
     # ── 8. Helligdagskalender ─────────────────────────────────────────────
     heading(doc, "Helligdagskalender", 1, "8")
@@ -2109,6 +2133,7 @@ def build_bruger():
             ["manage_employee_supplements", "Administrér medarbejdertillæg",     "Menupunktet 'Tillæg' – oprette/afslutte kr/time-tillæg."],
             ["manage_holidays",             "Administrér helligdage",            "Stamdata → Helligdage: opret, auto-generer og slet."],
             ["anciennitet_alert",           "Anciennitetsvarsel",                "Modtag pop-up-varsler om medarbejdere med 9 måneders anciennitet."],
+            ["paragraf_56_alert",           "§56-advarsel",                      "Modtag pop-up-varsler når en medarbejders §56-aftale nærmer sig udløb, og besked når den automatisk deaktiveres (se afsnit 7.6)."],
             ["approve_activities",          "Godkend aktiviteter",               "Godkend/deaktiver/ret/opdel aktiviteter i aktivitetstabellen."],
             ["view_calendar",               "Se aktivitetskalender",             "Se aktivitetstabellen (kalendervisningen på forsiden)."],
             ["toggle_springer",             "Sæt springertillæg",                "Afkryds springertillæg-fluebenet i aktivitetsoversigten."],
