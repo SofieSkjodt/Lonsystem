@@ -49,6 +49,7 @@ const PERMISSION_LABELS = {
   manage_vehicles:     "Tilføj vogn",
   manage_holidays:     "Administrér helligdage",
   anciennitet_alert:   "Anciennitetsvarsel",
+  paragraf_56_alert:   "§56-advarsel",
   approve_activities:  "Godkend aktiviteter",
   auto_approve_manual_activities: "Auto-godkend ved oprettelse",
   view_calendar:       "Se aktivitetskalender",
@@ -2686,6 +2687,55 @@ async function checkAnciennitetsAlerts() {
   }
 }
 
+// ── §56-advarsel popup ──────────────────────────────────────────────────────
+async function dismissParagraf56Alert(employeeId, alertType) {
+  try {
+    await POST(`/api/employees/${employeeId}/dismiss-paragraf56-alert`, { alert_type: alertType });
+  } catch (e) {
+    console.error("Kunne ikke gemme afvisning af §56-advarsel:", e);
+  }
+  closeModal("modal-paragraf56-alert");
+}
+
+async function checkParagraf56Alerts() {
+  if (!state.currentUser?.permissions?.includes("paragraf_56_alert")) return;
+  try {
+    const { upcoming, expired } = await GET("/api/employees/paragraf56-alerts");
+    const alertType = expired.length ? "expired" : "upcoming";
+    const alerts = expired.length ? expired : upcoming;
+    if (alerts.length === 0) return;
+    const a = alerts[0];
+    document.getElementById("paragraf56-alert-title").innerHTML = alertType === "expired"
+      ? "&#9888; §56 automatisk deaktiveret"
+      : "&#128197; §56 udløber snart";
+    document.getElementById("paragraf56-alert-body").innerHTML = alertType === "expired"
+      ? `
+        <p style="font-size:14px;margin-bottom:8px">
+          Medarbejder <strong>${h(a.employee_name)} (${h(a.employee_number)})</strong>s §56-aftale er automatisk
+          deaktiveret, da slutdatoen (${formatDateShort(a.paragraf_56_end_date)}) er overskredet.
+        </p>
+        ${alerts.length > 1 ? `<p style="font-size:12px;color:var(--text-light);margin-top:8px">+ ${alerts.length - 1} flere medarbejdere.</p>` : ""}
+      `
+      : `
+        <p style="font-size:14px;margin-bottom:8px">
+          Medarbejder <strong>${h(a.employee_name)} (${h(a.employee_number)})</strong>s §56-aftale udløber
+          ${formatDateShort(a.paragraf_56_end_date)}.
+        </p>
+        ${alerts.length > 1 ? `<p style="font-size:12px;color:var(--text-light);margin-top:8px">+ ${alerts.length - 1} flere medarbejdere.</p>` : ""}
+      `;
+    document.getElementById("btn-goto-employee-paragraf56").onclick = async () => {
+      closeModal("modal-paragraf56-alert");
+      setView("employees");
+      await loadEmployees();
+      openEditEmployee(a.employee_id);
+    };
+    document.getElementById("btn-paragraf56-alert-done").onclick = () => dismissParagraf56Alert(a.employee_id, alertType);
+    openModal("modal-paragraf56-alert");
+  } catch (e) {
+    console.error("§56-advarsel check fejlede:", e);
+  }
+}
+
 // ── Vehicles ────────────────────────────────────────────────────────────────
 let _editingVehicleId = null;
 
@@ -5224,6 +5274,7 @@ async function loadApp() {
   await loadAbsenceTypes();
   await setView("activities");
   await checkAnciennitetsAlerts();
+  await checkParagraf56Alerts();
 }
 
 async function init() {
