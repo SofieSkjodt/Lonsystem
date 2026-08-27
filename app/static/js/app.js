@@ -244,7 +244,7 @@ async function openVagtplanTomorrowModal() {
   const empFilter = document.getElementById("vagtplan-filter-employee")?.value || "";
   const groupIds = state.vagtplan.groupFilterIds; // null = alle
   let visibleEmps = state.employees.filter(e => e.active);
-  if (groupIds) visibleEmps = visibleEmps.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  if (groupIds) visibleEmps = visibleEmps.filter(e => e.dispatcher_group && groupIds.includes(e.dispatcher_group.id));
   if (empFilter) visibleEmps = visibleEmps.filter(e => e.id === parseInt(empFilter));
   const visibleEmpIds = new Set(visibleEmps.map(e => e.id));
 
@@ -314,7 +314,7 @@ function renderVagtplanTable() {
   }
 
   let emps = state.employees.filter(e => e.active);
-  if (groupIds) emps = emps.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  if (groupIds) emps = emps.filter(e => e.dispatcher_group && groupIds.includes(e.dispatcher_group.id));
   if (empFilter) emps = emps.filter(e => e.id === parseInt(empFilter));
   emps.sort((x, y) => x.name.localeCompare(y.name, "da"));
 
@@ -2391,18 +2391,11 @@ async function _loadEmpCvrDropdown(selectedCvr) {
   } catch (_) { group.style.display = "none"; }
 }
 
-function _renderDispatcherGroupCheckboxes(selectedIds) {
-  const container = document.getElementById("emp-dispatcher-groups");
-  if (!state.dispatcherGroups.length) {
-    container.innerHTML = `<p style="font-size:13px;color:var(--text-light);margin:0">Ingen disponentgrupper oprettet endnu</p>`;
-    return;
-  }
-  container.innerHTML = state.dispatcherGroups.map(g => `
-    <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:14px">
-      <input type="checkbox" value="${g.id}" ${selectedIds.includes(g.id) ? "checked" : ""}
-             style="width:15px;height:15px;accent-color:var(--primary);cursor:pointer">
-      ${h(g.name)}
-    </label>`).join("");
+function fillDispatcherGroupSelect(selectedId = null) {
+  const sel = document.getElementById("emp-dispatcher-group");
+  sel.innerHTML = `<option value="">— Ingen —</option>` + state.dispatcherGroups
+    .map(g => `<option value="${g.id}" ${g.id === selectedId ? "selected" : ""}>${h(g.name)}</option>`)
+    .join("");
 }
 
 async function openNewEmployeeModal() {
@@ -2415,7 +2408,7 @@ async function openNewEmployeeModal() {
    "emp-email","emp-phone","emp-mobile"].forEach(id => document.getElementById(id).value = "");
   fillAgreementKindSelect();
   fillAgreementTypeSelect();
-  _renderDispatcherGroupCheckboxes([]);
+  fillDispatcherGroupSelect(null);
   buildDatePicker("emp-hire", "");
   buildDatePicker("emp-termination", "9999-12-31");
   document.getElementById("emp-active").checked = true;
@@ -2446,7 +2439,7 @@ async function openEditEmployee(id) {
   document.getElementById("emp-mobile").value = e.mobile || "";
   fillAgreementKindSelect(e.agreement_kind);
   fillAgreementTypeSelect(e.agreement_type);
-  _renderDispatcherGroupCheckboxes((e.dispatcher_groups || []).map(g => g.id));
+  fillDispatcherGroupSelect(e.dispatcher_group?.id ?? null);
   buildDatePicker("emp-hire", e.hire_date);
   buildDatePicker("emp-termination", e.termination_date);
   document.getElementById("emp-active").checked = e.active;
@@ -2479,7 +2472,8 @@ async function confirmEmployee() {
     mobile: document.getElementById("emp-mobile").value.trim() || null,
     agreement_kind: document.getElementById("emp-agreement-kind").value,
     agreement_type: document.getElementById("emp-agreement-type").value,
-    dispatcher_group_ids: [...document.querySelectorAll("#emp-dispatcher-groups input:checked")].map(cb => parseInt(cb.value)),
+    dispatcher_group_id: document.getElementById("emp-dispatcher-group").value
+      ? parseInt(document.getElementById("emp-dispatcher-group").value) : null,
     cvr_number: document.getElementById("emp-cvr-group").style.display !== "none"
       ? (document.getElementById("emp-cvr").value || null)
       : null,
@@ -4939,16 +4933,11 @@ function statusLabel(s) {
 }
 
 function _empInGroup(emp, groupId) {
-  return (emp.dispatcher_groups || []).some(g => String(g.id) === String(groupId));
+  return String(emp.dispatcher_group?.id) === String(groupId);
 }
 
 function _empHasVisibleGroup(emp) {
-  const visibleIds = new Set(
-    (state.dispatcherGroups || [])
-      .filter(g => g.visible_in_activity_overview)
-      .map(g => String(g.id))
-  );
-  return (emp.dispatcher_groups || []).some(g => visibleIds.has(String(g.id)));
+  return !!emp.dispatcher_group?.visible_in_activity_overview;
 }
 
 function fillDispatcherGroupFilter() {
@@ -5049,7 +5038,7 @@ function fillVagtplanEmployeeFilter() {
   const cur = sel.value;
   const groupIds = state.vagtplan.groupFilterIds;
   let visible = state.employees.filter(e => e.active);
-  if (groupIds) visible = visible.filter(e => (e.dispatcher_groups || []).some(g => groupIds.includes(g.id)));
+  if (groupIds) visible = visible.filter(e => e.dispatcher_group && groupIds.includes(e.dispatcher_group.id));
   sel.innerHTML = `<option value="">Alle medarbejdere</option>` +
     visible.slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
       .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
