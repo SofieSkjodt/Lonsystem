@@ -69,6 +69,8 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | work_schedule | JSON | `{"even":[0..6],"odd":[0..6]}` timer man-søn |
 | dispatcher_groups | many-to-many via employee_dispatcher_groups | Se DispatcherGroup nedenfor – medarbejder kan have 0-N grupper |
 | hire_date / termination_date | Date | Ansættelses-/slutdato |
+| paragraf_56 | Boolean | Krydses af i medarbejder-modalen; kræver paragraf_56_start_date/paragraf_56_end_date udfyldt (400 ellers). Ingen kobling til lønberegning eller den eksisterende "§56 syg"-fraværstype endnu |
+| paragraf_56_start_date / paragraf_56_end_date | Date nullable | Se paragraf_56 – nulstilles til NULL server-side når paragraf_56 sættes til false |
 
 ### MasterAgreementKind (tabel: master_agreement_kinds) — "Aftale"
 | Felt | Type | Bemærk |

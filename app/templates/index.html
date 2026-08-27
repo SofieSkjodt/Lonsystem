@@ -1388,7 +1388,7 @@
         </div>
       </div>
 
-      <div class="form-row">
+      <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="emp-active" checked> Aktiv
@@ -1398,6 +1398,22 @@
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="emp-fuldloennet" checked> Fuldlønnet
           </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="emp-paragraf56" onchange="onParagraf56Change()"> §56
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row" id="emp-paragraf56-dates" style="display:none">
+        <div class="form-group">
+          <label>§56 startdato <span style="color:var(--danger)">*</span></label>
+          <div id="emp-paragraf56-start"></div>
+        </div>
+        <div class="form-group">
+          <label>§56 slutdato <span style="color:var(--danger)">*</span></label>
+          <div id="emp-paragraf56-end"></div>
         </div>
       </div>
 

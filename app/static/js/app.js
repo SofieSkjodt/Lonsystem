@@ -2421,6 +2421,11 @@ function fillAgreementKindSelect(selected = null) {
   onAgreementKindChange();
 }
 
+function onParagraf56Change() {
+  const checked = document.getElementById("emp-paragraf56").checked;
+  document.getElementById("emp-paragraf56-dates").style.display = checked ? "" : "none";
+}
+
 function onAgreementKindChange() {
   const key = document.getElementById("emp-agreement-kind").value;
   const kind = state.agreementKinds.find(k => k.key === key);
@@ -2483,6 +2488,10 @@ async function openNewEmployeeModal() {
   buildDatePicker("emp-termination", "9999-12-31");
   document.getElementById("emp-active").checked = true;
   document.getElementById("emp-fuldloennet").checked = true;
+  document.getElementById("emp-paragraf56").checked = false;
+  buildDatePicker("emp-paragraf56-start", "");
+  buildDatePicker("emp-paragraf56-end", "");
+  onParagraf56Change();
   buildScheduleTable(null);
   await _loadEmpCvrDropdown(null);
   document.getElementById("emp-active-supplement").value = "";
@@ -2514,6 +2523,10 @@ async function openEditEmployee(id) {
   buildDatePicker("emp-termination", e.termination_date);
   document.getElementById("emp-active").checked = e.active;
   document.getElementById("emp-fuldloennet").checked = e.fuldloennet;
+  document.getElementById("emp-paragraf56").checked = e.paragraf_56;
+  buildDatePicker("emp-paragraf56-start", e.paragraf_56_start_date || "");
+  buildDatePicker("emp-paragraf56-end", e.paragraf_56_end_date || "");
+  onParagraf56Change();
   buildScheduleTable(e.work_schedule);
   await _loadEmpCvrDropdown(e.cvr_number || null);
   if (state.currentUser?.permissions?.includes("manage_employee_supplements")) {
@@ -2552,9 +2565,22 @@ async function confirmEmployee() {
     hire_date: readDatePicker("emp-hire"),
     termination_date: readDatePicker("emp-termination") || "9999-12-31",
     work_schedule: readScheduleTable(),
+    paragraf_56: document.getElementById("emp-paragraf56").checked,
+    paragraf_56_start_date: document.getElementById("emp-paragraf56").checked
+      ? readDatePicker("emp-paragraf56-start") : null,
+    paragraf_56_end_date: document.getElementById("emp-paragraf56").checked
+      ? readDatePicker("emp-paragraf56-end") : null,
   };
   if (!body.employee_number || !body.first_name || !body.last_name || !body.hire_date) {
     toast("Udfyld lønnummer, navn og ansættelsesdato", "error");
+    return;
+  }
+  if (body.paragraf_56 && (!body.paragraf_56_start_date || !body.paragraf_56_end_date)) {
+    toast("Udfyld start- og slutdato for §56", "error");
+    return;
+  }
+  if (body.paragraf_56 && body.paragraf_56_end_date < body.paragraf_56_start_date) {
+    toast("§56 slutdato skal være efter startdato", "error");
     return;
   }
 
