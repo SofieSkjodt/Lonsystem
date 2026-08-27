@@ -601,7 +601,12 @@
       "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" && ls app/*.py app/*.txt 2>/dev/null; echo \"---\"; find . -maxdepth 1 -name \"*.txt\"; echo \"---requirements---\"; cat app/requirements.txt 2>/dev/null || find . -iname \"requirements*.txt\" -maxdepth 2)",
       "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" && ls -la app/python.exe 2>/dev/null; echo \"---env keys \\(names only\\)---\"; grep -oE '^[A-Z_]+' app/.env 2>/dev/null; echo \"---main.py tail \\(uvicorn run\\)---\"; grep -n \"uvicorn.run\\\\|host=\\\\|port=\\\\|if __name__\" app/main.py)",
       "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" && wc -c app/python.exe; echo \"---\"; find . -maxdepth 2 -iname \"*.bat\" -o -maxdepth 2 -iname \"start*.ps1\" 2>/dev/null; echo \"---search for uvicorn command in repo---\"; grep -rn \"uvicorn\" --include=\"*.ps1\" --include=\"*.bat\" --include=\"*.json\" --include=\"*.md\" . 2>/dev/null | grep -v node_modules | head -30)",
-      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" && ls -la app/.env app/database/lonsystem.db 2>&1)"
+      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" && ls -la app/.env app/database/lonsystem.db 2>&1)",
+      "WebFetch(domain:www.python.org)",
+      "Bash(gh api *)",
+      "WebFetch(domain:api.github.com)",
+      "Bash(sed -i 's/- \\\\[ \\\\]/- [x]/g' docs/superpowers/plans/2026-08-27-server-deployment.md)",
+      "Bash(python -m pytest test_api.py -q)"
     ]
   }
 }
