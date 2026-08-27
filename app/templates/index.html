@@ -842,9 +842,11 @@
           </label>
         </div>
       </div>
-      <div class="form-group" id="manual-reg-group">
+      <div class="form-group" id="manual-reg-group" style="position:relative">
         <label>Registreringsnummer / Vognnummer <span style="color:var(--danger)">*</span></label>
         <input type="text" id="manual-reg" placeholder="Fx DF67671 eller 1234" autocomplete="off" style="text-transform:uppercase">
+        <div id="manual-reg-dropdown"
+             style="display:none;position:absolute;z-index:20;left:0;right:0;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);max-height:220px;overflow-y:auto;box-shadow:0 4px 12px rgba(0,0,0,.12)"></div>
         <div class="form-hint" id="manual-reg-hint" style="margin-top:4px;font-size:12px"></div>
       </div>
       <div class="form-group" id="manual-dob-group" style="display:none">

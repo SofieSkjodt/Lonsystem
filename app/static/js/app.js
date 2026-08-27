@@ -1883,6 +1883,59 @@ async function deleteActivityPause(actId, idx) {
   } catch (e) { toast(e.message || "Fejl ved sletning af pause", "error"); }
 }
 
+function _updateManualRegHint() {
+  const field = document.getElementById("manual-reg");
+  const reg = field.value.trim().toUpperCase();
+  field.value = reg;
+  const hint = document.getElementById("manual-reg-hint");
+  if (!reg) { hint.textContent = ""; return; }
+  const v = state.vehicles.find(x =>
+    x.registration_number.toUpperCase() === reg ||
+    x.vehicle_number.toUpperCase() === reg
+  );
+  if (v) {
+    hint.textContent = `Vogn nr. ${v.vehicle_number} – reg. ${v.registration_number} fundet`;
+    hint.style.color = "var(--success, #059669)";
+  } else {
+    hint.textContent = "Registreringsnummer/vognnummer ikke fundet i Vognpark";
+    hint.style.color = "var(--danger, #dc2626)";
+  }
+}
+
+function _renderManualRegDropdown(query) {
+  const dropdown = document.getElementById("manual-reg-dropdown");
+  const q = query.trim().toUpperCase();
+  const matches = !q ? state.vehicles : state.vehicles.filter(v =>
+    v.vehicle_number.toUpperCase().includes(q) || v.registration_number.toUpperCase().includes(q)
+  );
+  dropdown.innerHTML = matches.length
+    ? matches.map(v => `
+        <div class="vehicle-search-item" data-num="${h(v.vehicle_number)}"
+             style="padding:8px 10px;cursor:pointer;font-size:13px">
+          ${h(v.vehicle_number)} <span style="color:var(--text-light)">– ${h(v.registration_number)}</span>
+        </div>`).join("")
+    : `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen køretøjer fundet</div>`;
+  dropdown.querySelectorAll(".vehicle-search-item").forEach(el => {
+    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
+    el.addEventListener("mouseout",  () => el.style.background = "");
+    el.addEventListener("click", () => _selectManualRegVehicle(el.dataset.num));
+  });
+  dropdown.style.display = "block";
+}
+
+function _selectManualRegVehicle(vehicleNumber) {
+  document.getElementById("manual-reg").value = vehicleNumber;
+  document.getElementById("manual-reg-dropdown").style.display = "none";
+  _updateManualRegHint();
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#manual-reg, #manual-reg-dropdown")) {
+    const dropdown = document.getElementById("manual-reg-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+  }
+});
+
 function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   _manualActivityContext = { vagtplan: !!opts.vagtplan };
   document.getElementById("manual-employee").innerHTML =
@@ -1913,21 +1966,11 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   const normalOpt = typeSelect.querySelector('option[value="normal"]');
   if (normalOpt) normalOpt.hidden = _manualActivityContext.vagtplan;
   document.getElementById("manual-reg").oninput = function () {
-    const reg = this.value.trim().toUpperCase();
-    this.value = reg;
-    const hint = document.getElementById("manual-reg-hint");
-    if (!reg) { hint.textContent = ""; return; }
-    const v = state.vehicles.find(x =>
-      x.registration_number.toUpperCase() === reg ||
-      x.vehicle_number.toUpperCase() === reg
-    );
-    if (v) {
-      hint.textContent = `Vogn nr. ${v.vehicle_number} – reg. ${v.registration_number} fundet`;
-      hint.style.color = "var(--success, #059669)";
-    } else {
-      hint.textContent = "Registreringsnummer/vognnummer ikke fundet i Vognpark";
-      hint.style.color = "var(--danger, #dc2626)";
-    }
+    _updateManualRegHint();
+    _renderManualRegDropdown(this.value);
+  };
+  document.getElementById("manual-reg").onfocus = function () {
+    _renderManualRegDropdown(this.value);
   };
   document.getElementById("manual-type").value = _manualActivityContext.vagtplan ? "ferie" : "normal";
   document.getElementById("manual-terminsdato").value = "";
