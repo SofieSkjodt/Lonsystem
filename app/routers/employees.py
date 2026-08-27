@@ -1,5 +1,5 @@
 import logging
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,13 +11,16 @@ from calculators.rates_loader import (
     seniority_variant_exists_from_db,
 )
 from database.session import get_db
-from database.models import AppUser, DispatcherGroup, Employee, MasterAgreementKind
+from database.models import AppUser, DispatcherGroup, Employee, MasterAgreementKind, Paragraf56AlertDismissal
 from database.schemas import (
     AnciennitetsAlert,
     DispatcherGroupResponse,
     EmployeeCreate,
     EmployeeResponse,
     EmployeeUpdate,
+    Paragraf56Alert,
+    Paragraf56AlertDismiss,
+    Paragraf56AlertsResponse,
     WorkSchedule,
 )
 
@@ -41,6 +44,32 @@ def _validate_paragraf_56(active: bool, start: Optional[date], end: Optional[dat
     if end < start:
         raise HTTPException(400, "§56 slutdato skal være efter startdato")
     return start, end
+
+
+def _sweep_expired_paragraf_56(db: Session) -> None:
+    """Deaktiverer automatisk §56 for medarbejdere hvor slutdatoen er overskredet.
+    Kører uafhængigt af paragraf_56_alert-tilladelsen (se list_employees()), så
+    deaktiveringen sker uanset hvilke roller der har advarslen slået til. Datoerne
+    bevares bevidst (ikke nulstillet), så de kan indgå i "udløbet"-informationen."""
+    today = date.today()
+    expired = db.query(Employee).filter(
+        Employee.paragraf_56 == True,
+        Employee.paragraf_56_end_date.isnot(None),
+        Employee.paragraf_56_end_date < today,
+    ).all()
+    for emp in expired:
+        emp.paragraf_56 = False
+    if expired:
+        db.commit()
+
+
+def _paragraf56_alert(emp: Employee) -> Paragraf56Alert:
+    return Paragraf56Alert(
+        employee_id=emp.id,
+        employee_name=emp.name,
+        employee_number=emp.employee_number,
+        paragraf_56_end_date=emp.paragraf_56_end_date,
+    )
 
 
 def _to_response(emp: Employee, db) -> EmployeeResponse:
@@ -84,6 +113,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
 def list_employees(active_only: bool = True,
                    current_user: AppUser = Depends(get_current_user),
                    db: Session = Depends(get_db)):
+    _sweep_expired_paragraf_56(db)
     q = db.query(Employee)
     if active_only:
         q = q.filter(Employee.active == True)
@@ -207,6 +237,62 @@ def dismiss_anciennitet(employee_id: int,
     db.commit()
 
 
+@router.get("/paragraf56-alerts", response_model=Paragraf56AlertsResponse)
+def paragraf56_alerts(current_user: AppUser = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    """
+    §56-advarsler for den aktuelle bruger: 'upcoming' (slutdato inden for 30 dage,
+    §56 stadig aktiv) og 'expired' (§56 netop auto-deaktiveret pga. overskredet
+    slutdato). Afvisning er pr. bruger (Paragraf56AlertDismissal), ikke global.
+    """
+    _sweep_expired_paragraf_56(db)
+    today = date.today()
+    window = today + timedelta(days=30)
+    dismissed = {
+        (d.employee_id, d.alert_type)
+        for d in db.query(Paragraf56AlertDismissal).filter(
+            Paragraf56AlertDismissal.user_id == current_user.id
+        ).all()
+    }
+    upcoming = [
+        _paragraf56_alert(e) for e in db.query(Employee).filter(
+            Employee.paragraf_56 == True,
+            Employee.paragraf_56_end_date.isnot(None),
+            Employee.paragraf_56_end_date >= today,
+            Employee.paragraf_56_end_date <= window,
+        ).all()
+        if (e.id, "upcoming") not in dismissed
+    ]
+    expired = [
+        _paragraf56_alert(e) for e in db.query(Employee).filter(
+            Employee.paragraf_56 == False,
+            Employee.paragraf_56_end_date.isnot(None),
+            Employee.paragraf_56_end_date < today,
+        ).all()
+        if (e.id, "expired") not in dismissed
+    ]
+    return Paragraf56AlertsResponse(upcoming=upcoming, expired=expired)
+
+
+@router.post("/{employee_id}/dismiss-paragraf56-alert", status_code=204)
+def dismiss_paragraf56_alert(employee_id: int, body: Paragraf56AlertDismiss,
+                             current_user: AppUser = Depends(get_current_user),
+                             db: Session = Depends(get_db)):
+    """Marker en §56-advarsel som afvist for DEN AKTUELLE BRUGER (ikke globalt)."""
+    if body.alert_type not in ("upcoming", "expired"):
+        raise HTTPException(400, f"Ukendt alert_type: {body.alert_type}")
+    existing = db.query(Paragraf56AlertDismissal).filter(
+        Paragraf56AlertDismissal.employee_id == employee_id,
+        Paragraf56AlertDismissal.user_id == current_user.id,
+        Paragraf56AlertDismissal.alert_type == body.alert_type,
+    ).first()
+    if not existing:
+        db.add(Paragraf56AlertDismissal(
+            employee_id=employee_id, user_id=current_user.id, alert_type=body.alert_type
+        ))
+        db.commit()
+
+
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 def get_employee(employee_id: int,
                  current_user: AppUser = Depends(get_current_user),
@@ -251,6 +337,10 @@ def update_employee(employee_id: int, body: EmployeeUpdate,
         start, end = _validate_paragraf_56(
             bool(body.paragraf_56), body.paragraf_56_start_date, body.paragraf_56_end_date
         )
+        if end != emp.paragraf_56_end_date:
+            db.query(Paragraf56AlertDismissal).filter(
+                Paragraf56AlertDismissal.employee_id == emp.id
+            ).delete()
         emp.paragraf_56 = bool(body.paragraf_56)
         emp.paragraf_56_start_date = start
         emp.paragraf_56_end_date = end

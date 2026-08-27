@@ -49,6 +49,7 @@ def init_db():
     _seed_holidays()
     _ensure_sh_pay_types()    # SH-løntypekoder kode 4 og 63
     _ensure_anciennitet_alert_permission()
+    _ensure_paragraf_56_alert_permission()
     _ensure_manage_baselines_permission()
     _ensure_activity_permissions()
     _ensure_auto_approve_permission()
@@ -505,6 +506,25 @@ def _ensure_anciennitet_alert_permission():
     except Exception as e:
         db.rollback()
         logging.error(f"Fejl ved opdatering af anciennitet_alert-tilladelse: {e}")
+    finally:
+        db.close()
+
+
+def _ensure_paragraf_56_alert_permission():
+    """Tilføjer paragraf_56_alert til lonbogholder-rollen (idempotent)."""
+    from database.models import Role
+    db = SessionLocal()
+    try:
+        role = db.query(Role).filter(Role.name == "lonbogholder").first()
+        if role and not role.is_system:
+            perms = list(role.permissions or [])
+            if "paragraf_56_alert" not in perms:
+                perms.append("paragraf_56_alert")
+                role.permissions = perms
+                db.commit()
+    except Exception as e:
+        db.rollback()
+        logging.error(f"Fejl ved opdatering af paragraf_56_alert-tilladelse: {e}")
     finally:
         db.close()
 

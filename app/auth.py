@@ -20,6 +20,7 @@ ALL_PERMISSIONS = {
     "manage_employee_supplements": "Administrér medarbejdertillæg",
     "manage_holidays":     "Administrér helligdage",
     "anciennitet_alert":   "Anciennitetsvarsel",
+    "paragraf_56_alert":   "§56-advarsel",
     "approve_activities":  "Godkend aktiviteter",
     "auto_approve_manual_activities": "Auto-godkend ved oprettelse",
     "view_calendar":       "Se aktivitetskalender",

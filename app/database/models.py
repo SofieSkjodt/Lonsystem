@@ -99,6 +99,20 @@ class Employee(Base):
         return f"{self.first_name} {self.last_name}".strip()
 
 
+class Paragraf56AlertDismissal(Base):
+    __tablename__ = "paragraf_56_alert_dismissals"
+
+    id = Column(Integer, primary_key=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False)
+    user_id = Column(Integer, ForeignKey("app_users.id"), nullable=False)
+    alert_type = Column(String(20), nullable=False)  # "upcoming" | "expired"
+    dismissed_at = Column(DateTime, server_default=func.now())
+
+    __table_args__ = (
+        UniqueConstraint("employee_id", "user_id", "alert_type", name="uq_paragraf56_dismissal"),
+    )
+
+
 class PayPeriod(Base):
     __tablename__ = "pay_periods"
 

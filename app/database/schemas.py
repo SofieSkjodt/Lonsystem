@@ -251,6 +251,22 @@ class AnciennitetsAlert(BaseModel):
     suggested_agreement_type: Optional[str] = None
 
 
+class Paragraf56Alert(BaseModel):
+    employee_id: int
+    employee_name: str
+    employee_number: str
+    paragraf_56_end_date: date
+
+
+class Paragraf56AlertsResponse(BaseModel):
+    upcoming: list[Paragraf56Alert]
+    expired: list[Paragraf56Alert]
+
+
+class Paragraf56AlertDismiss(BaseModel):
+    alert_type: str
+
+
 class VehicleCreate(BaseModel):
     registration_number: str
     vehicle_number: str
