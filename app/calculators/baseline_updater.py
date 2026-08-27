@@ -2,11 +2,18 @@ from datetime import datetime
 
 from sqlalchemy.orm import Session
 
-from database.models import Activity, ActivitySource, ActivityStatus, EmployeeBaseline
+from database.models import Activity, ActivitySource, ActivityStatus, EmployeeBaseline, SystemSettings
 
 
 _SAME_THRESHOLD_MINUTES = 0.5   # < 30 sekunder forskel = uændret
 _SAME_THRESHOLD_HOURS  = 1 / 60  # < 1 minut forskel i starttid = uændret
+
+
+def is_auto_approval_enabled(db: Session) -> bool:
+    """Global til/fra-kontakt for auto-godkendelse (Stamdata → Auto-godkendelse).
+    Manglende record (endnu ikke migreret/seedet DB) tolkes som slået til (default)."""
+    settings = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
+    return settings.auto_approval_enabled if settings is not None else True
 
 
 def update_baseline_from_activity(activity: Activity, db: Session) -> None:

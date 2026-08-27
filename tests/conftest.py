@@ -58,3 +58,16 @@ def make_activity(db, employee, start: datetime, end: datetime,
     db.commit()
     db.refresh(act)
     return act
+
+
+def set_auto_approval_enabled(db, enabled: bool):
+    """Testhjælper: opret/opdater singleton SystemSettings-recorden direkte."""
+    from database.models import SystemSettings
+    settings = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
+    if settings is None:
+        settings = SystemSettings(id=1, auto_approval_enabled=enabled)
+        db.add(settings)
+    else:
+        settings.auto_approval_enabled = enabled
+    db.commit()
+    return settings

@@ -398,6 +398,16 @@ class EmployeeBaseline(Base):
     employee = relationship("Employee", back_populates="baselines")
 
 
+class SystemSettings(Base):
+    """Singleton-tabel (id altid 1) til globale systemindstillinger."""
+    __tablename__ = "system_settings"
+
+    id = Column(Integer, primary_key=True)
+    auto_approval_enabled = Column(Boolean, default=True, nullable=False, server_default="1")
+    updated_by = Column(String, nullable=True)   # initialer på seneste bruger der ændrede
+    updated_at = Column(DateTime, nullable=True)
+
+
 class EmployeeSupplement(Base):
     __tablename__ = "employee_supplements"
 
