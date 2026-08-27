@@ -922,6 +922,7 @@ const SEGMENT_ICONS = {
 
 function renderSegmentTable(a) {
   if (!a.segments || a.segments.length === 0) return "";
+  const hasCorrectable = a.segments.some(seg => seg[2] === "rest" && seg.length < 4);
   // Saksen vises ikke på første linje (split ved aktivitetens start giver ingen mening)
   const rows = a.segments.map((seg, idx) => {
     const [s, e, name, correctedFrom] = seg;
@@ -954,6 +955,7 @@ function renderSegmentTable(a) {
   }).join("");
   return `
   <div class="mt-16">
+    ${hasCorrectable ? `<button class="btn btn-secondary" onclick="correctAllSegments(${a.id})" style="margin-bottom:8px">Al pause til andet arbejde</button>` : ""}
     <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;display:block">Detaljeret information om dagen</label>
     <div style="max-height:260px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--radius)">
       <table style="font-size:12px">
@@ -976,6 +978,19 @@ async function correctSegment(activityId, segIdx, revert = false) {
     if (body) body.scrollTop = scrollTop;
     renderActivitiesTable();
     toast(revert ? "Segment gendannet" : "Linje rettet til 'Andet arbejde'", "success");
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function correctAllSegments(activityId) {
+  try {
+    const updated = await POST(`/api/activities/${activityId}/correct-all-segments`);
+    state.activities = state.activities.map(a => a.id === updated.id ? updated : a);
+    const body = document.getElementById("modal-activity-body");
+    const scrollTop = body ? body.scrollTop : 0;
+    openActivityDetail(activityId);
+    if (body) body.scrollTop = scrollTop;
+    renderActivitiesTable();
+    toast("Alle pauselinjer rettet til 'Andet arbejde'", "success");
   } catch (e) { toast(e.message, "error"); }
 }
 
