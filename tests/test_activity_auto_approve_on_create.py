@@ -126,3 +126,37 @@ def test_system_role_admin_auto_approves_without_explicit_permission(db, employe
     resp = create_manual_activity(body, current_user=_user(role="admin", initials="ADM"), db=db)
     assert resp.status == ActivityStatus.approved
     assert resp.comment == "ADM"
+
+
+def test_permission_holder_normal_activity_stays_pending_when_globally_disabled(db, employee):
+    from routers.activities import create_manual_activity
+    from conftest import set_auto_approval_enabled
+
+    _grant(db, "lonbogholder", ["auto_approve_manual_activities"])
+    set_auto_approval_enabled(db, False)
+    body = ActivityCreate(
+        employee_id=employee.id,
+        activity_type="normal",
+        start_time=datetime(2026, 1, 5, 6, 0),
+        end_time=datetime(2026, 1, 5, 14, 0),  # 8 timer
+    )
+    resp = create_manual_activity(body, current_user=_user(), db=db)
+    assert resp.status == ActivityStatus.pending
+    assert resp.approved_by is None
+    assert resp.comment is None
+
+
+def test_disponent_absence_type_still_approved_when_globally_disabled(db, employee):
+    from routers.activities import create_manual_activity
+    from conftest import set_auto_approval_enabled
+
+    _grant(db, "disponent", [])
+    set_auto_approval_enabled(db, False)
+    body = ActivityCreate(
+        employee_id=employee.id,
+        activity_type="ferie",
+        start_time=datetime(2026, 1, 5, 6, 0),
+        end_time=datetime(2026, 1, 5, 8, 0),
+    )
+    resp = create_manual_activity(body, current_user=_user(role="disponent", initials="DSP"), db=db)
+    assert resp.status == ActivityStatus.approved  # fraværstyper uændret, jf. spec

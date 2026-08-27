@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, selectinload
 from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_current_user, log_action, require_permission, user_has_permission
-from calculators.baseline_updater import update_baseline_from_activity
+from calculators.baseline_updater import update_baseline_from_activity, is_auto_approval_enabled
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee, EmployeeSpringerFlag, PayPeriod, PayPeriodStatus
 from database.schemas import (
@@ -456,7 +456,10 @@ def create_manual_activity(body: ActivityCreate,
 
     period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"
-    can_auto_approve = user_has_permission(db, current_user, "auto_approve_manual_activities")
+    can_auto_approve = (
+        user_has_permission(db, current_user, "auto_approve_manual_activities")
+        and is_auto_approval_enabled(db)
+    )
     activity = Activity(
         employee_id=body.employee_id,
         pay_period_id=period.id,
@@ -642,6 +645,9 @@ def bulk_auto_approve(
     from datetime import date as _date
     from datetime import datetime as _dt
     from calculators.auto_approval import should_auto_approve
+
+    if not is_auto_approval_enabled(db):
+        raise HTTPException(400, "Automatisk godkendelse er slået fra i systemindstillinger")
 
     start_date = _date.fromisoformat(period_start) if period_start else _date.today()
     period = get_or_create_period_for_date(start_date, db)
