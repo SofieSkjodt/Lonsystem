@@ -2318,6 +2318,27 @@ function renderEmployeeList() {
   }
 }
 
+function openParagraf56ListModal() {
+  const groupFilter = document.getElementById("employee-filter-dispatcher-group")?.value || "";
+  let emps = state.employees.filter(e => e.active && e.paragraf_56);
+  if (groupFilter === "none") {
+    emps = emps.filter(e => !e.dispatcher_group);
+  } else if (groupFilter) {
+    emps = emps.filter(e => e.dispatcher_group?.id === parseInt(groupFilter));
+  }
+  emps = emps.slice().sort((a, b) => a.name.localeCompare(b.name, "da"));
+  const body = document.getElementById("paragraf56-list-body");
+  body.innerHTML = emps.length === 0
+    ? `<tr><td colspan="3" style="padding:16px 4px;color:var(--text-light)">Ingen medarbejdere med igangværende §56 i denne afdeling</td></tr>`
+    : emps.map(e => `
+        <tr>
+          <td style="padding:6px 4px;border-bottom:1px solid var(--border)">${h(e.name)}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid var(--border)">${formatDateShort(e.paragraf_56_start_date)}</td>
+          <td style="padding:6px 4px;border-bottom:1px solid var(--border)">${formatDateShort(e.paragraf_56_end_date)}</td>
+        </tr>`).join("");
+  openModal("modal-paragraf56-list");
+}
+
 const DEFAULT_SCHEDULE = [7.5, 7.5, 7.5, 7.5, 7, 0, 0]; // man-tor, fre, lør, søn
 
 function _hoursFromTimes(startVal, endVal) {
