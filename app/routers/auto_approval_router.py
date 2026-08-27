@@ -1,15 +1,23 @@
+from datetime import datetime
+
 from fastapi import APIRouter, Depends
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from typing import Optional
 
-from auth import require_permission
-from database.models import AppUser, Employee
+from auth import get_current_user, log_action, require_permission
+from database.models import AppUser, Employee, SystemSettings
 from database.session import get_db
-from calculators.baseline_updater import rebuild_baselines_for_employee
+from calculators.baseline_updater import rebuild_baselines_for_employee, is_auto_approval_enabled
 
 router = APIRouter(prefix="/api/auto-approval", tags=["auto-approval"])
 
 _admin_access = require_permission("manage_baselines")
+_toggle_access = require_permission("manage_auto_approval")
+
+
+class AutoApprovalSettingsBody(BaseModel):
+    enabled: bool
 
 
 @router.post("/rebuild-baselines")
@@ -68,3 +76,34 @@ def baseline_summary(
         }
         for r in rows
     ]
+
+
+@router.get("/settings")
+def get_auto_approval_settings(
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Nuværende tilstand af den globale auto-godkendelses-kontakt. Åben for alle
+    godkendte brugere, så frontend kan skjule 'Autogodkend aktiviteter'-knappen."""
+    return {"enabled": is_auto_approval_enabled(db)}
+
+
+@router.post("/settings")
+def set_auto_approval_settings(
+    body: AutoApprovalSettingsBody,
+    current_user: AppUser = Depends(_toggle_access),
+    db: Session = Depends(get_db),
+):
+    """Slår den globale auto-godkendelses-proces til/fra."""
+    settings = db.query(SystemSettings).filter(SystemSettings.id == 1).first()
+    if settings is None:
+        settings = SystemSettings(id=1, auto_approval_enabled=body.enabled)
+        db.add(settings)
+    else:
+        settings.auto_approval_enabled = body.enabled
+    settings.updated_by = current_user.initials
+    settings.updated_at = datetime.utcnow()
+    log_action(db, current_user, "toggle_auto_approval",
+               details=f"auto_approval_enabled={body.enabled}")
+    db.commit()
+    return {"enabled": settings.auto_approval_enabled}
