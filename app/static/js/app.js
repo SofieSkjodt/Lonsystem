@@ -4596,6 +4596,11 @@ async function loadStamdataDispatcherGroups() {
     fillDispatcherGroupFilter();
     fillEmployeeFilter();
   } catch (_) {}
+  // Medarbejdernes indlejrede dispatcher_group (inkl. vognnummer) skal genindlæses,
+  // ellers forbliver fx vognnummer-autoudfyldningen ved fravær forældet indtil en sideopdatering.
+  try {
+    state.employees = await GET("/api/employees");
+  } catch (_) {}
 }
 
 function _renderVehicleSearchResults(query) {
