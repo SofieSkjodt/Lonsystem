@@ -2285,6 +2285,12 @@ function renderEmployeeList() {
       String(e.employee_number).toLowerCase().includes(query)
     );
   }
+  const groupFilter = document.getElementById("employee-filter-dispatcher-group")?.value || "";
+  if (groupFilter === "none") {
+    emps = emps.filter(e => !e.dispatcher_group);
+  } else if (groupFilter) {
+    emps = emps.filter(e => e.dispatcher_group?.id === parseInt(groupFilter));
+  }
   emps = emps.slice().sort((a, b) => a.name.localeCompare(b.name, "da"));
   if (emps.length === 0) {
     container.innerHTML = `<div class="empty-state"><div class="icon">👤</div><h3>Ingen medarbejdere</h3></div>`;
@@ -4594,6 +4600,7 @@ async function loadStamdataDispatcherGroups() {
   try {
     state.dispatcherGroups = await GET("/api/employees/dispatcher-groups");
     fillDispatcherGroupFilter();
+    fillEmployeeDispatcherGroupFilter();
     fillEmployeeFilter();
   } catch (_) {}
   // Medarbejdernes indlejrede dispatcher_group (inkl. vognnummer) skal genindlæses,
@@ -5069,6 +5076,17 @@ function fillDispatcherGroupFilter() {
   if (visibleGroups.find(g => String(g.id) === cur)) sel.value = cur;
 }
 
+function fillEmployeeDispatcherGroupFilter() {
+  const sel = document.getElementById("employee-filter-dispatcher-group");
+  if (!sel) return;
+  const cur = sel.value;
+  const sorted = state.dispatcherGroups.slice().sort((a, b) => a.name.localeCompare(b.name, "da"));
+  sel.innerHTML = `<option value="">Alle afdelinger</option>` +
+    `<option value="none">Ingen gruppe</option>` +
+    sorted.map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
+  if ([...sel.options].some(o => o.value === cur)) sel.value = cur;
+}
+
 function fillEmployeeFilter() {
   const sel = document.getElementById("filter-employee");
   const cur = sel.value;
@@ -5173,6 +5191,7 @@ async function loadApp() {
       GET("/api/employees/dispatcher-groups"),
     ]);
     fillDispatcherGroupFilter();
+    fillEmployeeDispatcherGroupFilter();
     fillEmployeeFilter();
   } catch (e) { console.error(e); }
 
@@ -5204,6 +5223,7 @@ async function init() {
   document.getElementById("stat-deact")   ?.addEventListener("click", () => toggleStatFilter("deactivated"));
   document.getElementById("show-inactive")?.addEventListener("change", loadEmployees);
   document.getElementById("employee-search")?.addEventListener("input", renderEmployeeList);
+  document.getElementById("employee-filter-dispatcher-group")?.addEventListener("change", renderEmployeeList);
   document.getElementById("vehicle-search")?.addEventListener("input", renderVehicleList);
   document.getElementById("supplement-employee-search")?.addEventListener("input", renderSupplementEmployeeList);
 
