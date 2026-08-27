@@ -758,6 +758,51 @@ def correct_segment(
     return _to_response(a)
 
 
+def _correct_all_segments_list(segments: list) -> tuple[list, int]:
+    """Ret alle u-rettede pause-segmenter ('rest') til 'work', bevarer original
+    type som 4. element (samme transformation som correct_segment, uden revert).
+    Returnerer (nye segmenter, antal rettede linjer)."""
+    result = []
+    corrected = 0
+    for seg in segments:
+        seg = list(seg)
+        if seg[2] == "rest" and len(seg) < 4:
+            seg = seg[:2] + ["work", seg[2]]
+            corrected += 1
+        result.append(seg)
+    return result, corrected
+
+
+@router.post("/{activity_id}/correct-all-segments", response_model=ActivityResponse)
+def correct_all_segments(
+    activity_id: int,
+    current_user: AppUser = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Ret alle u-rettede pause-segmenter for aktiviteten til 'Andet arbejde' i én omgang."""
+    a = (
+        db.query(Activity)
+        .options(selectinload(Activity.employee), selectinload(Activity.split_children))
+        .filter(Activity.id == activity_id)
+        .first()
+    )
+    if not a:
+        raise HTTPException(404, "Aktivitet ikke fundet")
+
+    new_segments, corrected_count = _correct_all_segments_list(a.segments or [])
+    if corrected_count == 0:
+        raise HTTPException(400, "Ingen pauselinjer at rette")
+
+    a.segments = new_segments
+    flag_modified(a, "segments")
+    _recalculate_pcts(a)
+    db.commit()
+    db.refresh(a)
+    log_action(db, current_user, "correct_all_segments", "activity", activity_id,
+               {"corrected_count": corrected_count})
+    return _to_response(a)
+
+
 @router.post("/{activity_id}/resize-segment", response_model=ActivityResponse)
 def resize_segment(
     activity_id: int,
