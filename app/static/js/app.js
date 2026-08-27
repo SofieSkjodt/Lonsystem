@@ -785,6 +785,7 @@ function openActivityDetail(id) {
       <div class="detail-item"><label>Start</label><span>${formatDateTime(a.start_time)}</span></div>
       <div class="detail-item"><label>Slut</label><span>${formatDateTime(a.end_time)}</span></div>
       <div class="detail-item"><label>Sum, effektiv tid</label><span>${formatDuration(a.duration_minutes)}</span></div>
+      <div class="detail-item"><label>Sum, pause</label><span>${formatDuration(Math.round((new Date(a.end_time) - new Date(a.start_time)) / 60000) - a.duration_minutes)}</span></div>
       <div class="detail-item"><label>Oprettet af</label><span>${a.source === "vagtplan" ? "Vagtplan" : (a.is_manual ? (a.created_by || "Manuelt") : "System")}</span></div>
       ${(a.auto_approval_flags && a.auto_approval_flags.length > 0) ? `<div class="auto-approval-flags"><strong>Afvigelser registreret (ikke auto-godkendt):</strong><ul>${a.auto_approval_flags.map(f => `<li>${h(f)}</li>`).join('')}</ul></div>` : ""}
       ${a.status === "approved" && a.approved_by ? `<div class="detail-item"><label>Godkendt af</label><span>${h(a.approved_by)}</span></div>` : ""}
