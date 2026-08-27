@@ -476,6 +476,7 @@ input[type="text"],
 input[type="date"],
 input[type="datetime-local"],
 input[type="number"],
+input[type="time"],
 select,
 textarea {
   width: 100%;
