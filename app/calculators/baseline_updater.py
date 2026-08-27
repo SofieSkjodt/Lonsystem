@@ -32,6 +32,8 @@ def update_baseline_from_activity(activity: Activity, db: Session) -> None:
         return
     if activity.status != ActivityStatus.approved:
         return
+    if not is_auto_approval_enabled(db):
+        return
 
     weekday = activity.start_time.weekday()
     duration = _effective_duration_minutes(activity)

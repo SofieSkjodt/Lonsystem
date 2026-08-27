@@ -6,7 +6,7 @@ import pytest
 from datetime import datetime
 from database.models import ActivitySource, ActivityStatus, EmployeeBaseline
 from calculators.baseline_updater import update_baseline_from_activity, rebuild_baselines_for_employee
-from conftest import make_activity
+from conftest import make_activity, set_auto_approval_enabled
 
 
 def test_update_creates_baseline_row(db, employee):
@@ -124,3 +124,17 @@ def test_rebuild_baselines(db, employee):
     ).first()
     assert baseline is not None
     assert baseline.sample_count == 6
+
+
+def test_update_skipped_when_globally_disabled(db, employee):
+    set_auto_approval_enabled(db, False)
+    act = make_activity(
+        db, employee,
+        start=datetime(2026, 6, 1, 7, 0),
+        end=datetime(2026, 6, 1, 15, 0),
+        status=ActivityStatus.approved,
+    )
+    update_baseline_from_activity(act, db)
+
+    count = db.query(EmployeeBaseline).filter_by(employee_id=employee.id).count()
+    assert count == 0
