@@ -566,6 +566,11 @@ Ny løntypekode `SPRINGERTILLAEG` (kr/time-sats fra `MasterSupplementRate`, labe
 
 ---
 
+## Disponentgruppe 1:1 + vognnummer-autoudfyldning ved fravær (2026-08-26)
+`Employee.dispatcher_groups` (mange-til-mange) er erstattet af `Employee.dispatcher_group_id`/`dispatcher_group` (én gruppe, nullable). `EmployeeDispatcherGroup`-tabellen er fjernet (migreret af `_migrate_dispatcher_group_to_single()` i `session.py`, som ved konflikt beholder den alfabetisk først sorterede gruppe; kolonnetilføjelserne selv sker i `_migrate()`, da den ORM-baserede `_migrate_dispatcher_groups()` ellers ville fejle på manglende kolonner). `DispatcherGroup.vehicle_id`/`vehicle`/`vehicle_number` (property) peger på et køretøj i vognparken, vedligeholdt via Stamdata → Disponentgrupper (søgbart vognnummer-felt, brugerdefineret dropdown – ikke native `<datalist>`, af hensyn til konsistent substring-søgning på tværs af browsere). `app.js`s `applyDispatcherGroupVehicleDefault()` foreslår automatisk gruppens vognnummer i opret-aktivitet-modalens vognnummer-felt for enhver fraværstype (kun hvis feltet er tomt) – rent frontend-prefill, ingen backend-håndhævelse. Fejl rettet undervejs: flerdags-fraværsregistrering (`confirmManualActivity()`s range-gren) sendte tidligere slet ikke `vehicle_number` med i sit `POST /api/activities`-kald.
+
+---
+
 ## Vigtige mønstre
 
 ### Tilføj ny modal-knap-handling
