@@ -4516,15 +4516,16 @@ async function loadStamdataDispatcherGroups() {
         <td style="padding:10px 14px">${h(r.name)}</td>
         <td style="padding:10px 14px;color:var(--text-light)">${h(r.description || "")}</td>
         <td style="padding:10px 14px;text-align:center">${r.employee_count}</td>
+        <td style="padding:10px 14px;text-align:center">${h(r.vehicle_number || "–")}</td>
         <td style="padding:10px 14px;text-align:center">${badge(r.visible_in_activity_overview, "Ja", "Nej")}</td>
         <td style="padding:10px 14px;text-align:center">
           <button class="btn btn-secondary" style="font-size:12px;padding:4px 10px;margin-right:4px"
-                  onclick="openStamdataDispatcherModal(${r.id},${jq(r.name)},${jq(r.description || "")},${r.visible_in_activity_overview})">Rediger</button>
+                  onclick="openStamdataDispatcherModal(${r.id},${jq(r.name)},${jq(r.description || "")},${r.visible_in_activity_overview},${r.vehicle_id || "null"},${jq(r.vehicle_number || "")})">Rediger</button>
           <button class="btn btn-danger" style="font-size:12px;padding:4px 10px"
                   onclick="deleteStamdataDispatcher(${r.id},${jq(r.name)},${r.employee_count})">Slet</button>
         </td>
       </tr>`).join("");
-  } catch (e) { tbody.innerHTML = `<tr><td colspan="5" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
+  } catch (e) { tbody.innerHTML = `<tr><td colspan="6" style="padding:24px;text-align:center;color:var(--danger)">${h(e.message)}</td></tr>`; }
   // Ny/ændret gruppe kan påvirke medarbejder-modal og filtre
   try {
     state.dispatcherGroups = await GET("/api/employees/dispatcher-groups");
@@ -4533,27 +4534,76 @@ async function loadStamdataDispatcherGroups() {
   } catch (_) {}
 }
 
-function openStamdataDispatcherModal(id, name, description, visible) {
+function _renderVehicleSearchResults(query) {
+  const dropdown = document.getElementById("stamdata-dispatcher-vehicle-dropdown");
+  const q = query.trim().toUpperCase();
+  const matches = !q ? state.vehicles : state.vehicles.filter(v =>
+    v.vehicle_number.toUpperCase().includes(q) || v.registration_number.toUpperCase().includes(q)
+  );
+  const noneRow = `<div class="vehicle-search-item" data-id="" data-num=""
+       style="padding:8px 10px;cursor:pointer;font-size:13px;color:var(--text-light)">— Intet køretøj —</div>`;
+  const rows = matches.length
+    ? matches.map(v => `
+        <div class="vehicle-search-item" data-id="${v.id}" data-num="${h(v.vehicle_number)}"
+             style="padding:8px 10px;cursor:pointer;font-size:13px">
+          ${h(v.vehicle_number)} <span style="color:var(--text-light)">– ${h(v.registration_number)}</span>
+        </div>`).join("")
+    : `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen køretøjer fundet</div>`;
+  dropdown.innerHTML = noneRow + rows;
+  dropdown.querySelectorAll(".vehicle-search-item[data-id]").forEach(el => {
+    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
+    el.addEventListener("mouseout",  () => el.style.background = "");
+    el.addEventListener("click", () => _selectVehicleForDispatcherGroup(el.dataset.id, el.dataset.num));
+  });
+  dropdown.style.display = "block";
+}
+
+function _selectVehicleForDispatcherGroup(id, vehicleNumber) {
+  document.getElementById("stamdata-dispatcher-vehicle-search").value = vehicleNumber || "";
+  document.getElementById("stamdata-dispatcher-vehicle-id").value = id || "";
+  document.getElementById("stamdata-dispatcher-vehicle-dropdown").style.display = "none";
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#stamdata-dispatcher-vehicle-search, #stamdata-dispatcher-vehicle-dropdown")) {
+    const dropdown = document.getElementById("stamdata-dispatcher-vehicle-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+  }
+});
+
+function openStamdataDispatcherModal(id, name, description, visible, vehicleId, vehicleNumber) {
   document.getElementById("stamdata-dispatcher-id").value = id || "";
   document.getElementById("stamdata-dispatcher-name").value = name || "";
   document.getElementById("stamdata-dispatcher-description").value = description || "";
   document.getElementById("stamdata-dispatcher-visible").checked = id ? !!visible : true;
+  document.getElementById("stamdata-dispatcher-vehicle-search").value = vehicleNumber || "";
+  document.getElementById("stamdata-dispatcher-vehicle-id").value = vehicleId || "";
+  document.getElementById("stamdata-dispatcher-vehicle-dropdown").style.display = "none";
   document.getElementById("stamdata-dispatcher-title").textContent = id ? "Rediger disponentgruppe" : "Ny disponentgruppe";
   openModal("modal-stamdata-dispatcher");
 }
+
+document.getElementById("stamdata-dispatcher-vehicle-search")?.addEventListener("input", function () {
+  _renderVehicleSearchResults(this.value);
+});
+document.getElementById("stamdata-dispatcher-vehicle-search")?.addEventListener("focus", function () {
+  _renderVehicleSearchResults(this.value);
+});
 
 async function confirmStamdataDispatcher() {
   const id   = document.getElementById("stamdata-dispatcher-id").value;
   const name = document.getElementById("stamdata-dispatcher-name").value.trim();
   const description = document.getElementById("stamdata-dispatcher-description").value.trim();
   const visible = document.getElementById("stamdata-dispatcher-visible").checked;
+  const vehicleIdRaw = document.getElementById("stamdata-dispatcher-vehicle-id").value;
+  const vehicle_id = vehicleIdRaw ? parseInt(vehicleIdRaw) : null;
   if (!name) { toast("Navn er påkrævet", "error"); return; }
   try {
     if (id) {
-      await PATCH(`/api/stamdata/dispatcher-groups/${id}`, { name, description, visible_in_activity_overview: visible });
+      await PATCH(`/api/stamdata/dispatcher-groups/${id}`, { name, description, visible_in_activity_overview: visible, vehicle_id });
       toast("Disponentgruppe opdateret");
     } else {
-      await POST("/api/stamdata/dispatcher-groups", { name, description, visible_in_activity_overview: visible });
+      await POST("/api/stamdata/dispatcher-groups", { name, description, visible_in_activity_overview: visible, vehicle_id });
       toast("Disponentgruppe oprettet");
     }
     closeModal("modal-stamdata-dispatcher");
