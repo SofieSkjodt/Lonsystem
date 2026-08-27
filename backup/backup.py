@@ -5,6 +5,7 @@ Gemmer database + Excel-konfigurationsfiler i et ZIP-arkiv.
 Bevarer backups fra de seneste KEEP_DAYS dage og sletter ældre automatisk.
 """
 
+import os
 import sqlite3
 import zipfile
 import logging
@@ -15,7 +16,7 @@ from datetime import datetime, timedelta
 ROOT       = Path(__file__).resolve().parent.parent   # Lønsystem/
 APP        = ROOT / "app"
 DB_PATH    = APP / "database" / "lonsystem.db"
-BACKUP_DIR = Path(__file__).resolve().parent / "arkiv"
+BACKUP_DIR = Path(os.environ.get("LONSYSTEM_BACKUP_DIR") or (Path(__file__).resolve().parent / "arkiv"))
 LOG_FILE   = Path(__file__).resolve().parent / "backup.log"
 KEEP_DAYS  = 5   # Antal dage backup-historik bevares
 
