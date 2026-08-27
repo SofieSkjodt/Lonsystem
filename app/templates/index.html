@@ -288,6 +288,7 @@
       <div class="toolbar">
         <h2 style="font-size:16px;font-weight:600">Medarbejdere</h2>
         <div class="spacer"></div>
+        <button class="btn btn-primary" onclick="openParagraf56ListModal()">§56</button>
         <input type="text" id="employee-search" placeholder="Søg navn eller lønnr…"
                style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:220px">
         <select id="employee-filter-dispatcher-group" style="padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px;width:180px">
@@ -296,7 +297,6 @@
         <label style="display:flex;align-items:center;gap:6px;font-size:13px;cursor:pointer">
           <input type="checkbox" id="show-inactive"> Vis inaktive
         </label>
-        <button class="btn btn-secondary" onclick="openParagraf56ListModal()">§56</button>
         <button class="btn btn-primary" data-perm-require="manage_employees" onclick="openNewEmployeeModal()">+ Opret medarbejder</button>
       </div>
       <div id="employee-list"></div>
