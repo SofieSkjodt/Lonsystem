@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from auth import require_permission, log_action
@@ -461,8 +462,18 @@ def _import_activity(
         status=ActivityStatus.pending,
         is_likely_incomplete=act.is_likely_incomplete,
     )
-    db.add(activity)
-    db.flush()  # tildeler activity.id uden en fuld transaktions-commit pr. aktivitet
+    try:
+        # Nested transaktion (SAVEPOINT): hvis en samtidig import allerede har
+        # indsat samme vagt (race condition, se det unikke indeks på Activity),
+        # fanger vi kun DENNE aktivitets konflikt her – uden det ville hele
+        # importens batch-transaktion (mange andre allerede flushede, gyldige
+        # aktiviteter) rulles tilbage sammen med den. db.flush() tildeler
+        # activity.id uden en fuld transaktions-commit pr. aktivitet.
+        with db.begin_nested():
+            db.add(activity)
+            db.flush()
+    except IntegrityError:
+        return "skipped_duplicate", None
 
     ok, flags = should_auto_approve(activity, db)
     if ok:

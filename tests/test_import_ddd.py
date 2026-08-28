@@ -2,11 +2,15 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 sys.path.insert(0, os.path.dirname(__file__))
 
+import tempfile
 from pathlib import Path
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 
-from database.models import ActivityStatus, PayPeriodStatus, AppUser
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+
+from database.models import ActivityStatus, PayPeriodStatus, AppUser, AgreementKind, Activity, Employee, Base
 from parsers.ddd_parser import ParsedActivity
 from calculators.pay_period import get_or_create_period_for_date
 from routers.import_ddd import _import_activity, _process_import_results, decline_closed_period_import, DeclineClosedPeriodRequest, DeclinedCandidate
@@ -149,3 +153,87 @@ def test_decline_closed_period_import_handles_duplicate_items_in_same_request(db
     result = decline_closed_period_import(body, _test_user(), db)
 
     assert result["declined"] == 1
+
+
+def _file_backed_session_factory():
+    """Rigtig fil-baseret SQLite (ikke :memory:), så to uafhængige sessioner/
+    tråde kan pege på samme database – nødvendigt for at kunne reproducere en
+    ægte race condition mellem to samtidige requests. `timeout` sætter SQLites
+    busy-timeout, så en tråd der rammer databasens skrive-lås venter på den
+    anden i stedet for straks at fejle med 'database is locked' – ligesom en
+    rigtig samtidig anmodning ville."""
+    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
+    tmp.close()
+    engine = create_engine(
+        f"sqlite:///{tmp.name}",
+        connect_args={"check_same_thread": False, "timeout": 5},
+    )
+    Base.metadata.create_all(engine)
+    return sessionmaker(bind=engine)
+
+
+def test_concurrent_import_of_same_shift_does_not_duplicate_activity():
+    """
+    Reproducerer racet ved samtidig import med to RIGTIGE tråde: to samtidige
+    import-requests (fx et dobbeltklik, eller to brugere der importerer
+    overlappende filer) kan begge slå den samme vagt op og finde intet, FØR
+    nogen af dem har committet – og begge forsøge at indsætte den. Uden en
+    unik spærre i databasen ville det give to Activity-rækker for samme
+    medarbejder+starttidspunkt+kilde (= dobbelttalte timer i lønnen).
+    """
+    import threading
+
+    Session = _file_backed_session_factory()
+    setup = Session()
+    emp = Employee(
+        employee_number="9001",
+        first_name="Test",
+        last_name="Chauffør",
+        agreement_kind=AgreementKind.hourly_fixed,
+        agreement_type="Standardoverenskomst",
+        hire_date=date(2020, 1, 1),
+        work_schedule={"even": [8, 8, 8, 8, 8, 0, 0], "odd": [8, 8, 8, 8, 8, 0, 0]},
+    )
+    setup.add(emp)
+    setup.commit()
+    emp_id = emp.id
+    setup.close()
+
+    start = datetime(2026, 8, 3, 5, 45)
+    end = datetime(2026, 8, 3, 14, 30)
+
+    barrier = threading.Barrier(2)
+    outcomes = {}
+
+    def _run(key):
+        session = Session()
+        emp_local = session.query(Employee).filter(Employee.id == emp_id).first()
+        act = _parsed(start, end, segments=[(start, end, "work")], pauses=[])
+        barrier.wait()  # begge tråde slår "existing" op ~samtidig
+        try:
+            result, _ = _import_activity(act, session, emp_local)
+            session.commit()
+            outcomes[key] = result
+        except Exception as exc:
+            session.rollback()
+            outcomes[key] = f"crashed: {exc!r}"
+        finally:
+            session.close()
+
+    t1 = threading.Thread(target=_run, args=("t1",))
+    t2 = threading.Thread(target=_run, args=("t2",))
+    t1.start()
+    t2.start()
+    t1.join(timeout=10)
+    t2.join(timeout=10)
+
+    check = Session()
+    total = (
+        check.query(Activity)
+        .filter(Activity.employee_id == emp_id, Activity.start_time == start)
+        .count()
+    )
+    check.close()
+
+    assert not any(v.startswith("crashed") for v in outcomes.values() if isinstance(v, str)), outcomes
+    assert total == 1, f"forventede 1 aktivitet, fandt {total} – begge tråde: {outcomes}"

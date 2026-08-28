@@ -152,6 +152,25 @@ def _migrate():
                 "ON activities(employee_id, start_time, source)"
             )
             conn.commit()
+        if "uq_activities_employee_start_tachograph" not in existing_indexes:
+            # Fjern evt. eksisterende dubletter (samme medarbejder+starttid,
+            # tachograf-kilde) opstået pga. den tidligere manglende spærre,
+            # før det unikke indeks oprettes – ellers fejler CREATE UNIQUE
+            # INDEX på en database, hvor racet allerede er indtruffet.
+            # Beholder den ældste (laveste id); den nyeste vinder normalt
+            # ikke noget ekstra data, da genimport allerede opdaterer den
+            # eksisterende række (se import_ddd.py::_import_activity).
+            conn.execute(
+                "DELETE FROM activities WHERE source = 'tachograph' AND id NOT IN ("
+                "  SELECT MIN(id) FROM activities WHERE source = 'tachograph' "
+                "  GROUP BY employee_id, start_time"
+                ")"
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX uq_activities_employee_start_tachograph "
+                "ON activities(employee_id, start_time) WHERE source = 'tachograph'"
+            )
+            conn.commit()
         dg_cols = {row[1] for row in conn.execute("PRAGMA table_info(dispatcher_groups)")}
         if "vehicle_id" not in dg_cols:
             conn.execute("ALTER TABLE dispatcher_groups ADD COLUMN vehicle_id INTEGER")

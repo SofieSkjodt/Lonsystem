@@ -182,6 +182,18 @@ class Activity(Base):
         # Bruges af duplikat-tjek ved ddd-import (employee_id + start_time + source).
         # Uden dette index scanner SQLite hele tabellen for hver importeret aktivitet.
         Index("ix_activities_employee_start_source", "employee_id", "start_time", "source"),
+        # Forhindrer at to samtidige importer (fx dobbeltklik, eller to brugere
+        # der importerer overlappende filer samtidig) kan nå at indsætte samme
+        # tachograf-vagt to gange, før nogen af dem har committet – uden denne
+        # spærre opdager duplikat-tjekket i import_ddd.py det ikke, og vagten
+        # tælles dobbelt i lønnen. Kun tachograf-kilden er omfattet, da manuelle/
+        # vagtplan-aktiviteter ikke har det samme check-then-insert-mønster.
+        Index(
+            "uq_activities_employee_start_tachograph",
+            "employee_id", "start_time",
+            unique=True,
+            sqlite_where=text("source = 'tachograph'"),
+        ),
     )
 
 
