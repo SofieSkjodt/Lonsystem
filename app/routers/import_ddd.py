@@ -18,6 +18,7 @@ from database.models import (
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
 from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
 from routers.activities import _recalculate_pcts
+from utils.safe_paths import is_under_allowed_root
 
 router = APIRouter(prefix="/api", tags=["import"])
 
@@ -44,6 +45,8 @@ def import_ddd_from(body: ImportFromRequest,
 
     if body.source_folder:
         folder = Path(body.source_folder).resolve()
+        if not is_under_allowed_root(folder):
+            raise HTTPException(400, "Ugyldig mappe – skal ligge under din hjemmemappe")
         if not folder.exists():
             raise HTTPException(400, "Mappen findes ikke")
         results, scan_errors = scan_ddd_folder(folder)
@@ -53,6 +56,9 @@ def import_ddd_from(body: ImportFromRequest,
         results = []
         for fp in body.source_files:
             p = Path(fp).resolve()
+            if not is_under_allowed_root(p):
+                errors.append(f"{p.name}: uden for tilladt mappe (skal ligge under din hjemmemappe)")
+                continue
             if not p.exists():
                 errors.append(f"{p.name}: fil ikke fundet")
                 continue

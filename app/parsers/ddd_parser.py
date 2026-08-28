@@ -94,9 +94,21 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
     return _build_activities(card_number, vehicle_reg, daily_odometer, daily_records, str(file_path))
 
 
-def scan_ddd_folder(folder_path: Path) -> tuple[list[tuple[Path, list[ParsedActivity]]], list[str]]:
+DEFAULT_MAX_FILE_AGE_DAYS = 7
+
+
+def scan_ddd_folder(
+    folder_path: Path,
+    max_age_days: int | None = DEFAULT_MAX_FILE_AGE_DAYS,
+    now: datetime | None = None,
+) -> tuple[list[tuple[Path, list[ParsedActivity]]], list[str]]:
     """
     Scan folder (inkl. alle undermapper) for .ddd-filer.
+    Filer med senest-ændret-tidspunkt ældre end `max_age_days` dage
+    springes stille over – de er med stor sandsynlighed allerede importeret
+    ved en tidligere scanning af mappen, og at genparse dem hver gang er
+    unødigt arbejde. Sæt max_age_days=None for at scanne uden aldersgrænse
+    (fx en manuel oprydning af en hel backlog).
     Returns (results, errors) – ikke-parsebare filer rapporteres som fejl i
     stedet for kun at blive printet til serverkonsollen.
     """
@@ -107,6 +119,9 @@ def scan_ddd_folder(folder_path: Path) -> tuple[list[tuple[Path, list[ParsedActi
     ddd_files = sorted(
         set(folder_path.rglob("*.ddd")) | set(folder_path.rglob("*.DDD"))
     )
+    if max_age_days is not None:
+        cutoff = (now or datetime.now()) - timedelta(days=max_age_days)
+        ddd_files = [f for f in ddd_files if datetime.fromtimestamp(f.stat().st_mtime) >= cutoff]
     for f in ddd_files:
         try:
             activities = parse_ddd_file(f)

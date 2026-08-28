@@ -22,6 +22,7 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, log_action, require_permission
 from database.models import AppUser
+from utils.safe_paths import is_under_allowed_root
 
 from calculators.overtime import (
     OT_13_KEY,
@@ -62,20 +63,21 @@ OUTPUT_DIR = BASE_DIR / "output"
 _payroll_access = require_permission("payroll")
 _reopen_access = require_permission("reopen_period")
 
-_ALLOWED_SAVE_ROOTS = [Path.home(), Path("C:/"), Path("D:/")]
-
 
 def _safe_save_dir(raw_path: str) -> Path:
-    """Valider at den bruger-angivne sti ikke forsøger path traversal til systemkritiske steder."""
+    """Valider at den bruger-angivne gemmesti er tilladt: ikke inde i selve
+    applikationsmappen, og under en af de tilladte rødder (se utils/safe_paths.py)
+    – forhindrer at CSV/PDF-eksport skrives til en vilkårlig placering på
+    serverens diske."""
     save_dir = Path(raw_path).resolve()
     app_dir = BASE_DIR.resolve()
-    # Tillad stier under brugerens hjemmemappe eller under rod-drev (Windows)
-    # Afvis stier inde i selve applikationsmappen (undgår overskrivning af kildekode)
     try:
         save_dir.relative_to(app_dir)
         raise HTTPException(400, "Ugyldig gemmemappe – kan ikke gemme i applikationsmappen")
     except ValueError:
         pass  # Stien er IKKE inde i app-mappen – det er ønsket
+    if not is_under_allowed_root(save_dir):
+        raise HTTPException(400, "Ugyldig gemmemappe – skal ligge under din hjemmemappe")
     return save_dir
 
 TWO = Decimal("0.01")

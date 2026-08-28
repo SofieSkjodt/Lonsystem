@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 
 from parsers.ddd_parser import (
     _build_activities, _utc_to_local, ACTIVITY_REST, ACTIVITY_WORK, ACTIVITY_DRIVING,
+    scan_ddd_folder,
 )
 
 
@@ -143,3 +144,43 @@ def test_entire_day_becomes_ghost_when_only_stale_status_and_nothing_real():
     acts = _build_activities("X", None, {}, daily_records, "test.ddd")
 
     assert all(a.start_time.date() != day2.date() for a in acts)
+
+
+def test_scan_ddd_folder_excludes_files_older_than_max_age(tmp_path):
+    """
+    scan_ddd_folder() gennemsøges hver gang hele mappen scannes (både ved
+    ad hoc mappe-import og den faste ddd_input-scanning). Filer der allerede
+    er flere dage gamle er med stor sandsynlighed allerede importeret ved en
+    tidligere scanning - at genparse dem hver gang er unødigt arbejde. Filer
+    ældre end max_age_days (default 7) springes derfor over.
+    """
+    now = datetime(2026, 8, 28, 12, 0)
+    recent = tmp_path / "recent.ddd"
+    recent.write_bytes(b"")
+    old = tmp_path / "old.ddd"
+    old.write_bytes(b"")
+    recent_mtime = (now - timedelta(days=2)).timestamp()
+    old_mtime = (now - timedelta(days=10)).timestamp()
+    os.utime(recent, (recent_mtime, recent_mtime))
+    os.utime(old, (old_mtime, old_mtime))
+
+    results, errors = scan_ddd_folder(tmp_path, max_age_days=7, now=now)
+
+    seen_names = {p.name for p, _ in results} | {e.split(":")[0] for e in errors}
+    assert "recent.ddd" in seen_names
+    assert "old.ddd" not in seen_names
+
+
+def test_scan_ddd_folder_max_age_none_disables_filter(tmp_path):
+    """max_age_days=None skal bevare den gamle adfærd (ingen aldersgrænse) –
+    fx til en manuel oprydningsscanning af en hel backlog."""
+    now = datetime(2026, 8, 28, 12, 0)
+    old = tmp_path / "old.ddd"
+    old.write_bytes(b"")
+    old_mtime = (now - timedelta(days=10)).timestamp()
+    os.utime(old, (old_mtime, old_mtime))
+
+    results, errors = scan_ddd_folder(tmp_path, max_age_days=None, now=now)
+
+    seen_names = {p.name for p, _ in results} | {e.split(":")[0] for e in errors}
+    assert "old.ddd" in seen_names

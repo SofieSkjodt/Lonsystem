@@ -2,18 +2,20 @@ import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 sys.path.insert(0, os.path.dirname(__file__))
 
+import shutil
 import tempfile
 from pathlib import Path
 from datetime import date, datetime
 from decimal import Decimal
 
+import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
 from database.models import ActivityStatus, PayPeriodStatus, AppUser, AgreementKind, Activity, Employee, Base
 from parsers.ddd_parser import ParsedActivity
 from calculators.pay_period import get_or_create_period_for_date
-from routers.import_ddd import _import_activity, _process_import_results, decline_closed_period_import, DeclineClosedPeriodRequest, DeclinedCandidate
+from routers.import_ddd import _import_activity, _process_import_results, decline_closed_period_import, DeclineClosedPeriodRequest, DeclinedCandidate, import_ddd_from, ImportFromRequest
 from conftest import make_activity
 
 
@@ -237,3 +239,46 @@ def test_concurrent_import_of_same_shift_does_not_duplicate_activity():
 
     assert not any(v.startswith("crashed") for v in outcomes.values() if isinstance(v, str)), outcomes
     assert total == 1, f"forventede 1 aktivitet, fandt {total} – begge tråde: {outcomes}"
+
+
+@pytest.fixture
+def outside_home_dir():
+    """Rigtig, men TOM mappe uden for hjemmemappen (direkte under drev-roden,
+    fx C:\\) - IKKE selve drev-roden. Et fuldt rglob-scan af hele C:\\ i en
+    test tager for evigt og er selve den bug, disse tests verificerer er
+    rettet, så vi bruger en garanteret lille mappe i stedet."""
+    outside_root = Path(Path.home().anchor)
+    tmp = Path(tempfile.mkdtemp(dir=str(outside_root), prefix="lonsystem-test-"))
+    assert not str(tmp).startswith(str(Path.home()))
+    try:
+        yield tmp
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def test_import_ddd_from_rejects_source_folder_outside_home(db, outside_home_dir):
+    """
+    source_folder skulle hidtil kun eksistere - man kunne angive fx "C:\\"
+    og udløse et fuldt rekursivt scan af hele drevet. Nu skal stien være
+    under den tilladte rod (Path.home(), se utils/safe_paths.py).
+    """
+    body = ImportFromRequest(source_folder=str(outside_home_dir))
+
+    with pytest.raises(Exception) as exc_info:
+        import_ddd_from(body, current_user=_test_user(), db=db)
+    assert getattr(exc_info.value, "status_code", None) == 400
+
+
+def test_import_ddd_from_skips_source_files_outside_home_as_error(db, outside_home_dir):
+    """source_files uden for hjemmemappen skal fejle pr.-fil (tilføjes til
+    errors), ikke stoppe hele importen - i modsætning til source_folder, som
+    er ét samlet valg og derfor kan afvises helt."""
+    outside_file = outside_home_dir / "fil.ddd"
+    outside_file.write_bytes(b"")
+
+    body = ImportFromRequest(source_files=[str(outside_file)])
+
+    result = import_ddd_from(body, current_user=_test_user(), db=db)
+
+    assert result["files_processed"] == 0
+    assert any("hjemmemappe" in e for e in result["errors"])
