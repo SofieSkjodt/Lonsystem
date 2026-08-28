@@ -14,10 +14,8 @@ $SubnetPrefix    = 24                      # fx 24 for 255.255.255.0
 $Gateway         = "SÆT-GATEWAY-HER"       # fx 192.168.1.1
 $DnsServer       = "SÆT-DNS-HER"           # fx 192.168.1.1
 $InterfaceAlias  = "SÆT-NETVÆRKSKORT-HER"  # tjek navn med: Get-NetAdapter
-$AppPort         = 8000                    # uvicorn - kun localhost, aldrig eksponeret på netværket
-$HttpsPort       = 443                     # Caddy (TLS) - det eneste netværket kan nå
+$AppPort         = 8000
 $ServiceName     = "LonsystemService"
-$CaddyServiceName = "LonsystemCaddy"
 $BackupCloudDir  = "SÆT-BACKUP-STI-HER"    # fx en OneDrive-mappe kun til backup
 $DeployShareUser = "SÆT-BRUGER-HER"        # Windows-konto der må pushe opdateringer, fx "KONTOR\sofie"
 # =============================================================
@@ -40,16 +38,6 @@ $ToolsDir  = Join-Path $DeployDir "tools"
 
 if (-not (Test-Path $AppDir)) {
     throw "Fandt ikke $AppDir. Kopiér hele projektmappen til $InstallRoot før du kører dette script."
-}
-
-$CaddyExeSource = Join-Path $ToolsDir "caddy.exe"
-if (-not (Test-Path $CaddyExeSource)) {
-    throw (
-        "Fandt ikke $CaddyExeSource. Caddy (TLS-reverse proxy) er ikke bundlet i " +
-        "repoet - hent den selv fra https://caddyserver.com/download (vælg " +
-        "'windows/amd64', ingen ekstra moduler nødvendige), læg den umodificerede " +
-        ".exe som '$CaddyExeSource', og kør scriptet igen."
-    )
 }
 
 Write-Host "=== Provisionering starter: $InstallRoot ===" -ForegroundColor Green
@@ -102,25 +90,17 @@ if (-not (Test-Path $envPath)) {
     $sessionSecret = & $PythonExe -c "import secrets; print(secrets.token_hex(32))"
     $envTemplate = Get-Content (Join-Path $AppDir ".env.example") -Raw
     $envTemplate = $envTemplate -replace "SESSION_SECRET=", "SESSION_SECRET=$sessionSecret"
-    $envTemplate = $envTemplate -replace "HTTPS_ONLY=", "HTTPS_ONLY=true"
     Set-Content -Path $envPath -Value $envTemplate -Encoding utf8
-    Write-Host ".env oprettet med ny SESSION_SECRET og HTTPS_ONLY=true. Udfyld SMTP-felter manuelt hvis mail skal bruges."
+    Write-Host ".env oprettet med ny SESSION_SECRET. Udfyld SMTP-felter manuelt hvis mail skal bruges."
 } else {
     Write-Host ".env findes allerede - rører den ikke."
-    if ((Get-Content $envPath -Raw) -notmatch "HTTPS_ONLY=true") {
-        Write-Warning (
-            "Eksisterende .env har ikke HTTPS_ONLY=true. Tilføj den linje manuelt, " +
-            "ellers sender browseren ikke session-cookien tilbage over den nye HTTPS-forbindelse."
-        )
-    }
 }
 
-# --- 6. Firewall (kun LAN-profiler, kun HTTPS-porten - $AppPort er localhost-only) ---
-Write-Host "=== Åbner firewall for port $HttpsPort (Caddy/TLS) ===" -ForegroundColor Cyan
-Get-NetFirewallRule -DisplayName "Lønsystem" -ErrorAction SilentlyContinue | Remove-NetFirewallRule
-if (-not (Get-NetFirewallRule -DisplayName "Lønsystem HTTPS" -ErrorAction SilentlyContinue)) {
-    New-NetFirewallRule -DisplayName "Lønsystem HTTPS" -Direction Inbound -Protocol TCP `
-        -LocalPort $HttpsPort -Action Allow -Profile Private,Domain | Out-Null
+# --- 6. Firewall (kun LAN-profiler) ---
+Write-Host "=== Åbner firewall for port $AppPort ===" -ForegroundColor Cyan
+if (-not (Get-NetFirewallRule -DisplayName "Lønsystem" -ErrorAction SilentlyContinue)) {
+    New-NetFirewallRule -DisplayName "Lønsystem" -Direction Inbound -Protocol TCP `
+        -LocalPort $AppPort -Action Allow -Profile Private,Domain | Out-Null
 }
 
 # --- 7. Strøm: aldrig dvale, gør intet ved låg-lukning ---
@@ -145,55 +125,14 @@ if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) {
     & $NssmExe remove $ServiceName confirm
 }
 
-& $NssmExe install $ServiceName $PythonExe "-m uvicorn main:app --host 127.0.0.1 --port $AppPort"
+& $NssmExe install $ServiceName $PythonExe "-m uvicorn main:app --host 0.0.0.0 --port $AppPort"
 & $NssmExe set $ServiceName AppDirectory $AppDir
 & $NssmExe set $ServiceName AppStdout (Join-Path $logsDir "service-out.log")
 & $NssmExe set $ServiceName AppStderr (Join-Path $logsDir "service-err.log")
 & $NssmExe set $ServiceName Start SERVICE_AUTO_START
 & $NssmExe set $ServiceName AppRestartDelay 5000
 Start-Service -Name $ServiceName
-Write-Host "Tjenesten '$ServiceName' er startet (kun localhost:$AppPort - ikke nået fra netværket)."
-
-# --- 8b. Caddy: TLS-terminerende reverse proxy foran uvicorn ---
-# Bruger Caddys indbyggede "tls internal", som selv genererer og styrer et
-# lokalt CA-certifikat - ingen manuel certifikatgenerering nødvendig. Browsere
-# viser en advarsel ved første besøg, indtil dette CA-certifikat er installeret
-# som betroet på hver kontor-pc (kør `caddy trust` PÅ SERVEREN for at stole på
-# den her, eller distribuér roplaceringen af CA-certifikatet, se README).
-Write-Host "=== Opsætter Caddy (TLS reverse proxy) ===" -ForegroundColor Cyan
-$CaddyExe = Join-Path $InstallRoot "caddy.exe"
-Copy-Item $CaddyExeSource $CaddyExe -Force
-
-$caddyDataDir = Join-Path $InstallRoot "caddy-data"
-New-Item -ItemType Directory -Force -Path $caddyDataDir | Out-Null
-
-$caddyfilePath = Join-Path $InstallRoot "Caddyfile"
-@"
-{
-	admin off
-}
-
-https://$($StaticIP):$($HttpsPort) {
-	tls internal
-	reverse_proxy 127.0.0.1:$AppPort
-}
-"@ | Set-Content -Path $caddyfilePath -Encoding utf8
-
-if (Get-Service -Name $CaddyServiceName -ErrorAction SilentlyContinue) {
-    Write-Host "Caddy-tjenesten findes allerede - stopper og fjerner den først."
-    Stop-Service -Name $CaddyServiceName -ErrorAction SilentlyContinue
-    & $NssmExe remove $CaddyServiceName confirm
-}
-
-& $NssmExe install $CaddyServiceName $CaddyExe "run --config `"$caddyfilePath`" --adapter caddyfile"
-& $NssmExe set $CaddyServiceName AppDirectory $InstallRoot
-& $NssmExe set $CaddyServiceName AppEnvironmentExtra "XDG_DATA_HOME=$caddyDataDir"
-& $NssmExe set $CaddyServiceName AppStdout (Join-Path $logsDir "caddy-out.log")
-& $NssmExe set $CaddyServiceName AppStderr (Join-Path $logsDir "caddy-err.log")
-& $NssmExe set $CaddyServiceName Start SERVICE_AUTO_START
-& $NssmExe set $CaddyServiceName AppRestartDelay 5000
-Start-Service -Name $CaddyServiceName
-Write-Host "Tjenesten '$CaddyServiceName' er startet - appen nås nu KUN via https://${StaticIP}:${HttpsPort}"
+Write-Host "Tjenesten '$ServiceName' er startet."
 
 # --- 9. Bart deploy-repo + netværksdeling (KUN deploy.git, ALDRIG hele InstallRoot) ---
 Write-Host "=== Opretter delt deploy-repo ===" -ForegroundColor Cyan
@@ -237,10 +176,5 @@ if ($BackupCloudDir -eq "SÆT-BACKUP-STI-HER") {
 
 Write-Host ""
 Write-Host "=== Provisionering færdig ===" -ForegroundColor Green
-Write-Host "Test lokalt:        https://localhost:$HttpsPort"
-Write-Host "Test fra netværket: https://${StaticIP}:${HttpsPort}"
-Write-Host ""
-Write-Host "Browseren viser en certifikat-advarsel, indtil Caddys interne CA er" -ForegroundColor Yellow
-Write-Host "installeret som betroet. Kør 'caddy trust' i en admin-prompt PÅ SERVEREN" -ForegroundColor Yellow
-Write-Host "for at stole på den her, eller se deploy/README.md for at distribuere" -ForegroundColor Yellow
-Write-Host "CA-certifikatet til kontor-pc'erne, så advarslen ikke vises der." -ForegroundColor Yellow
+Write-Host "Test lokalt:        http://localhost:$AppPort"
+Write-Host "Test fra netværket: http://${StaticIP}:${AppPort}"

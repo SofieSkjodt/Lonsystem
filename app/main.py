@@ -27,11 +27,6 @@ load_dotenv(BASE_DIR / ".env")
 SESSION_SECRET = os.getenv("SESSION_SECRET", "")
 ENTRA_TENANT_ID = os.getenv("ENTRA_TENANT_ID", "")
 ENTRA_CLIENT_ID = os.getenv("ENTRA_CLIENT_ID", "")
-# Skal kun være "true" i produktion, når en TLS-terminerende reverse proxy
-# (Caddy, se deploy/provision-server.ps1) kører foran uvicorn – ellers sender
-# browseren aldrig cookien tilbage. Lokal udvikling kører typisk uden TLS,
-# derfor falder den tilbage til False.
-HTTPS_ONLY = os.getenv("HTTPS_ONLY", "false").lower() == "true"
 if not SESSION_SECRET:
     raise RuntimeError(
         "SESSION_SECRET er ikke sat i .env – tilføj en stærk tilfældig nøgle "
@@ -86,7 +81,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Lønsystem", lifespan=lifespan)
 
 app.add_middleware(_SecurityHeaders)
-app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400, same_site="lax", https_only=HTTPS_ONLY)
+app.add_middleware(SessionMiddleware, secret_key=SESSION_SECRET, max_age=86400, same_site="lax", https_only=False)
 
 app.mount("/static", StaticFiles(directory=BASE_DIR / "static"), name="static")
 templates = Jinja2Templates(directory=BASE_DIR / "templates")

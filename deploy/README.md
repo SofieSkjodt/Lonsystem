@@ -11,31 +11,22 @@ på en dedikeret server-laptop, og for løbende at opdatere den.
 2. Kopiér den eksisterende database (`app/database/lonsystem.db`) og
    Excel-satsfilerne fra den gamle maskine over i den kopierede mappe,
    hvis de ikke allerede er en del af kopien (databasen er ikke i git).
-3. Hent Caddy (TLS-reverse proxy foran uvicorn) fra
-   https://caddyserver.com/download (vælg "windows/amd64", ingen ekstra
-   moduler), og læg den umodificerede `caddy.exe` i `deploy/tools/caddy.exe`
-   FØR provisionering køres - den er ikke bundlet i repoet.
-4. Find ledig statisk IP, gateway, DNS og netværkskort-navn
+3. Find ledig statisk IP, gateway, DNS og netværkskort-navn
    (`Get-NetAdapter` viser navnet) på kontorets netværk.
-5. Beslut hvilken cloud-mappe (fx en dedikeret OneDrive/SharePoint-mappe)
+4. Beslut hvilken cloud-mappe (fx en dedikeret OneDrive/SharePoint-mappe)
    backup-zips skal ende i, og hvilken Windows-konto der skal have
    lov at pushe opdateringer til serveren.
-6. Åbn `provision-server.ps1` og udfyld konfigurationsblokken øverst
+5. Åbn `provision-server.ps1` og udfyld konfigurationsblokken øverst
    (`$StaticIP`, `$Gateway`, `$DnsServer`, `$InterfaceAlias`,
    `$BackupCloudDir`, `$DeployShareUser`).
-7. Højreklik `provision-server.ps1` → "Kør med PowerShell som administrator".
-8. Verificér:
-   - `Get-Service LonsystemService` og `Get-Service LonsystemCaddy` viser
-     begge `Running`
-   - `https://localhost` svarer på selve laptoppen (browseren viser en
-     certifikat-advarsel, indtil Caddys interne CA er betroet - se
-     "Driftsopmærksomhed" nedenfor)
-   - `https://<StaticIP>` svarer fra en ANDEN pc på kontornetværket
-   - `http://<StaticIP>:8000` svarer IKKE fra en anden pc (uvicorn er nu
-     kun bundet til localhost - appen kan kun nås via Caddy/HTTPS)
-9. Kør den fulde verifikationstjekliste (se nedenfor), før serveren tages i
+6. Højreklik `provision-server.ps1` → "Kør med PowerShell som administrator".
+7. Verificér:
+   - `Get-Service LonsystemService` viser `Running`
+   - `http://localhost:8000` svarer på selve laptoppen
+   - `http://<StaticIP>:8000` svarer fra en ANDEN pc på kontornetværket
+8. Kør den fulde verifikationstjekliste (se nedenfor), før serveren tages i
    permanent brug.
-10. På udviklingsmaskinen: tilføj serveren som git-remote (kør én gang):
+9. På udviklingsmaskinen: tilføj serveren som git-remote (kør én gang):
 
    ```powershell
    git remote add server \\<laptoppens-navn-eller-ip>\lonsystem-deploy
@@ -88,20 +79,6 @@ C:\Lønsystem\deploy\rollback.ps1 -CommitOrTag <forrige-commit-hash>
 
 ## Driftsopmærksomhed
 
-- **Certifikat-advarsel i browseren.** Caddy genererer selv et lokalt
-  CA-certifikat ("tls internal") - der er ikke brugt et offentligt betroet
-  certifikat, da serveren kun er tilgængelig på kontornetværket. Kør
-  `& "C:\Lønsystem\caddy.exe" trust` i en admin-PowerShell PÅ SERVEREN for at
-  stole på certifikatet der, eller eksportér CA-certifikatet fra
-  `caddy-data\caddy\pki\authorities\local\root.crt` og distribuér det til
-  hver kontor-pc's rodcertifikat-lager (fx via gruppepolitik), hvis
-  advarslen skal væk for alle. Indtil da virker siden fint, browseren viser
-  bare en "usikker forbindelse"-advarsel, man skal klikke forbi.
-- **Skift til Caddy på en EKSISTERENDE server:** kør `provision-server.ps1`
-  igen - den opdaterer firewall-reglen og genopretter `LonsystemService`
-  til at binde til localhost. Tilføj `HTTPS_ONLY=true` i `app/.env` manuelt
-  bagefter (scriptet rører ikke en eksisterende `.env`), ellers virker login
-  ikke længere, da cookien forventer HTTPS.
 - **OneDrive-backup kræver en logget-ind bruger.** Backup-opgaven kører som
   SYSTEM og skriver filer til `$BackupCloudDir`, men selve OneDrive-
   synkroniseringen kræver at OneDrive-klienten kører under en logget-ind
