@@ -302,8 +302,9 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
 
     try:
         hourly_rate = load_agreement_types_from_db(db).get(emp.agreement_type, Decimal("0"))
-    except Exception:
-        hourly_rate = Decimal("0")
+    except Exception as e:
+        _logging.error(f"Timeløn kunne ikke indlæses for {emp.first_name} {emp.last_name} (id={emp.id}): {e}")
+        raise HTTPException(500, f"Timeløn kunne ikke indlæses for {emp.first_name} {emp.last_name} – kontakt administrator")
     supplement = get_active_supplement_for_period(db, emp.id, start, end)
     if supplement:
         hourly_rate += supplement.value

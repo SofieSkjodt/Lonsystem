@@ -164,3 +164,20 @@ def test_delete_supplement_allowed_when_not_referenced(db):
     delete_supplement(supp.id, current_user=_dummy_user(), db=db)
 
     assert db.query(MasterSupplementRate).filter(MasterSupplementRate.id == supp.id).first() is None
+
+
+import routers.payroll_router as payroll_router
+
+
+def test_calculate_employee_raises_when_rate_lookup_fails(db, employee, monkeypatch):
+    """Hvis timeløns-opslaget fejler, skal det give en synlig 500-fejl —
+    ikke stille beregne 0 kr. i løn for medarbejderen (se payroll_router.py)."""
+    def _boom(_db):
+        raise RuntimeError("databasen er midlertidigt utilgængelig")
+
+    monkeypatch.setattr(payroll_router, "load_agreement_types_from_db", _boom)
+
+    with pytest.raises(HTTPException) as exc_info:
+        payroll_router._calculate_employee(employee, date(2026, 1, 1), date(2026, 1, 31), db)
+
+    assert exc_info.value.status_code == 500
