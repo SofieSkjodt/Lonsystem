@@ -3,7 +3,6 @@ Lønafregning:
 - /api/payroll-settlement/preview           – JSON til Lønafregning-siden (periodetotaler
                                               + pr. medarbejder headline + 14-dages tabel)
 - /api/payroll-settlement/downloads-folder  – forslag til gem-mappe (samme mønster som Lønkørsel)
-- /api/payroll-settlement/browse-folder     – native mappevælger
 - /api/payroll-settlement/export-csv        – CSV med Dato/Lønnummer/timer/kr/vognnummer pr.
                                               dag pr. medarbejder; kræver låst periode (admin altid)
 """
@@ -199,22 +198,6 @@ def _fmt_kr_da(v: float) -> str:
 def get_downloads_folder(current_user: AppUser = Depends(_export_access)):
     """Returnerer brugerens Downloads-mappe som forslag til gem-placering."""
     return {"path": str(Path.home() / "Downloads")}
-
-
-@router.get("/browse-folder")
-def browse_folder(initial: str = "", current_user: AppUser = Depends(_export_access)):
-    """Åbner en native Windows-mappevælger og returnerer den valgte sti."""
-    import tkinter as tk
-    from tkinter import filedialog
-    root = tk.Tk()
-    root.withdraw()
-    root.wm_attributes("-topmost", True)
-    start = initial if initial else str(Path.home() / "Downloads")
-    chosen = filedialog.askdirectory(initialdir=start, title="Vælg mappe til CSV-fil")
-    root.destroy()
-    if not chosen:
-        return {"path": None}
-    return {"path": str(Path(chosen))}
 
 
 class ExportSettlementCsvRequest(BaseModel):

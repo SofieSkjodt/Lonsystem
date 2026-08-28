@@ -26,40 +26,6 @@ DDD_INPUT_DIR = Path(__file__).resolve().parent.parent / "ddd_input"
 _ddd_access = require_permission("import_ddd")
 
 
-@router.get("/browse-ddd-folder")
-def browse_ddd_folder(initial: str = "",
-                      current_user: AppUser = Depends(_ddd_access)):
-    """Åbner native mappevælger til valg af DDD-mappe."""
-    import tkinter as tk
-    from tkinter import filedialog
-    root = tk.Tk()
-    root.withdraw()
-    root.wm_attributes("-topmost", True)
-    start = initial if initial else str(Path.home() / "Downloads")
-    chosen = filedialog.askdirectory(initialdir=start, title="Vælg mappe med .ddd-filer")
-    root.destroy()
-    return {"path": str(Path(chosen)) if chosen else None}
-
-
-@router.get("/browse-ddd-files")
-def browse_ddd_files(initial: str = "",
-                     current_user: AppUser = Depends(_ddd_access)):
-    """Åbner native filvælger til valg af en eller flere .ddd-filer."""
-    import tkinter as tk
-    from tkinter import filedialog
-    root = tk.Tk()
-    root.withdraw()
-    root.wm_attributes("-topmost", True)
-    start = initial if initial else str(Path.home() / "Downloads")
-    chosen = filedialog.askopenfilenames(
-        initialdir=start,
-        title="Vælg .ddd-filer",
-        filetypes=[("DDD-filer", "*.ddd"), ("Alle filer", "*.*")],
-    )
-    root.destroy()
-    return {"paths": list(chosen)}
-
-
 class ImportFromRequest(BaseModel):
     source_folder: Optional[str] = None
     source_files: Optional[List[str]] = None

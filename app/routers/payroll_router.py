@@ -1211,23 +1211,6 @@ def get_downloads_folder(current_user: AppUser = Depends(_payroll_access)):
     return {"path": str(folder)}
 
 
-@router.get("/browse-folder")
-def browse_folder(initial: str = "",
-                  current_user: AppUser = Depends(_payroll_access)):
-    """Åbner en native Windows-mappevælger og returnerer den valgte sti."""
-    import tkinter as tk
-    from tkinter import filedialog
-    root = tk.Tk()
-    root.withdraw()
-    root.wm_attributes("-topmost", True)
-    start = initial if initial else str(Path.home() / "Downloads")
-    chosen = filedialog.askdirectory(initialdir=start, title="Vælg mappe til PDF-filer")
-    root.destroy()
-    if not chosen:
-        return {"path": None}
-    return {"path": str(Path(chosen))}
-
-
 @router.post("/pdf-timesedler")
 def pdf_timesedler(body: PdfRequest,
                    current_user: AppUser = Depends(_payroll_access),

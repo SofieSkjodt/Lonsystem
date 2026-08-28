@@ -3026,20 +3026,12 @@ function _showImportResult(result) {
 }
 
 async function importDddPickFiles() {
-  const btn = document.getElementById("btn-import-files");
-  btn.disabled = true;
-  btn.textContent = "Venter...";
-  let paths;
-  try {
-    const res = await GET("/api/browse-ddd-files");
-    if (!res.paths?.length) { return; }
-    paths = res.paths;
-  } catch (e) {
-    toast("Kunne ikke åbne filvælger", "error"); return;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = "&#128229; Vælg filer";
-  }
+  const last = localStorage.getItem("ddd_import_files") || "";
+  const input = prompt("Angiv sti(er) til .ddd-fil(er) på serveren, adskilt af komma:", last);
+  if (!input) return;
+  const paths = input.split(",").map(p => p.trim()).filter(Boolean);
+  if (!paths.length) return;
+  localStorage.setItem("ddd_import_files", input);
 
   _setImportBtnsDisabled(true);
   document.getElementById("import-result").textContent = `Importerer ${paths.length} fil(er)...`;
@@ -3054,20 +3046,10 @@ async function importDddPickFiles() {
 }
 
 async function importDddPickFolder() {
-  const btn = document.getElementById("btn-import-folder");
-  btn.disabled = true;
-  btn.textContent = "Venter...";
-  let folder;
-  try {
-    const res = await GET("/api/browse-ddd-folder");
-    if (!res.path) { return; }
-    folder = res.path;
-  } catch (e) {
-    toast("Kunne ikke åbne mappevælger", "error"); return;
-  } finally {
-    btn.disabled = false;
-    btn.innerHTML = "&#128193; Vælg mappe";
-  }
+  const last = localStorage.getItem("ddd_import_folder") || "";
+  const folder = prompt("Angiv sti til mappen med .ddd-filer på serveren:", last);
+  if (!folder) return;
+  localStorage.setItem("ddd_import_folder", folder);
 
   _setImportBtnsDisabled(true);
   document.getElementById("import-result").textContent = `Importerer fra ${folder}...`;
@@ -3246,18 +3228,6 @@ async function proevekoersel(employeeId = null) {
   openModal("modal-proevekoersel");
 }
 
-async function browseProeveFolder() {
-  const btn = document.getElementById("proeve-browse-btn");
-  btn.disabled = true;
-  btn.textContent = "Venter...";
-  try {
-    const current = document.getElementById("proeve-folder").value.trim();
-    const res = await GET(`/api/payroll/browse-folder?initial=${encodeURIComponent(current)}`);
-    if (res.path) document.getElementById("proeve-folder").value = res.path;
-  } catch (e) { toast("Kunne ikke åbne mappevælger", "error"); }
-  finally { btn.disabled = false; btn.textContent = "Gennemse"; }
-}
-
 async function confirmProevekoersel() {
   const folder = document.getElementById("proeve-folder").value.trim();
   if (!folder) { toast("Angiv en mappe at gemme filen i", "error"); return; }
@@ -3295,17 +3265,6 @@ async function exportCsv() {
   } catch { /* lad feltet stå tomt */ }
   document.getElementById("csv-result").textContent = "";
   openModal("modal-csv");
-}
-
-async function browseCsvFolder() {
-  const btn = document.getElementById("csv-browse-btn");
-  btn.disabled = true; btn.textContent = "Venter...";
-  try {
-    const current = document.getElementById("csv-folder").value.trim();
-    const res = await GET(`/api/payroll/browse-folder?initial=${encodeURIComponent(current)}`);
-    if (res.path) document.getElementById("csv-folder").value = res.path;
-  } catch { toast("Kunne ikke åbne mappevælger", "error"); }
-  finally { btn.disabled = false; btn.textContent = "Gennemse"; }
 }
 
 async function confirmExportCsv() {
@@ -3465,17 +3424,6 @@ async function exportSettlementCsv() {
     document.getElementById("settlement-csv-folder").value = res.path;
   } catch { /* lad feltet stå tomt */ }
   openModal("modal-settlement-csv");
-}
-
-async function browseSettlementCsvFolder() {
-  const btn = document.getElementById("settlement-csv-browse-btn");
-  btn.disabled = true; btn.textContent = "Venter...";
-  try {
-    const current = document.getElementById("settlement-csv-folder").value.trim();
-    const res = await GET(`/api/payroll-settlement/browse-folder?initial=${encodeURIComponent(current)}`);
-    if (res.path) document.getElementById("settlement-csv-folder").value = res.path;
-  } catch { toast("Kunne ikke åbne mappevælger", "error"); }
-  finally { btn.disabled = false; btn.textContent = "Gennemse"; }
 }
 
 async function confirmExportSettlementCsv() {
@@ -5151,18 +5099,6 @@ async function openPdfModal() {
       .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
   document.getElementById("pdf-result").textContent = "";
   openModal("modal-pdf");
-}
-
-async function browsePdfFolder() {
-  const btn = document.getElementById("pdf-browse-btn");
-  btn.disabled = true;
-  btn.textContent = "Venter...";
-  try {
-    const current = document.getElementById("pdf-folder").value.trim();
-    const res = await GET(`/api/payroll/browse-folder?initial=${encodeURIComponent(current)}`);
-    if (res.path) document.getElementById("pdf-folder").value = res.path;
-  } catch (e) { toast("Kunne ikke åbne mappevælger", "error"); }
-  finally { btn.disabled = false; btn.textContent = "Gennemse"; }
 }
 
 async function generatePdfs() {
