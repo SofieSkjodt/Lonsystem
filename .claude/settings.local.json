@@ -606,7 +606,8 @@
       "Bash(gh api *)",
       "WebFetch(domain:api.github.com)",
       "Bash(sed -i 's/- \\\\[ \\\\]/- [x]/g' docs/superpowers/plans/2026-08-27-server-deployment.md)",
-      "Bash(python -m pytest test_api.py -q)"
+      "Bash(python -m pytest test_api.py -q)",
+      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem/app\" && grep -E \"^SMTP_\" .env 2>&1 | sed -E 's/\\(SMTP_PASSWORD=\\).*/\\\\1[REDACTED]/')"
     ]
   }
 }
