@@ -607,7 +607,12 @@
       "WebFetch(domain:api.github.com)",
       "Bash(sed -i 's/- \\\\[ \\\\]/- [x]/g' docs/superpowers/plans/2026-08-27-server-deployment.md)",
       "Bash(python -m pytest test_api.py -q)",
-      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem/app\" && grep -E \"^SMTP_\" .env 2>&1 | sed -E 's/\\(SMTP_PASSWORD=\\).*/\\\\1[REDACTED]/')"
+      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem/app\" && grep -E \"^SMTP_\" .env 2>&1 | sed -E 's/\\(SMTP_PASSWORD=\\).*/\\\\1[REDACTED]/')",
+      "Bash(cd \"/c/Users/SofieThraneSkjødt/OneDrive - Poul Schou A S/Skrivebord/Lønsystem\" *)",
+      "Bash(rm -rf .claude/worktrees/modest-liskov-fa84d6 .claude/worktrees/upbeat-edison-7263ad .claude/worktrees/zealous-nash-2df86e)",
+      "Bash(rm -rf .git/worktrees/modest-liskov-fa84d6 .git/worktrees/upbeat-edison-7263ad .git/worktrees/zealous-nash-2df86e)",
+      "Bash(rm -f .claude/worktrees/upbeat-edison-7263ad/app/.env)",
+      "Bash(rm -f .claude/worktrees/zealous-nash-2df86e/app/.env)"
     ]
   }
 }

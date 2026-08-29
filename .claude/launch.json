@@ -2,11 +2,18 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "lonsystem",
+      "name": "Lønsystem (Udvikling)",
       "runtimeExecutable": "cmd",
-      "runtimeArgs": ["/c", "cd app && python -m uvicorn main:app --host 0.0.0.0 --port %PORT%"],
+      "runtimeArgs": ["/c", "cd app && python -m uvicorn main:app --host 0.0.0.0 --port %PORT% --reload"],
       "port": 8000,
       "autoPort": true
+    },
+    {
+      "name": "Lønsystem (Produktion)",
+      "runtimeExecutable": "cmd",
+      "runtimeArgs": ["/c", "cd app && python -m uvicorn main:app --host 0.0.0.0 --port %PORT%"],
+      "port": 8001,
+      "autoPort": false
     }
   ]
 }
