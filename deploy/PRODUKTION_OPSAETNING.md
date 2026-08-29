@@ -67,17 +67,17 @@ Udfyld:
 ### 2.6 Testkør manuelt (før vi gør det til en service)
 ```
 cd C:\Users\LoenPC\Lonsystem\app
-python -m uvicorn main:app --host 0.0.0.0 --port 8001
+python -m uvicorn main:app --host 0.0.0.0 --port 8000
 ```
-Åbn en browser på samme maskine: `http://localhost:8001`. Virker det, luk med Ctrl+C.
+Åbn en browser på samme maskine: `http://localhost:8000`. Virker det, luk med Ctrl+C.
 
 ### 2.7 Åbn porten i firewallen (så kolleger kan tilgå den fra deres egne PC'er)
 Kør i en PowerShell **som administrator**:
 ```
-New-NetFirewallRule -DisplayName "Lonsystem" -Direction Inbound -Protocol TCP -LocalPort 8001 -Action Allow
+New-NetFirewallRule -DisplayName "Lonsystem" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow
 ```
 Find maskinens lokale IP-adresse med `ipconfig` (feltet "IPv4-adresse"). Kolleger
-tilgår herefter systemet på `http://<den-ip-adresse>:8001`. Overvej at bede jeres
+tilgår herefter systemet på `http://<den-ip-adresse>:8000`. Overvej at bede jeres
 netværksansvarlige om at reservere en fast IP til denne maskine i routeren, så
 adressen ikke ændrer sig efter en genstart.
 
@@ -97,7 +97,7 @@ at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
    Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten)
    og "LonsystemAutoDeploy" (tjekker GitHub hvert 5. minut, se Del 4). Begge startes
    med det samme.
-3. Tjek at den kører: `http://<ip-adresse>:8001` i en browser fra en anden PC.
+3. Tjek at den kører: `http://<ip-adresse>:8000` i en browser fra en anden PC.
 4. Nyttige kommandoer fremover:
    ```
    Get-ScheduledTask -TaskName Lonsystem | Get-ScheduledTaskInfo   # status

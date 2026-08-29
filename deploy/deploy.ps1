@@ -33,4 +33,4 @@ py -m pip install -r app\requirements.txt
 Write-Host "== 5/5: Genstarter opgaven =="
 Start-ScheduledTask -TaskName $TaskName
 
-Write-Host "Deploy faerdig. Tjek http://localhost:8001 om lidt."
+Write-Host "Deploy faerdig. Tjek http://localhost:8000 om lidt."
