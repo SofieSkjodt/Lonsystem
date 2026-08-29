@@ -112,5 +112,13 @@ def run_backup():
     log(f"=== Backup færdig. {remaining} backup(s) i arkivet. ===")
 
 
+def main():
+    try:
+        run_backup()
+    except Exception:
+        logging.exception("Backup fejlede med en uventet fejl")
+        raise SystemExit(1)
+
+
 if __name__ == "__main__":
-    run_backup()
+    main()
