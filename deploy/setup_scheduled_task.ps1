@@ -1,5 +1,5 @@
-# Lønsystem – opretter Task Scheduler-opgaven der holder produktionsserveren kørende.
-# Køres ÉN GANG på produktionsmaskinen, i en PowerShell åbnet "Som administrator".
+# Lonsystem - opretter Task Scheduler-opgaven der holder produktionsserveren koerende.
+# Koeres EN GANG paa produktionsmaskinen, i en PowerShell aabnet "Som administrator".
 
 $TaskName = "Lonsystem"
 $BatchPath = "C:\Lonsystem\deploy\run_production.bat"
@@ -8,8 +8,8 @@ $Action = New-ScheduledTaskAction -Execute $BatchPath -WorkingDirectory "C:\Lons
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
-# ExecutionTimeLimit = 0 er kritisk: uden den slår Task Scheduler processen ihjel
-# efter 3 dage (standard-grænsen for alle opgaver), hvilket ville lukke serveren ned
+# ExecutionTimeLimit = 0 er kritisk: uden den slaar Task Scheduler processen ihjel
+# efter 3 dage (standard-graensen for alle opgaver), hvilket ville lukke serveren ned
 # midt om natten uden varsel.
 $Settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit ([TimeSpan]::Zero) `
@@ -19,7 +19,7 @@ $Settings = New-ScheduledTaskSettingsSet `
 
 Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger `
     -Principal $Principal -Settings $Settings `
-    -Description "Lønsystem produktionsserver – starter automatisk ved boot" -Force
+    -Description "Lonsystem produktionsserver - starter automatisk ved boot" -Force
 
 Write-Host "Opgaven '$TaskName' er oprettet. Starter den nu..."
 Start-ScheduledTask -TaskName $TaskName
