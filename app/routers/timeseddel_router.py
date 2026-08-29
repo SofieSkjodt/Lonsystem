@@ -1,4 +1,5 @@
 import io
+import logging
 from datetime import date, datetime
 from html import escape as _esc
 
@@ -374,7 +375,8 @@ def send_timeseddel(
             pdf_bytes     = pdf_bytes,
         )
     except Exception as e:
-        raise HTTPException(500, f"E-mail kunne ikke sendes: {e}")
+        logging.error(f"Kunne ikke sende timeseddel til {emp.name} (id={emp.id}): {e}")
+        raise HTTPException(500, "Mailen kunne ikke sendes – kontakt administrator")
 
     return {"ok": True, "sent_to": emp.email}
 
