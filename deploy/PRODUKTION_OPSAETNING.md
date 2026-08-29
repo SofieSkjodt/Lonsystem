@@ -7,11 +7,11 @@ Alt køres i almindelig PowerShell/cmd — ingen venv, ligesom udviklingsmaskine
 ## Del 1 – Én gang, på DENNE (bærbare) maskine
 
 1. Opret en konto på github.com hvis du ikke har en, og opret et **privat** repo,
-   fx `lonsystem`. Kopiér repoets URL (fx `https://github.com/<bruger>/lonsystem.git`).
+   fx `lonsystem`. Kopiér repoets URL (fx `https://github.com/SofieSkjodt/Lonsystem.git`).
 2. Kør i denne mappe:
    ```
-   git remote add origin https://github.com/<bruger>/lonsystem.git
-   git push -u origin master
+   git remote add origin https://github.com/SofieSkjodt/Lonsystem.git
+   git push -u origin main
    ```
    Nu ligger koden centralt på GitHub. `.env` og databasen bliver IKKE sendt med
    (de står i `.gitignore`) — det er meningen.
@@ -37,7 +37,7 @@ Alt køres i almindelig PowerShell/cmd — ingen venv, ligesom udviklingsmaskine
 ### 2.3 Hent koden
 ```
 cd C:\
-git clone https://github.com/<bruger>/lonsystem.git Lonsystem
+git clone https://github.com/SofieSkjodt/Lonsystem.git Lonsystem
 cd C:\Lonsystem
 ```
 Placér den her — **ikke** i en OneDrive-mappe (se forklaring i tidligere svar:
@@ -80,28 +80,31 @@ tilgår herefter systemet på `http://<den-ip-adresse>:8001`. Overvej at bede je
 netværksansvarlige om at reservere en fast IP til denne maskine i routeren, så
 adressen ikke ændrer sig efter en genstart.
 
-## Del 3 – Gør det til en rigtig service (kører uden åbent vindue, starter ved boot)
+## Del 3 – Gør det til en vedvarende opgave (kører uden åbent vindue, starter ved boot)
 
-1. Hent NSSM fra nssm.cc (zip, ingen installer — pak ud fx til `C:\nssm`).
-2. Åbn PowerShell **som administrator**:
+Helt native Windows — ingen tredjeparts-software. Et lille batch-script
+([run_production.bat](run_production.bat)) starter serveren og genstarter den
+automatisk hvis processen nogensinde stopper; en Task Scheduler-opgave sørger for
+at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
+
+1. Åbn PowerShell **som administrator** i `C:\Lonsystem`.
+2. Kør opsætnings-scriptet én gang:
    ```
-   cd C:\nssm\win64
-   .\nssm.exe install Lonsystem
+   powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
    ```
-   En dialog åbner:
-   - **Path:** stien til `python.exe` (find den med `where python` i en almindelig
-     PowerShell, fx `C:\Users\<bruger>\AppData\Local\Programs\Python\Python313\python.exe`)
-   - **Startup directory:** `C:\Lonsystem\app`
-   - **Arguments:** `-m uvicorn main:app --host 0.0.0.0 --port 8001`
-   - Klik "Install service".
-3. Start servicen:
+   Det opretter opgaven "Lonsystem", fjerner Windows' normale 3-dages køretidsgrænse
+   for opgaver (ellers ville serveren blive slået ihjel efter 3 dage), og starter den.
+3. Tjek at den kører: `http://<ip-adresse>:8001` i en browser fra en anden PC.
+4. Nyttige kommandoer fremover:
    ```
-   Start-Service Lonsystem
+   Get-ScheduledTask -TaskName Lonsystem | Get-ScheduledTaskInfo   # status
+   Stop-ScheduledTask -TaskName Lonsystem                           # stop
+   Start-ScheduledTask -TaskName Lonsystem                          # (gen)start
    ```
-4. Tjek at den kører: `http://<ip-adresse>:8001` i en browser fra en anden PC.
-5. Servicen starter nu automatisk ved genstart af maskinen. Log findes via
-   `Get-Service Lonsystem` / Windows Logbog, eller tilføj `AppStdout`/`AppStderr`
-   i NSSM (`nssm edit Lonsystem`) for en logfil.
+   Serveren starter nu automatisk ved genstart af maskinen, og genstarter selv ved
+   crash (batch-scriptets egen løkke). Output fra hver kørsel kan ses ved at åbne
+   Aktivitetsstyring, eller ved midlertidigt at køre `run_production.bat` direkte
+   i et vindue for at se live output.
 
 ## Del 4 – (Når du er klar) Direkte deploy fra den bærbare
 
@@ -118,8 +121,8 @@ adressen ikke ændrer sig efter en genstart.
    ```
    ssh <bruger>@<produktions-ip> "cd C:\Lonsystem; powershell -File deploy\deploy.ps1"
    ```
-   Se [deploy.ps1](deploy.ps1) — ret `$ServiceName` heri til `Lonsystem` (matcher
-   NSSM-servicenavnet ovenfor).
+   [deploy.ps1](deploy.ps1) bruger allerede opgavenavnet `Lonsystem` (matcher
+   Task Scheduler-opgaven ovenfor), så det virker uden ændringer.
 
 ## Opsummeret arbejdsgang fremover
 1. Udvikl og test på den bærbare (`--reload`, port 8000).
