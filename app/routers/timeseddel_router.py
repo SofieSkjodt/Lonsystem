@@ -428,7 +428,8 @@ def send_all_timesedler(
             )
             sent.append(emp.name)
         except Exception as e:
-            failed.append({"name": emp.name, "error": str(e)})
+            logging.error(f"Kunne ikke sende timeseddel til {emp.name} (id={emp.id}): {e}")
+            failed.append({"name": emp.name, "error": "Kunne ikke sendes"})
 
     return {
         "sent": sent,
