@@ -8,9 +8,26 @@ __pycache__/
 *.db-wal
 .env
 
-# Debug/scratch scripts and ad-hoc exports (not part of the app)
+# Debug/scratch scripts og ad-hoc eksporter (ikke en del af selve appen)
 app/_debug_recalc.py
 app/compare_tacho.py
 app/current_csv_export.csv
-/danloen_2026-06-01_2026-06-14.csv
-backup/arkiv/lonsystem_2026-08-21_09-00.zip
+uvicorn.log
+uvicorn.err
+
+# Rigtige person-/lønoplysninger – må ALDRIG spores i git (se deploy/PRODUKTION_OPSAETNING.md)
+/ddd-filer/
+app/ddd_input/*
+!app/ddd_input/.gitkeep
+app/output/*
+!app/output/.gitkeep
+backup/arkiv/*
+!backup/arkiv/.gitkeep
+/danloen_*.csv
+/danloen_*.xlsx
+/Overtidsopgoerelse_*.pdf
+
+# Interne dokumenter (Word/PowerPoint/PDF/præsentationer) – hører til her, ikke i git
+/interne-dokumenter/
+/præsentation/
+docs/unpacked_*/
