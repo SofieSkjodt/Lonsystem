@@ -36,16 +36,17 @@ Alt køres i almindelig PowerShell/cmd — ingen venv, ligesom udviklingsmaskine
 
 ### 2.3 Hent koden
 ```
-cd C:\
+cd C:\Users\LoenPC
 git clone https://github.com/SofieSkjodt/Lonsystem.git Lonsystem
-cd C:\Lonsystem
+cd C:\Users\LoenPC\Lonsystem
 ```
 Placér den her — **ikke** i en OneDrive-mappe (se forklaring i tidligere svar:
-OneDrive-synkronisering af en levende database er risikabelt).
+OneDrive-synkronisering af en levende database er risikabelt). Undgå bevidst danske
+bogstaver (æøå) i selve mappenavnet — det gav en tegnsæt-fejl i PowerShell tidligere.
 
 ### 2.4 Installér Python-pakkerne
 ```
-cd C:\Lonsystem\app
+cd C:\Users\LoenPC\Lonsystem\app
 python -m pip install -r requirements.txt
 ```
 
@@ -65,7 +66,7 @@ Udfyld:
 
 ### 2.6 Testkør manuelt (før vi gør det til en service)
 ```
-cd C:\Lonsystem\app
+cd C:\Users\LoenPC\Lonsystem\app
 python -m uvicorn main:app --host 0.0.0.0 --port 8001
 ```
 Åbn en browser på samme maskine: `http://localhost:8001`. Virker det, luk med Ctrl+C.
@@ -87,7 +88,7 @@ Helt native Windows — ingen tredjeparts-software. Et lille batch-script
 automatisk hvis processen nogensinde stopper; en Task Scheduler-opgave sørger for
 at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
 
-1. Åbn PowerShell **som administrator** i `C:\Lonsystem`.
+1. Åbn PowerShell **som administrator** i `C:\Users\LoenPC\Lonsystem`.
 2. Kør opsætnings-scriptet én gang:
    ```
    powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
@@ -119,7 +120,7 @@ at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
 3. Fra den bærbare kan du nu, når du har testet en ændring og pushet den til
    `main` på GitHub, køre:
    ```
-   ssh <bruger>@<produktions-ip> "cd C:\Lonsystem; powershell -File deploy\deploy.ps1"
+   ssh <bruger>@<produktions-ip> "cd C:\Users\LoenPC\Lonsystem; powershell -File deploy\deploy.ps1"
    ```
    [deploy.ps1](deploy.ps1) bruger allerede opgavenavnet `Lonsystem` (matcher
    Task Scheduler-opgaven ovenfor), så det virker uden ændringer.

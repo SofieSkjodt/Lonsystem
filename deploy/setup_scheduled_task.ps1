@@ -2,9 +2,9 @@
 # Koeres EN GANG paa produktionsmaskinen, i en PowerShell aabnet "Som administrator".
 
 $TaskName = "Lonsystem"
-$BatchPath = "C:\Lonsystem\deploy\run_production.bat"
+$BatchPath = "C:\Users\LoenPC\Lonsystem\deploy\run_production.bat"
 
-$Action = New-ScheduledTaskAction -Execute $BatchPath -WorkingDirectory "C:\Lonsystem\app"
+$Action = New-ScheduledTaskAction -Execute $BatchPath -WorkingDirectory "C:\Users\LoenPC\Lonsystem\app"
 $Trigger = New-ScheduledTaskTrigger -AtStartup
 $Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
 
