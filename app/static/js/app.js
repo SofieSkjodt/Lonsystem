@@ -3090,6 +3090,7 @@ async function loadPayrollPreview() {
 function renderPayrollPreview(data) {
   const container = document.getElementById("payroll-preview-container");
   container.innerHTML = "";
+  state.payrollData = data;
   state.hasUnresolvedPending = !!data.has_unresolved_pending;
   state.periodClosed = data.period_status === "closed";
   document.getElementById("payroll-period-label").textContent =
