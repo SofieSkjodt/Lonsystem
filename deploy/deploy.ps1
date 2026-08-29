@@ -16,7 +16,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
 Write-Host "== 1/5: Tager backup af databasen =="
-python backup\backup.py
+py backup\backup.py
 
 Write-Host "== 2/5: Stopper opgaven (og den koerende server-proces) =="
 try { Stop-ScheduledTask -TaskName $TaskName } catch { Write-Warning "Kunne ikke stoppe opgaven '$TaskName' (er den oprettet endnu?)" }
@@ -28,7 +28,7 @@ git checkout main
 git reset --hard origin/main
 
 Write-Host "== 4/5: Installerer evt. nye Python-afhaengigheder =="
-python -m pip install -r app\requirements.txt
+py -m pip install -r app\requirements.txt
 
 Write-Host "== 5/5: Genstarter opgaven =="
 Start-ScheduledTask -TaskName $TaskName

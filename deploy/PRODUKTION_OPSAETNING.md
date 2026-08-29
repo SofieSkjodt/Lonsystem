@@ -93,8 +93,10 @@ at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
    ```
    powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
    ```
-   Det opretter opgaven "Lonsystem", fjerner Windows' normale 3-dages køretidsgrænse
-   for opgaver (ellers ville serveren blive slået ihjel efter 3 dage), og starter den.
+   Det opretter TO opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
+   Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten)
+   og "LonsystemAutoDeploy" (tjekker GitHub hvert 5. minut, se Del 4). Begge startes
+   med det samme.
 3. Tjek at den kører: `http://<ip-adresse>:8001` i en browser fra en anden PC.
 4. Nyttige kommandoer fremover:
    ```
@@ -107,7 +109,23 @@ at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
    Aktivitetsstyring, eller ved midlertidigt at køre `run_production.bat` direkte
    i et vindue for at se live output.
 
-## Del 4 – (Når du er klar) Direkte deploy fra den bærbare
+## Del 4 – Automatisk deploy ved push til GitHub
+
+Opgaven "LonsystemAutoDeploy" (oprettet i Del 3) kører [auto_deploy_check.ps1](auto_deploy_check.ps1)
+hvert 5. minut: den henter status fra GitHub, og hvis der er nye commits på `main`
+siden sidst, kører den [deploy.ps1](deploy.ps1) automatisk (backup, ny kode, nye
+Python-pakker, genstart af serveren). Er der intet nyt, gør den ingenting.
+
+**Vigtigt:** et `git push` til `main` er fra nu af reelt et deploy til produktion —
+inden for højst 5 minutter. Test derfor altid grundigt lokalt (udviklings-configen,
+`--reload`, port 8000) før du pusher.
+
+Se status/log for seneste kørsel:
+```
+Get-ScheduledTask -TaskName LonsystemAutoDeploy | Get-ScheduledTaskInfo
+```
+
+## Del 5 – (Valgfrit) Øjeblikkeligt deploy fra den bærbare, uden at vente 5 minutter
 
 1. På produktionsmaskinen: Indstillinger → Apps → Valgfrie funktioner → Tilføj en
    funktion → søg "OpenSSH Server" → Installer.

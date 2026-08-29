@@ -7,7 +7,7 @@ cd /d C:\Users\LoenPC\Lonsystem\app
 
 :loop
 echo %date% %time% - Starter Lonsystem-serveren...
-python -m uvicorn main:app --host 0.0.0.0 --port 8001
+py -m uvicorn main:app --host 0.0.0.0 --port 8001
 
 echo %date% %time% - Serveren stoppede. Genstarter om 5 sekunder...
 timeout /t 5 /nobreak >nul
