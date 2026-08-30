@@ -116,6 +116,86 @@ kører `python.exe` direkte — Task Scheduler genstarter den selv op til 999 ga
    at køre `python -m uvicorn main:app --host 0.0.0.0 --port 8000` fra `app`-mappen
    for at se live output i et almindeligt vindue.
 
+## Del 3B – Uden admin-rettigheder: opret de fire opgaver manuelt via GUI'et
+
+Har du ikke lokal admin-adgang (og kan ikke få en kollega til at køre scriptet),
+kan du oprette de samme fire opgaver manuelt via Task Scheduler-GUI'et — de
+kører så under din egen Windows-konto i stedet for SYSTEM, hvilket ikke kræver
+admin. Ulempen: opgaverne kræver at der findes en gemt adgangskode til din
+konto for at kunne køre uden at du er logget ind (Windows spørger om den ved
+oprettelse) — spørg IT om det er acceptabelt hos jer, hvis maskinen skal kunne
+genstarte uden nogen logger ind bagefter.
+
+**Forberedelse — find Pythons fulde sti** (skal bruges i flere opgaver nedenfor):
+```
+py -c "import sys; print(sys.executable)"
+```
+Notér outputtet, fx `C:\Users\LoenPC\AppData\Local\Programs\Python\Python313\python.exe`.
+
+**Sæt backup-mappen** (kræver ikke admin, da den sættes for din egen bruger):
+```
+[Environment]::SetEnvironmentVariable("LONSYSTEM_BACKUP_DIR", "C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter", "User")
+```
+
+**Åbn Task Scheduler:** Start-menuen → søg "Task Scheduler" → åbn den (kræver ikke
+admin at åbne selve programmet). Højreklik "Task Scheduler Library" i venstre side
+→ **"Create Task..."** (ikke "Create Basic Task" — vi skal bruge de ekstra faner).
+
+For hver af de fire opgaver nedenfor: udfyld fanerne som beskrevet, og klik OK.
+Windows beder om din adgangskode, fordi "Run whether user is logged on or not"
+er valgt — indtast den, det er sådan opgaven kan køre uden at du er logget ind.
+
+---
+
+**Opgave 1 — "Lonsystem" (selve serveren)**
+- **General**-fanen: Name: `Lonsystem`. Under "Security options": vælg
+  **"Run whether user is logged on or not"**.
+- **Triggers**-fanen → New → Begin the task: **"At startup"**.
+- **Actions**-fanen → New → Program/script: indsæt Python-stien fra ovenfor.
+  Add arguments: `-m uvicorn main:app --host 0.0.0.0 --port 8000`.
+  Start in: `C:\Users\LoenPC\Lonsystem\app`.
+- **Settings**-fanen: sæt flueben i **"If the task fails, restart every:"** →
+  `1 minute`, "Attempt to restart up to:" → `999` (eller det højeste tilladte tal).
+  **Vigtigt:** fjern fluebenet i **"Stop the task if it runs longer than:"**
+  helt — ellers slår Windows serveren ihjel efter 3 dage.
+
+**Opgave 2 — "LonsystemAutoDeploy" (henter ny kode hvert 5. minut, genstarter ikke)**
+- General: Name: `LonsystemAutoDeploy`. "Run whether user is logged on or not".
+- Triggers → New → Begin the task: **"On a schedule"** → **"Daily"**, starttidspunkt
+  vilkårligt (fx nu). Sæt flueben i **"Repeat task every:"** → vælg/skriv `5 minutes`,
+  og sæt "for a duration of:" til **"Indefinitely"**.
+- Actions → New → Program/script: `powershell.exe`. Add arguments:
+  `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\auto_deploy_check.ps1"`.
+  Start in: `C:\Users\LoenPC\Lonsystem`.
+- Settings: fjern fluebenet i "Stop the task if it runs longer than:" (samme grund).
+
+**Opgave 3 — "LonsystemNightlyRestart" (genstart kl. 23:00)**
+- General: Name: `LonsystemNightlyRestart`. "Run whether user is logged on or not".
+- Triggers → New → "Daily" kl. `23:00`.
+- Actions → New → Program/script: `powershell.exe`. Add arguments:
+  `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\restart_server.ps1"`.
+  Start in: `C:\Users\LoenPC\Lonsystem`.
+
+**Opgave 4 — "LonsystemBackup" (backup 4 gange dagligt)**
+- General: Name: `LonsystemBackup`. "Run whether user is logged on or not".
+- Triggers → opret FIRE separate triggere (New fire gange): "Daily" kl. `00:00`,
+  `06:00`, `12:00` og `18:00`.
+- Actions → New → Program/script: indsæt Python-stien fra ovenfor. Add arguments:
+  `"C:\Users\LoenPC\Lonsystem\backup\backup.py"`.
+  Start in: `C:\Users\LoenPC\Lonsystem\backup`.
+- Settings: sæt "Stop the task if it runs longer than:" til `10 minutes` (denne
+  MÅ gerne have en grænse, i modsætning til de andre — den skal jo være kort).
+
+---
+
+Test hver opgave med det samme via højreklik → **"Run"** i Task Scheduler, og tjek
+resultatet under fanen **"History"** for opgaven (hvis History er slået fra, aktivér
+den via "Enable All Tasks History" i højre side).
+
+Får du senere adgang til admin-rettigheder, kan I skifte til den mere robuste
+SYSTEM-baserede opsætning ved blot at køre `setup_scheduled_task.ps1` som
+administrator — den opdaterer/overskriver disse opgaver med `-Force`.
+
 ## Del 4 – Automatisk hentning af ny kode ved push til GitHub (uden genstart)
 
 Opgaven "LonsystemAutoDeploy" (oprettet i Del 3) kører [auto_deploy_check.ps1](auto_deploy_check.ps1)
