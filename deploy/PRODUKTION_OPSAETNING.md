@@ -147,44 +147,129 @@ er valgt — indtast den, det er sådan opgaven kan køre uden at du er logget i
 
 ---
 
-**Opgave 1 — "Lonsystem" (selve serveren)**
-- **General**-fanen: Name: `Lonsystem`. Under "Security options": vælg
-  **"Run whether user is logged on or not"**.
-- **Triggers**-fanen → New → Begin the task: **"At startup"**.
-- **Actions**-fanen → New → Program/script: indsæt Python-stien fra ovenfor.
-  Add arguments: `-m uvicorn main:app --host 0.0.0.0 --port 8000`.
-  Start in: `C:\Users\LoenPC\Lonsystem\app`.
-- **Settings**-fanen: sæt flueben i **"If the task fails, restart every:"** →
-  `1 minute`, "Attempt to restart up to:" → `999` (eller det højeste tilladte tal).
-  **Vigtigt:** fjern fluebenet i **"Stop the task if it runs longer than:"**
-  helt — ellers slår Windows serveren ihjel efter 3 dage.
+Nedenfor er hver fane beskrevet i fuld detalje for alle fire opgaver. Danske
+menunavne er brugt (dit Windows er dansk); den engelske betegnelse står i
+parentes første gang, hvis dit udseende skulle afvige lidt.
 
-**Opgave 2 — "LonsystemAutoDeploy" (henter ny kode hvert 5. minut, genstarter ikke)**
-- General: Name: `LonsystemAutoDeploy`. "Run whether user is logged on or not".
-- Triggers → New → Begin the task: **"On a schedule"** → **"Daily"**, starttidspunkt
-  vilkårligt (fx nu). Sæt flueben i **"Repeat task every:"** → vælg/skriv `5 minutes`,
-  og sæt "for a duration of:" til **"Indefinitely"**.
-- Actions → New → Program/script: `powershell.exe`. Add arguments:
-  `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\auto_deploy_check.ps1"`.
-  Start in: `C:\Users\LoenPC\Lonsystem`.
-- Settings: fjern fluebenet i "Stop the task if it runs longer than:" (samme grund).
+---
 
-**Opgave 3 — "LonsystemNightlyRestart" (genstart kl. 23:00)**
-- General: Name: `LonsystemNightlyRestart`. "Run whether user is logged on or not".
-- Triggers → New → "Daily" kl. `23:00`.
-- Actions → New → Program/script: `powershell.exe`. Add arguments:
-  `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\restart_server.ps1"`.
-  Start in: `C:\Users\LoenPC\Lonsystem`.
+### Opgave 1 — "Lonsystem" (selve serveren)
 
-**Opgave 4 — "LonsystemBackup" (backup 4 gange dagligt)**
-- General: Name: `LonsystemBackup`. "Run whether user is logged on or not".
-- Triggers → opret FIRE separate triggere (New fire gange): "Daily" kl. `00:00`,
-  `06:00`, `12:00` og `18:00`.
-- Actions → New → Program/script: indsæt Python-stien fra ovenfor. Add arguments:
-  `"C:\Users\LoenPC\Lonsystem\backup\backup.py"`.
-  Start in: `C:\Users\LoenPC\Lonsystem\backup`.
-- Settings: sæt "Stop the task if it runs longer than:" til `10 minutes` (denne
-  MÅ gerne have en grænse, i modsætning til de andre — den skal jo være kort).
+**Generelt (General):**
+- Navn: `Lonsystem`
+- Under "Sikkerhedsindstillinger" (Security options): vælg **"Kør uanset om
+  brugeren er logget på eller ej"** (Run whether user is logged on or not).
+
+**Udløsere (Triggers):** Ny... → Start opgaven: **"Ved opstart"** (At startup).
+Lad resten stå på standard, tryk OK.
+
+**Handlinger (Actions):** Ny... →
+- Handling: "Start et program" (Start a program) — er allerede valgt som standard.
+- Program/script: indsæt den fulde Python-sti fra forberedelsen ovenfor.
+- Tilføj argumenter (valgfrit): `-m uvicorn main:app --host 0.0.0.0 --port 8000`
+- Start i (valgfrit): `C:\Users\LoenPC\Lonsystem\app`
+
+**Betingelser (Conditions):**
+- Under "Strøm" (Power): fjern fluebenet i **"Start kun opgaven, hvis computeren
+  kører på lysnetstrøm"** (Start the task only if the computer is on AC power) —
+  serveren skal køre uanset strømkilde. Fjern også fluebenet i **"Stop, hvis
+  computeren skifter til batteridrift"**, hvis den findes.
+- Lad "Netværk" stå urørt (ikke nødvendigt at afkrydse noget her).
+
+**Indstillinger (Settings):**
+- Behold flueben i **"Tillad, at opgaven køres efter behov"** (Allow task to be
+  run on demand) — bruges når du selv trykker "Kør"/"Run" for at teste.
+- Behold flueben i **"Kør opgaven så hurtigt som muligt efter en planlagt start
+  er gået glip af"** (Run task as soon as possible after a scheduled start is
+  missed).
+- Sæt flueben i **"Hvis opgaven mislykkes, så genstart den hvert:"** (If the
+  task fails, restart every) → `1 minut`, og **"Forsøg at genstarte op til:"**
+  → det højeste tal du kan vælge/indtaste (fx `999`, ellers det maksimale
+  preset, typisk mindst `3`).
+- **Vigtigst af alt:** fjern fluebenet i **"Stop opgaven, hvis den kører længere
+  end:"** (Stop the task if it runs longer than) — helt afkrydset væk, ikke bare
+  sat til et stort tal. Lader du den stå til (standard er 3 dage), slår Windows
+  serveren ihjel midt om natten uden varsel.
+- "Hvis opgaven allerede kører, gælder følgende regel:" → vælg **"Start ikke en
+  ny forekomst"** (Do not start a new instance).
+
+---
+
+### Opgave 2 — "LonsystemAutoDeploy" (henter ny kode hvert 5. minut, genstarter ikke)
+
+**Generelt:** Navn: `LonsystemAutoDeploy`. "Kør uanset om brugeren er logget på
+eller ej".
+
+**Udløsere:** Ny... → Start opgaven: **"På en tidsplan"** (On a schedule) →
+Indstillinger: **"Daglig"** (Daily), starttidspunkt kan være hvad som helst (fx
+nu). Sæt flueben i **"Gentag opgaven hver:"** (Repeat task every) → skriv/vælg
+`5 minutter`, og sæt feltet **"i en varighed af:"** (for a duration of) til
+**"I det uendelige"** (Indefinitely).
+
+**Handlinger:** Ny... →
+- Program/script: `powershell.exe`
+- Tilføj argumenter: `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\auto_deploy_check.ps1"`
+- Start i: `C:\Users\LoenPC\Lonsystem`
+
+**Betingelser:** Samme som Opgave 1 — fjern fluebenene under "Strøm", så tjekket
+kører uanset strømkilde.
+
+**Indstillinger:**
+- Behold "Tillad, at opgaven køres efter behov" og "Kør så hurtigt som muligt
+  efter en gået-glip-af start".
+- Sæt flueben i **"Stop opgaven, hvis den kører længere end:"** → `5 minutter`
+  (i modsætning til Opgave 1 vil vi HER gerne have en grænse — den skal være
+  hurtigt overstået, og en fastlåst kørsel skal ikke blokere for de næste).
+- "Hvis opgaven allerede kører" → **"Start ikke en ny forekomst"** (vigtigt,
+  ellers kan flere tjek køre oven i hinanden).
+
+---
+
+### Opgave 3 — "LonsystemNightlyRestart" (genstart kl. 23:00)
+
+**Generelt:** Navn: `LonsystemNightlyRestart`. "Kør uanset om brugeren er logget
+på eller ej".
+
+**Udløsere:** Ny... → "På en tidsplan" → "Daglig", klokkeslæt: `23:00`.
+
+**Handlinger:** Ny... →
+- Program/script: `powershell.exe`
+- Tilføj argumenter: `-NoProfile -ExecutionPolicy Bypass -File "C:\Users\LoenPC\Lonsystem\deploy\restart_server.ps1"`
+- Start i: `C:\Users\LoenPC\Lonsystem`
+
+**Betingelser:** Fjern fluebenene under "Strøm", som ved de andre.
+
+**Indstillinger:**
+- Behold "Tillad, at opgaven køres efter behov" og "Kør så hurtigt som muligt
+  efter en gået-glip-af start" (praktisk hvis maskinen fx var slukket kl. 23:00).
+- Sæt "Stop opgaven, hvis den kører længere end:" → `5 minutter` (ren
+  sikkerhedsgrænse, en genstart bør tage sekunder).
+- "Hvis opgaven allerede kører" → "Start ikke en ny forekomst".
+
+---
+
+### Opgave 4 — "LonsystemBackup" (backup 4 gange dagligt)
+
+**Generelt:** Navn: `LonsystemBackup`. "Kør uanset om brugeren er logget på
+eller ej".
+
+**Udløsere:** Opret FIRE separate udløsere (tryk Ny... fire gange) — én for
+hvert klokkeslæt: "Daglig" kl. `00:00`, `06:00`, `12:00` og `18:00`.
+
+**Handlinger:** Ny... →
+- Program/script: indsæt den fulde Python-sti fra forberedelsen.
+- Tilføj argumenter: `"C:\Users\LoenPC\Lonsystem\backup\backup.py"`
+- Start i: `C:\Users\LoenPC\Lonsystem\backup`
+
+**Betingelser:** Fjern fluebenene under "Strøm", som ved de andre.
+
+**Indstillinger:**
+- Behold "Tillad, at opgaven køres efter behov" og "Kør så hurtigt som muligt
+  efter en gået-glip-af start".
+- Sæt flueben i **"Stop opgaven, hvis den kører længere end:"** → `10 minutter`
+  — denne MÅ gerne have en grænse, i modsætning til Opgave 1, da backup skal
+  være hurtigt overstået.
+- "Hvis opgaven allerede kører" → "Start ikke en ny forekomst".
 
 ---
 
