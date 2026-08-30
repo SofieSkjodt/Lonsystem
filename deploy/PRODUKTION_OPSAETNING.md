@@ -83,20 +83,24 @@ adressen ikke ændrer sig efter en genstart.
 
 ## Del 3 – Gør det til en vedvarende opgave (kører uden åbent vindue, starter ved boot)
 
-Helt native Windows — ingen tredjeparts-software. Et lille batch-script
-([run_production.bat](run_production.bat)) starter serveren og genstarter den
-automatisk hvis processen nogensinde stopper; en Task Scheduler-opgave sørger for
-at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
+Helt native Windows — ingen tredjeparts-software. [setup_scheduled_task.ps1](setup_scheduled_task.ps1)
+finder selv den fulde sti til `python.exe` (mere robust end at stole på at `python`/`py`
+er på PATH for SYSTEM-kontoen) og opretter serveren som en Task Scheduler-opgave, der
+kører `python.exe` direkte — Task Scheduler genstarter den selv op til 999 gange
+(1 minuts mellemrum) hvis processen nogensinde stopper uventet.
 
-1. Åbn PowerShell **som administrator** i `C:\Users\LoenPC\Lonsystem`.
-2. Kør opsætnings-scriptet én gang:
+1. Åbn PowerShell i `C:\Users\LoenPC\Lonsystem` — scriptet tjekker selv om du er
+   administrator, og hvis ikke, åbner det automatisk et nyt, forhøjet vindue (du skal
+   bare acceptere UAC-prompten).
+2. Kør opsætnings-scriptet:
    ```
    powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
    ```
    Det opretter TO opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
-   Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten)
-   og "LonsystemAutoDeploy" (tjekker GitHub hvert 5. minut, se Del 4). Begge startes
-   med det samme.
+   Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten,
+   genstarter automatisk ved crash) og "LonsystemAutoDeploy" (tjekker GitHub hvert
+   5. minut for evigt, se Del 4). Scriptet kan køres igen når som helst — det
+   opdaterer bare de eksisterende opgaver.
 3. Tjek at den kører: `http://<ip-adresse>:8000` i en browser fra en anden PC.
 4. Nyttige kommandoer fremover:
    ```
@@ -104,10 +108,10 @@ at batch-scriptet selv starter ved boot, uden at nogen skal være logget ind.
    Stop-ScheduledTask -TaskName Lonsystem                           # stop
    Start-ScheduledTask -TaskName Lonsystem                          # (gen)start
    ```
-   Serveren starter nu automatisk ved genstart af maskinen, og genstarter selv ved
-   crash (batch-scriptets egen løkke). Output fra hver kørsel kan ses ved at åbne
-   Aktivitetsstyring, eller ved midlertidigt at køre `run_production.bat` direkte
-   i et vindue for at se live output.
+   Serveren starter nu automatisk ved genstart af maskinen. Output/fejl fra kørslen
+   ses i Task Scheduler (find opgaven → fanen "Historik"), eller ved midlertidigt selv
+   at køre `python -m uvicorn main:app --host 0.0.0.0 --port 8000` fra `app`-mappen
+   for at se live output i et almindeligt vindue.
 
 ## Del 4 – Automatisk deploy ved push til GitHub
 
