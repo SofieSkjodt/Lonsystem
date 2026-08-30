@@ -96,12 +96,14 @@ kører `python.exe` direkte — Task Scheduler genstarter den selv op til 999 ga
    ```
    powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
    ```
-   Det opretter TRE opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
+   Det opretter FIRE opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
    Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten,
    genstarter automatisk ved crash), "LonsystemAutoDeploy" (tjekker GitHub hvert
-   5. minut for evigt, se Del 4), og "LonsystemBackup" (backup af database og
-   satsfiler kl. 00:00/06:00/12:00/18:00, se Del 6). Scriptet kan køres igen når
-   som helst — det opdaterer bare de eksisterende opgaver.
+   5. minut for evigt og henter ny kode, se Del 4), "LonsystemNightlyRestart"
+   (genstarter serveren hver nat kl. 23:00 så den nye kode tages i brug, se Del 5),
+   og "LonsystemBackup" (backup af database og satsfiler kl. 00:00/06:00/12:00/18:00,
+   se Del 7). Scriptet kan køres igen når som helst — det opdaterer bare de
+   eksisterende opgaver.
 3. Tjek at den kører: `http://<ip-adresse>:8000` i en browser fra en anden PC.
 4. Nyttige kommandoer fremover:
    ```
@@ -114,16 +116,17 @@ kører `python.exe` direkte — Task Scheduler genstarter den selv op til 999 ga
    at køre `python -m uvicorn main:app --host 0.0.0.0 --port 8000` fra `app`-mappen
    for at se live output i et almindeligt vindue.
 
-## Del 4 – Automatisk deploy ved push til GitHub
+## Del 4 – Automatisk hentning af ny kode ved push til GitHub (uden genstart)
 
 Opgaven "LonsystemAutoDeploy" (oprettet i Del 3) kører [auto_deploy_check.ps1](auto_deploy_check.ps1)
 hvert 5. minut: den henter status fra GitHub, og hvis der er nye commits på `main`
-siden sidst, kører den [deploy.ps1](deploy.ps1) automatisk (backup, ny kode, nye
-Python-pakker, genstart af serveren). Er der intet nyt, gør den ingenting.
+siden sidst, kører den [pull_update.ps1](pull_update.ps1) (backup, ny kode, nye
+Python-pakker). Er der intet nyt, gør den ingenting.
 
-**Vigtigt:** et `git push` til `main` er fra nu af reelt et deploy til produktion —
-inden for højst 5 minutter. Test derfor altid grundigt lokalt (udviklings-configen,
-`--reload`, port 8000) før du pusher.
+**Vigtigt:** den koerende server genstartes IKKE af dette tjek — den bliver ved med
+at koere med den gamle kode i hukommelsen, uden afbrydelse for brugerne midt på
+dagen. Den nye kode tages først reelt i brug ved næste genstart, som sker automatisk
+hver nat kl. 23:00 (se Del 5), eller når du selv kører `restart_server.ps1`.
 
 Se status for seneste kørsel:
 ```
@@ -137,15 +140,25 @@ fx:
 2026-08-27 19:50:03 - Ingen aendringer
 2026-08-27 19:55:02 - Tjek om der er aendringer
 2026-08-27 19:55:03 - Aendringer fundet til Lonsystem (a1b2c3d -> e4f5g6h)
-2026-08-27 19:55:03 - Starter git pull og deploy
-2026-08-27 19:55:05 - Succes - opdateret til e4f5g6h
+2026-08-27 19:55:03 - Starter git pull (ingen genstart - sker kl. 23:00)
+2026-08-27 19:55:05 - Succes - kode opdateret til e4f5g6h, venter paa genstart kl. 23:00
 ```
 Åbn filen i notepad når som helst for at se historikken:
 ```
 notepad C:\Users\LoenPC\Lonsystem\deploy\auto_deploy.log
 ```
 
-## Del 5 – (Valgfrit) Øjeblikkeligt deploy fra den bærbare, uden at vente 5 minutter
+## Del 5 – Nattelig genstart kl. 23:00
+
+Opgaven "LonsystemNightlyRestart" (oprettet i Del 3) kører [restart_server.ps1](restart_server.ps1)
+hver nat kl. 23:00: stopper og genstarter "Lonsystem"-opgaven, så al kode hentet
+i løbet af dagen af auto-deploy'et rent faktisk bliver taget i brug. Kør den
+manuelt når som helst for en øjeblikkelig genstart:
+```
+powershell -ExecutionPolicy Bypass -File deploy\restart_server.ps1
+```
+
+## Del 6 – (Valgfrit) Øjeblikkeligt fuldt deploy fra den bærbare, uden at vente til 23:00
 
 1. På produktionsmaskinen: Indstillinger → Apps → Valgfrie funktioner → Tilføj en
    funktion → søg "OpenSSH Server" → Installer.
@@ -160,10 +173,11 @@ notepad C:\Users\LoenPC\Lonsystem\deploy\auto_deploy.log
    ```
    ssh <bruger>@<produktions-ip> "cd C:\Users\LoenPC\Lonsystem; powershell -File deploy\deploy.ps1"
    ```
-   [deploy.ps1](deploy.ps1) bruger allerede opgavenavnet `Lonsystem` (matcher
-   Task Scheduler-opgaven ovenfor), så det virker uden ændringer.
+   I modsætning til det automatiske 5-minutters-tjek genstarter [deploy.ps1](deploy.ps1)
+   serveren MED DET SAMME (den kalder `pull_update.ps1` og `restart_server.ps1` efter
+   hinanden) — brug den når en rettelse ikke kan vente til den natlige genstart.
 
-## Del 6 – Backup
+## Del 7 – Backup
 
 Opgaven "LonsystemBackup" (oprettet i Del 3) kører [backup/backup.py](../backup/backup.py)
 fire gange dagligt (00:00, 06:00, 12:00, 18:00) og zipper databasen samt de tre
@@ -190,5 +204,7 @@ Get-ScheduledTask -TaskName LonsystemBackup | Get-ScheduledTaskInfo
 ## Opsummeret arbejdsgang fremover
 1. Udvikl og test på den bærbare (`--reload`, port 8000).
 2. `git push` til `main` på GitHub når det er testet.
-3. Kør `deploy.ps1` mod produktionsmaskinen (lokalt eller via ssh) — tager backup,
-   henter koden, opdaterer pakker, genstarter servicen.
+3. Inden for 5 minutter henter produktionsmaskinen automatisk den nye kode ned
+   (uden at genstarte) — den bliver taget i brug ved den natlige genstart kl. 23:00.
+4. Haster det, kør `deploy.ps1` mod produktionsmaskinen (lokalt eller via ssh, Del 6)
+   for et øjeblikkeligt fuldt deploy med det samme.

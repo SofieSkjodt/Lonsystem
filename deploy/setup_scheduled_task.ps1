@@ -1,5 +1,6 @@
-# Lonsystem - opretter de planlagte opgaver: produktionsserver, auto-deploy og
-# backup. Scriptet kan koeres igen; eksisterende opgaver opdateres med -Force.
+# Lonsystem - opretter de planlagte opgaver: produktionsserver, auto-deploy
+# (kun pull), genstart hver nat kl. 23:00, og backup. Scriptet kan koeres igen;
+# eksisterende opgaver opdateres med -Force.
  
 [CmdletBinding()]
 param()
@@ -23,10 +24,11 @@ $DeployDirectory = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $DeployDirectory
 $AppDirectory = Join-Path $ProjectRoot "app"
 $AutoCheckPath = Join-Path $DeployDirectory "auto_deploy_check.ps1"
+$RestartScript = Join-Path $DeployDirectory "restart_server.ps1"
 $BackupScript = Join-Path $ProjectRoot "backup\backup.py"
 $BackupDir = "C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter"
 
-foreach ($RequiredPath in @($AppDirectory, $AutoCheckPath, $BackupScript)) {
+foreach ($RequiredPath in @($AppDirectory, $AutoCheckPath, $RestartScript, $BackupScript)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Den paakraevede sti findes ikke: $RequiredPath"
     }
@@ -124,13 +126,34 @@ try {
         -Trigger $AutoTrigger `
         -Principal $Principal `
         -Settings $Settings `
-        -Description "Lonsystem - tjekker GitHub hvert 5. minut og deployer nye aendringer" `
+        -Description "Lonsystem - tjekker GitHub hvert 5. minut og henter nye aendringer (genstarter IKKE serveren)" `
         -Force `
         -ErrorAction Stop | Out-Null
- 
+
     Write-Host "Opgaven '$AutoTaskName' er oprettet og koerer hvert 5. minut uden slutdato." -ForegroundColor Green
 
-    # Opgave 3: backup 4 gange dagligt (00:00, 06:00, 12:00, 18:00).
+    # Opgave 3: genstart af serveren hver nat kl. 23:00, saa koden hentet i
+    # loebet af dagen af LonsystemAutoDeploy rent faktisk bliver taget i brug.
+    $RestartTaskName = "LonsystemNightlyRestart"
+    $RestartAction = New-ScheduledTaskAction `
+        -Execute $PowerShellPath `
+        -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$RestartScript`"" `
+        -WorkingDirectory $ProjectRoot
+    $RestartTrigger = New-ScheduledTaskTrigger -Daily -At "23:00"
+
+    Register-ScheduledTask `
+        -TaskName $RestartTaskName `
+        -Action $RestartAction `
+        -Trigger $RestartTrigger `
+        -Principal $Principal `
+        -Settings $BackupSettings `
+        -Description "Lonsystem - genstarter serveren hver nat kl. 23:00 for at tage ny kode i brug" `
+        -Force `
+        -ErrorAction Stop | Out-Null
+
+    Write-Host "Opgaven '$RestartTaskName' er oprettet (koerer hver nat kl. 23:00)." -ForegroundColor Green
+
+    # Opgave 4: backup 4 gange dagligt (00:00, 06:00, 12:00, 18:00).
     $BackupTaskName = "LonsystemBackup"
     $BackupAction = New-ScheduledTaskAction `
         -Execute $PythonPath `
@@ -160,7 +183,7 @@ try {
 
     Start-Sleep -Seconds 2
     Write-Host "`nStatus:" -ForegroundColor Cyan
-    foreach ($Name in @($TaskName, $AutoTaskName, $BackupTaskName)) {
+    foreach ($Name in @($TaskName, $AutoTaskName, $RestartTaskName, $BackupTaskName)) {
         $Task = Get-ScheduledTask -TaskName $Name -ErrorAction Stop
         $Info = $Task | Get-ScheduledTaskInfo -ErrorAction Stop
         [PSCustomObject]@{

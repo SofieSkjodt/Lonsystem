@@ -1,6 +1,8 @@
-# Lonsystem - tjekker om der er nyt paa GitHub, og deployer kun hvis der er.
-# Koeres automatisk hvert 5. minut af Task Scheduler-opgaven "LonsystemAutoDeploy"
-# (se deploy/setup_scheduled_task.ps1). Skriver alt til deploy/auto_deploy.log.
+# Lonsystem - tjekker om der er nyt paa GitHub, og henter koden ned hvis der er.
+# Genstarter IKKE serveren - det sker kun hver nat kl. 23:00 (se restart_server.ps1
+# og Task Scheduler-opgaven "LonsystemNightlyRestart"). Koeres automatisk hvert
+# 5. minut af opgaven "LonsystemAutoDeploy" (se deploy/setup_scheduled_task.ps1).
+# Skriver alt til deploy/auto_deploy.log.
 
 $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
@@ -26,15 +28,15 @@ if ($local -eq $remote) {
 }
 
 Write-Log "Aendringer fundet til Lonsystem ($($local.Substring(0,7)) -> $($remote.Substring(0,7)))"
-Write-Log "Starter git pull og deploy"
+Write-Log "Starter git pull (ingen genstart - sker kl. 23:00)"
 
 try {
-    $output = & "$root\deploy\deploy.ps1" 2>&1 | Out-String
+    $output = & "$root\deploy\pull_update.ps1" 2>&1 | Out-String
     foreach ($line in ($output -split "`r?`n")) {
         if ($line.Trim()) { Write-Log $line.Trim() }
     }
-    Write-Log "Succes - opdateret til $($remote.Substring(0,7))"
+    Write-Log "Succes - kode opdateret til $($remote.Substring(0,7)), venter paa genstart kl. 23:00"
 } catch {
-    Write-Log "FEJL under deploy: $_"
+    Write-Log "FEJL under pull: $_"
     throw
 }
