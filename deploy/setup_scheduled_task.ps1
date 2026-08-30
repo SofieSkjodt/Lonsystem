@@ -1,5 +1,5 @@
-# Lonsystem - opretter de planlagte opgaver til produktionsserver og auto-deploy.
-# Scriptet kan koeres igen; eksisterende opgaver opdateres med -Force.
+# Lonsystem - opretter de planlagte opgaver: produktionsserver, auto-deploy og
+# backup. Scriptet kan koeres igen; eksisterende opgaver opdateres med -Force.
  
 [CmdletBinding()]
 param()
@@ -23,13 +23,23 @@ $DeployDirectory = $PSScriptRoot
 $ProjectRoot = Split-Path -Parent $DeployDirectory
 $AppDirectory = Join-Path $ProjectRoot "app"
 $AutoCheckPath = Join-Path $DeployDirectory "auto_deploy_check.ps1"
- 
-foreach ($RequiredPath in @($AppDirectory, $AutoCheckPath)) {
+$BackupScript = Join-Path $ProjectRoot "backup\backup.py"
+$BackupDir = "C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter"
+
+foreach ($RequiredPath in @($AppDirectory, $AutoCheckPath, $BackupScript)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
         throw "Den paakraevede sti findes ikke: $RequiredPath"
     }
 }
- 
+
+# Backup-scriptet laeser LONSYSTEM_BACKUP_DIR fra miljoevariabler. Sat paa
+# maskine-niveau (ikke bruger-niveau), saa den ogsaa er synlig for opgaver der
+# koerer som SYSTEM, og for deploy.ps1's egen backup-kald ved hvert deploy.
+[Environment]::SetEnvironmentVariable("LONSYSTEM_BACKUP_DIR", $BackupDir, "Machine")
+if (-not (Test-Path -LiteralPath $BackupDir)) {
+    New-Item -ItemType Directory -Path $BackupDir -Force | Out-Null
+}
+
 # Brug den rigtige python.exe direkte. Python-launcheren "py" kan ikke finde
 # brugerinstallerede Python-versioner, naar opgaven senere koerer som SYSTEM.
 $PythonPath = (& py -c "import sys; print(sys.executable)" 2>$null | Select-Object -First 1).Trim()
@@ -59,6 +69,14 @@ $ServerSettings = New-ScheduledTaskSettingsSet `
     -MultipleInstances IgnoreNew `
     -RestartCount 999 `
     -RestartInterval (New-TimeSpan -Minutes 1)
+
+# Backup-opgaven er kortvarig og skal ikke koere paa ubestemt tid hvis den haenger.
+$BackupSettings = New-ScheduledTaskSettingsSet `
+    -ExecutionTimeLimit (New-TimeSpan -Minutes 10) `
+    -AllowStartIfOnBatteries `
+    -DontStopIfGoingOnBatteries `
+    -StartWhenAvailable `
+    -MultipleInstances IgnoreNew
  
 try {
     # Opgave 1: produktionsserveren starter ved Windows-opstart og har ingen slutdato.
@@ -111,13 +129,38 @@ try {
         -ErrorAction Stop | Out-Null
  
     Write-Host "Opgaven '$AutoTaskName' er oprettet og koerer hvert 5. minut uden slutdato." -ForegroundColor Green
- 
-    # Start serveren med det samme. Auto-deploy starter senest om et minut.
+
+    # Opgave 3: backup 4 gange dagligt (00:00, 06:00, 12:00, 18:00).
+    $BackupTaskName = "LonsystemBackup"
+    $BackupAction = New-ScheduledTaskAction `
+        -Execute $PythonPath `
+        -Argument "`"$BackupScript`"" `
+        -WorkingDirectory (Split-Path -Parent $BackupScript)
+    $BackupTriggers = @(
+        New-ScheduledTaskTrigger -Daily -At "00:00",
+        New-ScheduledTaskTrigger -Daily -At "06:00",
+        New-ScheduledTaskTrigger -Daily -At "12:00",
+        New-ScheduledTaskTrigger -Daily -At "18:00"
+    )
+
+    Register-ScheduledTask `
+        -TaskName $BackupTaskName `
+        -Action $BackupAction `
+        -Trigger $BackupTriggers `
+        -Principal $Principal `
+        -Settings $BackupSettings `
+        -Description "Lonsystem - backup af database og satsfiler 4 gange dagligt" `
+        -Force `
+        -ErrorAction Stop | Out-Null
+
+    Write-Host "Opgaven '$BackupTaskName' er oprettet (koerer 00:00/06:00/12:00/18:00), gemmer til: $BackupDir" -ForegroundColor Green
+
+    # Start serveren med det samme. Auto-deploy og backup starter selv efter deres triggere.
     Start-ScheduledTask -TaskName $TaskName -ErrorAction Stop
- 
+
     Start-Sleep -Seconds 2
     Write-Host "`nStatus:" -ForegroundColor Cyan
-    foreach ($Name in @($TaskName, $AutoTaskName)) {
+    foreach ($Name in @($TaskName, $AutoTaskName, $BackupTaskName)) {
         $Task = Get-ScheduledTask -TaskName $Name -ErrorAction Stop
         $Info = $Task | Get-ScheduledTaskInfo -ErrorAction Stop
         [PSCustomObject]@{

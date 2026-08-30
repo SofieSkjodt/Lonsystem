@@ -96,11 +96,12 @@ kører `python.exe` direkte — Task Scheduler genstarter den selv op til 999 ga
    ```
    powershell -ExecutionPolicy Bypass -File deploy\setup_scheduled_task.ps1
    ```
-   Det opretter TO opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
+   Det opretter TRE opgaver: "Lonsystem" (selve serveren, starter ved boot, fjerner
    Windows' normale 3-dages køretidsgrænse så den ikke bliver slået ihjel om natten,
-   genstarter automatisk ved crash) og "LonsystemAutoDeploy" (tjekker GitHub hvert
-   5. minut for evigt, se Del 4). Scriptet kan køres igen når som helst — det
-   opdaterer bare de eksisterende opgaver.
+   genstarter automatisk ved crash), "LonsystemAutoDeploy" (tjekker GitHub hvert
+   5. minut for evigt, se Del 4), og "LonsystemBackup" (backup af database og
+   satsfiler kl. 00:00/06:00/12:00/18:00, se Del 6). Scriptet kan køres igen når
+   som helst — det opdaterer bare de eksisterende opgaver.
 3. Tjek at den kører: `http://<ip-adresse>:8000` i en browser fra en anden PC.
 4. Nyttige kommandoer fremover:
    ```
@@ -161,6 +162,30 @@ notepad C:\Users\LoenPC\Lonsystem\deploy\auto_deploy.log
    ```
    [deploy.ps1](deploy.ps1) bruger allerede opgavenavnet `Lonsystem` (matcher
    Task Scheduler-opgaven ovenfor), så det virker uden ændringer.
+
+## Del 6 – Backup
+
+Opgaven "LonsystemBackup" (oprettet i Del 3) kører [backup/backup.py](../backup/backup.py)
+fire gange dagligt (00:00, 06:00, 12:00, 18:00) og zipper databasen samt de tre
+Excel-satsfiler. Zip-filerne gemmes i:
+```
+C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter
+```
+De seneste 5 dages backups beholdes, ældre slettes automatisk. Backup kører også
+automatisk som første skridt i hvert deploy (både manuelt og via auto-deploy).
+
+**Vigtigt:** at filen ligger i en OneDrive-mappe betyder ikke automatisk at den er
+uploadet til skyen — selve OneDrive-synkroniseringen kræver at OneDrive-klienten
+kører under en logget-ind brugers session. Kører produktionsmaskinen uden nogen
+nogensinde logget ind, ligger backuppen kun lokalt indtil nogen logger ind. Tal med
+IT om automatisk login til en dedikeret konto er acceptabelt hos jer, hvis
+uploaden skal ske uden manuel indblanding.
+
+Test manuelt:
+```
+Start-ScheduledTask -TaskName LonsystemBackup
+Get-ScheduledTask -TaskName LonsystemBackup | Get-ScheduledTaskInfo
+```
 
 ## Opsummeret arbejdsgang fremover
 1. Udvikl og test på den bærbare (`--reload`, port 8000).
