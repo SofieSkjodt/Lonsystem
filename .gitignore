@@ -14,6 +14,7 @@ app/compare_tacho.py
 app/current_csv_export.csv
 uvicorn.log
 uvicorn.err
+deploy/auto_deploy.log
 
 # Rigtige person-/lønoplysninger – må ALDRIG spores i git (se deploy/PRODUKTION_OPSAETNING.md)
 /ddd-filer/

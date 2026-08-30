@@ -120,9 +120,24 @@ Python-pakker, genstart af serveren). Er der intet nyt, gør den ingenting.
 inden for højst 5 minutter. Test derfor altid grundigt lokalt (udviklings-configen,
 `--reload`, port 8000) før du pusher.
 
-Se status/log for seneste kørsel:
+Se status for seneste kørsel:
 ```
 Get-ScheduledTask -TaskName LonsystemAutoDeploy | Get-ScheduledTaskInfo
+```
+
+Hver kørsel logges desuden med tidsstempel i `deploy\auto_deploy.log` (i repo-mappen),
+fx:
+```
+2026-08-27 19:50:02 - Tjek om der er aendringer
+2026-08-27 19:50:03 - Ingen aendringer
+2026-08-27 19:55:02 - Tjek om der er aendringer
+2026-08-27 19:55:03 - Aendringer fundet til Lonsystem (a1b2c3d -> e4f5g6h)
+2026-08-27 19:55:03 - Starter git pull og deploy
+2026-08-27 19:55:05 - Succes - opdateret til e4f5g6h
+```
+Åbn filen i notepad når som helst for at se historikken:
+```
+notepad C:\Users\LoenPC\Lonsystem\deploy\auto_deploy.log
 ```
 
 ## Del 5 – (Valgfrit) Øjeblikkeligt deploy fra den bærbare, uden at vente 5 minutter
