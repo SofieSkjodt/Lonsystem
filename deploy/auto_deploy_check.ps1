@@ -8,6 +8,11 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Git er installeret paa bruger-niveau og staar derfor kun paa denne brugers
+# PATH - ikke SYSTEM's. Uden den fulde sti kan opgaven (som koerer som SYSTEM)
+# slet ikke finde "git" og doer tavst, lige efter foerste log-linje herunder.
+$Git = "C:\Users\LoenPC\AppData\Local\Programs\Git\cmd\git.exe"
+
 $LogFile = "$root\deploy\auto_deploy.log"
 
 function Write-Log($message) {
@@ -17,10 +22,10 @@ function Write-Log($message) {
 
 Write-Log "Tjek om der er aendringer"
 
-git fetch origin --quiet
+& $Git fetch origin --quiet
 
-$local = git rev-parse HEAD
-$remote = git rev-parse origin/main
+$local = & $Git rev-parse HEAD
+$remote = & $Git rev-parse origin/main
 
 if ($local -eq $remote) {
     Write-Log "Ingen aendringer"

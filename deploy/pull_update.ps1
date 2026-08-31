@@ -11,13 +11,18 @@ $ErrorActionPreference = "Stop"
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
 
+# Git er installeret paa bruger-niveau og staar derfor kun paa denne brugers
+# PATH - ikke SYSTEM's. Uden den fulde sti kan opgaven (som koerer som SYSTEM)
+# slet ikke finde "git".
+$Git = "C:\Users\LoenPC\AppData\Local\Programs\Git\cmd\git.exe"
+
 Write-Host "== 1/3: Tager backup af databasen =="
 py backup\backup.py
 
 Write-Host "== 2/3: Henter seneste kode fra GitHub (main) =="
-git fetch origin
-git checkout main
-git reset --hard origin/main
+& $Git fetch origin
+& $Git checkout main
+& $Git reset --hard origin/main
 
 Write-Host "== 3/3: Installerer evt. nye Python-afhaengigheder =="
 py -m pip install -r app\requirements.txt

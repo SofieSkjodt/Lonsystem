@@ -160,10 +160,10 @@ try {
         -Argument "`"$BackupScript`"" `
         -WorkingDirectory (Split-Path -Parent $BackupScript)
     $BackupTriggers = @(
-        New-ScheduledTaskTrigger -Daily -At "00:00",
-        New-ScheduledTaskTrigger -Daily -At "06:00",
-        New-ScheduledTaskTrigger -Daily -At "12:00",
-        New-ScheduledTaskTrigger -Daily -At "18:00"
+        (New-ScheduledTaskTrigger -Daily -At "00:00"),
+        (New-ScheduledTaskTrigger -Daily -At "06:00"),
+        (New-ScheduledTaskTrigger -Daily -At "12:00"),
+        (New-ScheduledTaskTrigger -Daily -At "18:00")
     )
 
     Register-ScheduledTask `

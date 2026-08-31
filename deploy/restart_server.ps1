@@ -20,6 +20,11 @@ $LogFile      = Join-Path $PSScriptRoot "restart.log"
 $LastGoodFile = Join-Path $PSScriptRoot "last_known_good.txt"
 $HealthUrl    = "http://localhost:8000/health"
 
+# Git er installeret paa bruger-niveau og staar derfor kun paa denne brugers
+# PATH - ikke SYSTEM's. Uden den fulde sti kan opgaven (som koerer som SYSTEM)
+# slet ikke finde "git".
+$Git = "C:\Users\LoenPC\AppData\Local\Programs\Git\cmd\git.exe"
+
 function Write-Log($Message) {
     $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
     "$timestamp - $Message" | Out-File -FilePath $LogFile -Append -Encoding utf8
@@ -50,7 +55,7 @@ function Restart-LonsystemTask {
 
 function Get-CurrentCommit {
     Push-Location $Root
-    try { return (git rev-parse HEAD).Trim() }
+    try { return (& $Git rev-parse HEAD).Trim() }
     finally { Pop-Location }
 }
 
@@ -84,7 +89,7 @@ if ($lastGoodCommit -eq $currentCommit) {
 Write-Log "Ruller tilbage til sidst bekraeftede version $($lastGoodCommit.Substring(0,7))..."
 Push-Location $Root
 try {
-    git reset --hard $lastGoodCommit
+    & $Git reset --hard $lastGoodCommit
 } finally {
     Pop-Location
 }
