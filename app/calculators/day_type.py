@@ -14,7 +14,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
-from calculators.overtime import OT_13_MAX, OvertimeResult
+from calculators.overtime import OT_13_MAX, OvertimeResult, _subtract_pauses
 
 
 class DayType(Enum):
@@ -57,25 +57,6 @@ def compute_sh_hours(day_type: DayType, guaranteed_hours: Decimal) -> Decimal:
     if day_type in (DayType.HOLIDAY_HALF_1MAJ, DayType.HOLIDAY_HALF_GRUNDLOV):
         return guaranteed_hours / Decimal("2")
     return Decimal("0")
-
-
-def _subtract_pauses(
-    start: datetime, end: datetime,
-    pauses: list[tuple[datetime, datetime]],
-) -> list[tuple[datetime, datetime]]:
-    work = [(start, end)]
-    for p_start, p_end in sorted(pauses):
-        new_work = []
-        for w_start, w_end in work:
-            if p_end <= w_start or p_start >= w_end:
-                new_work.append((w_start, w_end))
-                continue
-            if p_start > w_start:
-                new_work.append((w_start, p_start))
-            if p_end < w_end:
-                new_work.append((p_end, w_end))
-        work = new_work
-    return work
 
 
 def _hours_after_noon(work_intervals: list[tuple[datetime, datetime]], noon: datetime) -> Decimal:
