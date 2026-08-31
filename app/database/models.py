@@ -194,6 +194,11 @@ class Activity(Base):
             unique=True,
             sqlite_where=text("source = 'tachograph'"),
         ),
+        # Lønkørsel, aktivitetsoversigt og fraværsoversigt filtrerer alle på
+        # denne kombination (pay_period_id + status) – uden indekset bliver
+        # det et fuldt tabel-scan for hver forespørgsel, efterhånden som
+        # activities-tabellen vokser over måneder/år.
+        Index("ix_activities_period_status", "pay_period_id", "status"),
     )
 
 
@@ -289,6 +294,13 @@ class AuditLog(Base):
     entity_type = Column(String, nullable=True)
     entity_id = Column(Integer, nullable=True)
     details = Column(Text, nullable=True)
+
+    __table_args__ = (
+        # Brugeradmin-fanens hændelseslog sorterer på timestamp DESC med LIMIT
+        # – uden indekset bliver det en fuld sortering af hele tabellen, som
+        # vokser for hver brugerhandling i systemet, for evigt.
+        Index("ix_audit_logs_timestamp", "timestamp"),
+    )
 
 
 class MasterAgreementType(Base):
@@ -408,6 +420,14 @@ class EmployeeBaseline(Base):
     last_updated = Column(DateTime, nullable=True)
 
     employee = relationship("Employee", back_populates="baselines")
+
+    __table_args__ = (
+        # Uden denne kan et race (to samtidige godkendelser af aktiviteter for
+        # samme medarbejder+ugedag) skabe to baseline-rækker – hvilken af dem
+        # der bruges bagefter afhænger så af forespørgselsrækkefølge, hvilket
+        # giver inkonsistente auto-godkendelsesresultater.
+        UniqueConstraint("employee_id", "weekday", name="uq_employee_baselines_employee_weekday"),
+    )
 
 
 class SystemSettings(Base):

@@ -631,6 +631,7 @@ def approve_activity(activity_id: int, body: ActivityApprove,
                f"Godkendt for {a.employee.name} ({a.start_time.strftime('%d-%m-%Y')})")
     db.commit()
     update_baseline_from_activity(a, db)
+    db.commit()
     db.refresh(a)
     return _to_response(a)
 

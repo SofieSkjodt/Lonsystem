@@ -104,12 +104,25 @@ def update_baseline_from_activity(activity: Activity, db: Session) -> None:
     activity.baseline_duration_minutes = duration
     activity.baseline_start_hour       = start_hour
 
-    db.commit()
+    # Kun flush, ikke commit – denne funktion kaldes bl.a. fra DDD-importens
+    # aktivitets-løkke (import_ddd.py::_import_activity), som bevidst kun
+    # flusher pr. aktivitet og committer samlet for hele importbatchen til
+    # sidst. Et internt commit her ville committe HELE den omsluttende
+    # transaktion for tidligt, inklusive alle andre aktiviteter der kun var
+    # flushet så langt i den samme import. Kaldere der har brug for at
+    # committe med det samme (fx en enkelt godkendelse) gør det selv.
+    db.flush()
 
 
 def rebuild_baselines_for_employee(employee_id: int, db: Session) -> int:
     """Slet og genberegn alle baselines for én medarbejder fra godkendte normale aktiviteter.
     Nulstiller også baseline-markørerne på aktiviteterne. Returnerer antal behandlede aktiviteter."""
+    if not is_auto_approval_enabled(db):
+        # update_baseline_from_activity springer alt over når auto-godkendelse
+        # er slået fra globalt (se ovenfor) – en genopbygning ville derfor kun
+        # slette de eksisterende baselines uden at genskabe dem. Lad dem stå.
+        return 0
+
     db.query(EmployeeBaseline).filter_by(employee_id=employee_id).delete()
 
     # Nulstil markører så downdate-logikken ikke forstyrrer genopbygningen
@@ -136,6 +149,7 @@ def rebuild_baselines_for_employee(employee_id: int, db: Session) -> int:
 
     for act in activities:
         update_baseline_from_activity(act, db)
+    db.commit()
 
     return len(activities)
 

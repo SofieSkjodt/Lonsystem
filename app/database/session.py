@@ -171,6 +171,35 @@ def _migrate():
                 "ON activities(employee_id, start_time) WHERE source = 'tachograph'"
             )
             conn.commit()
+        if "ix_activities_period_status" not in existing_indexes:
+            conn.execute(
+                "CREATE INDEX ix_activities_period_status ON activities(pay_period_id, status)"
+            )
+            conn.commit()
+        baseline_indexes = {row[1] for row in conn.execute("PRAGMA index_list(employee_baselines)")}
+        if "uq_employee_baselines_employee_weekday" not in baseline_indexes:
+            # Fjern evt. eksisterende dubletter (samme medarbejder+ugedag,
+            # opstået pga. den tidligere manglende spærre) før det unikke
+            # indeks oprettes. Beholder rækken med flest samples – den har
+            # det mest velfunderede datagrundlag af de to.
+            conn.execute(
+                "DELETE FROM employee_baselines WHERE id NOT IN ("
+                "  SELECT id FROM ("
+                "    SELECT id, ROW_NUMBER() OVER ("
+                "      PARTITION BY employee_id, weekday ORDER BY sample_count DESC, id ASC"
+                "    ) AS rn FROM employee_baselines"
+                "  ) WHERE rn = 1"
+                ")"
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX uq_employee_baselines_employee_weekday "
+                "ON employee_baselines(employee_id, weekday)"
+            )
+            conn.commit()
+        audit_indexes = {row[1] for row in conn.execute("PRAGMA index_list(audit_logs)")}
+        if "ix_audit_logs_timestamp" not in audit_indexes:
+            conn.execute("CREATE INDEX ix_audit_logs_timestamp ON audit_logs(timestamp)")
+            conn.commit()
         dg_cols = {row[1] for row in conn.execute("PRAGMA table_info(dispatcher_groups)")}
         if "vehicle_id" not in dg_cols:
             conn.execute("ALTER TABLE dispatcher_groups ADD COLUMN vehicle_id INTEGER")
