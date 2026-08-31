@@ -323,6 +323,15 @@ manuelt når som helst for en øjeblikkelig genstart:
 powershell -ExecutionPolicy Bypass -File deploy\restart_server.ps1
 ```
 
+Efter genstart tjekker scriptet automatisk `http://localhost:8000/health` (op til
+6 forsøg med 5 sekunders mellemrum). Svarer serveren korrekt, gemmes den
+kørende commit i `deploy/last_known_good.txt`. Svarer den IKKE, ruller scriptet
+automatisk tilbage til den sidst bekræftede version og genstarter igen — så en
+fejlbehæftet commit fra det automatiske 5-minutters-tjek ikke kan slå produktionen
+ned uden varsel til næste morgen. Alt logges til `deploy/restart.log` (Task
+Scheduler-opgaven har ingen konsol, så uden denne logfil ville en fejl forsvinde
+usynligt, ligesom `backup.py` gjorde før den blev rettet).
+
 ## Del 6 – (Valgfrit) Øjeblikkeligt fuldt deploy fra den bærbare, uden at vente til 23:00
 
 1. På produktionsmaskinen: Indstillinger → Apps → Valgfrie funktioner → Tilføj en
