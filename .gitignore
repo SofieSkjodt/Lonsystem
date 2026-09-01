@@ -17,6 +17,7 @@ uvicorn.err
 deploy/auto_deploy.log
 deploy/restart.log
 deploy/last_known_good.txt
+backup/backup.log
 
 # Rigtige person-/lønoplysninger – må ALDRIG spores i git (se deploy/PRODUKTION_OPSAETNING.md)
 /ddd-filer/
