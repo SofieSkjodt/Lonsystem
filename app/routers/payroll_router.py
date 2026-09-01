@@ -439,10 +439,13 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
         acts_today = [a for a in acts_by_date.get(cur, []) if a.activity_type not in ("overnatning", "dob_overnatning")]
         overnight_today = 1 if cur in overnight_dates else 0
 
-        # Dag-klassifikation og SH-betaling (gælder uanset om der køres)
+        # Dag-klassifikation og SH-betaling (gælder uanset om der køres,
+        # MEDMINDRE medarbejderen er afløser og der ikke er kørsel den dag)
         day_type = classify_day(cur, holiday_map)
         guaranteed_today = _normal_hours_for_day(emp, cur)
         sh_h = compute_sh_hours(day_type, guaranteed_today)
+        if emp.afloeser and not any(a.activity_type == "normal" for a in acts_today):
+            sh_h = Decimal("0")
         if sh_h > 0:
             if emp.fuldloennet:
                 totals["sh_fuldloennet"] += sh_h

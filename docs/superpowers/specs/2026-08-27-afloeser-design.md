@@ -55,11 +55,21 @@ if emp.afloeser and not any(a.activity_type == "normal" for a in acts_today):
 - `openEditEmployee(id)`: sæt `emp-afloeser` fra `e.afloeser`.
 - `confirmEmployee()`: tilføj `afloeser: document.getElementById("emp-afloeser").checked` til `body`.
 
+## 5. Visuel markering af afløsere
+
+Afløsere skal skille sig diskret ud tre steder i UI'et, alle via allerede etablerede brandfarver (`docs/superpowers/specs`-historik: `--primary` #317423, `--accent` #78b21a, #d4edcc (samme farve som allerede bruges i lønkørsel-headeren, blot uden en navngivet CSS-variabel)):
+
+- **Medarbejdere-listen** (`.emp-avatar`, cirklen med initialer): baggrund skiftes fra standard `var(--primary)` (mørkegrøn) til `var(--accent)` (lysere grøn) for afløsere.
+- **Vagtplan og Aktivitetsoversigt** (navnecellen `.emp-cell` – begge grids deler denne CSS-klasse i dag): får en let grøn baggrundstoning `#d4edcc` i stedet for standard hvid, når medarbejderen er afløser.
+
+Implementeres som en ny CSS-klasse `.afloeser-highlight` (baggrund `#d4edcc`) genbrugt i begge grids, plus betinget inline-styling af `.emp-avatar` i `renderEmployeeList()`. Rent visuelt – ingen funktionel ændring, ingen ny tilladelse.
+
 ## Ikke i scope
 
 - Ingen ændring af Fraværsoversigt, Lønafregning-visningen eller anden rapportering ud over selve kr./timer-beregningen (som allerede går gennem `_calculate_employee()`).
 - Ingen ændring af Brugervejledningen i denne omgang.
 - Ingen ændring af lørdags-logikken (giver i forvejen aldrig SH-betaling).
+- Ingen tekstlabel/badge ("Afløser") ud over selve farvemarkeringen – kun farve, som eksplicit efterspurgt.
 
 ## Test-dækning (til implementeringsplan)
 

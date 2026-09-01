@@ -301,6 +301,7 @@ tbody tr.status-deactivated { border-left: 3px solid var(--deactivated); opacity
   text-overflow: ellipsis;
 }
 .grid-table tbody td.weekend { background: rgba(0,0,0,.03); }
+.grid-table tbody td.emp-cell.afloeser-highlight { background: #d4edcc; }
 .springer-flag-label {
   display: flex;
   align-items: center;

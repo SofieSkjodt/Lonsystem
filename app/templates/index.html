@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PS Løn – Poul Schou A/S</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=11">
+  <link rel="stylesheet" href="/static/css/style.css?v=13">
   <script src="/static/js/msal-browser.min.js"></script>
   <script>
     const ENTRA_TENANT_ID = "{{ entra_tenant_id }}";
@@ -1452,7 +1452,7 @@
         </div>
       </div>
 
-      <div class="form-row" style="grid-template-columns:1fr 1fr 1fr">
+      <div class="form-row" style="grid-template-columns:1fr 1fr 1fr 1fr">
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="emp-active" checked> Aktiv
@@ -1466,6 +1466,11 @@
         <div class="form-group">
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
             <input type="checkbox" id="emp-paragraf56" onchange="onParagraf56Change()"> §56
+          </label>
+        </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="emp-afloeser"> Afløser
           </label>
         </div>
       </div>

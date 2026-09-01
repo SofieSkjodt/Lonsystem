@@ -123,6 +123,9 @@ def _migrate():
             conn.execute("ALTER TABLE employees ADD COLUMN paragraf_56_start_date DATE")
             conn.execute("ALTER TABLE employees ADD COLUMN paragraf_56_end_date DATE")
             conn.commit()
+        if "afloeser" not in emp_cols:
+            conn.execute("ALTER TABLE employees ADD COLUMN afloeser BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
         act_cols2 = {row[1] for row in conn.execute("PRAGMA table_info(activities)")}
         if "deactivated_by" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN deactivated_by VARCHAR")

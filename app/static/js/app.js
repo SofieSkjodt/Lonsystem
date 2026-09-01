@@ -329,7 +329,7 @@ function renderVagtplanTable() {
 
   body.innerHTML = "";
   for (const emp of emps) {
-    let cells = `<td class="emp-cell" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">${h(emp.name)}</td>`;
+    let cells = `<td class="emp-cell${emp.afloeser ? " afloeser-highlight" : ""}" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">${h(emp.name)}</td>`;
     for (const d of days) {
       const iso = _isoOfDate(d);
       const entry = byEmpDay[emp.id]?.[iso];
@@ -561,7 +561,7 @@ function renderActivitiesTable() {
     const tr = document.createElement("tr");
     const springerChecked = state.springerFlags?.[emp.id] === true;
     const springerDisabledAttr = (!canToggleSpringer || periodLocked) ? "disabled" : "";
-    let cells = `<td class="emp-cell" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">
+    let cells = `<td class="emp-cell${emp.afloeser ? " afloeser-highlight" : ""}" title="${h(emp.name)} (lønnr. ${h(emp.employee_number)})">
       ${h(emp.name)}
       <label class="springer-flag-label">
         <input type="checkbox" class="springer-flag-checkbox" data-emp-id="${emp.id}"
@@ -2350,7 +2350,7 @@ function renderEmployeeList() {
     div.className = "emp-card";
     div.style.cursor = "pointer";
     div.innerHTML = `
-      <div class="emp-avatar">${h(initials)}</div>
+      <div class="emp-avatar" style="${e.afloeser ? "background:var(--accent)" : ""}">${h(initials)}</div>
       <div class="emp-info">
         <div class="emp-name">${h(e.name)}</div>
         <div class="emp-sub">Lønnr. ${h(e.employee_number)} · ${h(e.agreement_type)}${e.hourly_rate ? ` · ${e.hourly_rate.toFixed(2)} kr/t` : ""} · Ansat ${formatDateShort(e.hire_date)} (${e.months_employed} mdr.)</div>
@@ -2561,6 +2561,7 @@ async function openNewEmployeeModal() {
   buildDatePicker("emp-paragraf56-start", "");
   buildDatePicker("emp-paragraf56-end", "");
   onParagraf56Change();
+  document.getElementById("emp-afloeser").checked = false;
   buildScheduleTable(null);
   await _loadEmpCvrDropdown(null);
   document.getElementById("emp-active-supplement").value = "";
@@ -2596,6 +2597,7 @@ async function openEditEmployee(id) {
   buildDatePicker("emp-paragraf56-start", e.paragraf_56_start_date || "");
   buildDatePicker("emp-paragraf56-end", e.paragraf_56_end_date || "");
   onParagraf56Change();
+  document.getElementById("emp-afloeser").checked = e.afloeser;
   buildScheduleTable(e.work_schedule);
   await _loadEmpCvrDropdown(e.cvr_number || null);
   if (state.currentUser?.permissions?.includes("manage_employee_supplements")) {
@@ -2639,6 +2641,7 @@ async function confirmEmployee() {
       ? readDatePicker("emp-paragraf56-start") : null,
     paragraf_56_end_date: document.getElementById("emp-paragraf56").checked
       ? readDatePicker("emp-paragraf56-end") : null,
+    afloeser: document.getElementById("emp-afloeser").checked,
   };
   if (!body.employee_number || !body.first_name || !body.last_name || !body.hire_date) {
     toast("Udfyld lønnummer, navn og ansættelsesdato", "error");

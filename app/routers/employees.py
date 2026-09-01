@@ -106,6 +106,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         paragraf_56=emp.paragraf_56,
         paragraf_56_start_date=emp.paragraf_56_start_date,
         paragraf_56_end_date=emp.paragraf_56_end_date,
+        afloeser=emp.afloeser,
     )
 
 

@@ -53,6 +53,7 @@ class EmployeeCreate(BaseModel):
     paragraf_56: bool = False
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
+    afloeser: bool = False
 
 
 class EmployeeUpdate(BaseModel):
@@ -78,6 +79,7 @@ class EmployeeUpdate(BaseModel):
     paragraf_56: Optional[bool] = None
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
+    afloeser: Optional[bool] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -109,6 +111,7 @@ class EmployeeResponse(BaseModel):
     paragraf_56: bool
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
+    afloeser: bool
 
     model_config = {"from_attributes": True}
 

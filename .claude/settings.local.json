@@ -612,7 +612,12 @@
       "Bash(rm -rf .claude/worktrees/modest-liskov-fa84d6 .claude/worktrees/upbeat-edison-7263ad .claude/worktrees/zealous-nash-2df86e)",
       "Bash(rm -rf .git/worktrees/modest-liskov-fa84d6 .git/worktrees/upbeat-edison-7263ad .git/worktrees/zealous-nash-2df86e)",
       "Bash(rm -f .claude/worktrees/upbeat-edison-7263ad/app/.env)",
-      "Bash(rm -f .claude/worktrees/zealous-nash-2df86e/app/.env)"
+      "Bash(rm -f .claude/worktrees/zealous-nash-2df86e/app/.env)",
+      "Bash(python -m pytest ../tests/test_afloeser.py -v)",
+      "Bash(python -m pytest ../tests/test_afloeser.py ../tests/test_payroll_unrecognized_agreement_kind.py -v)",
+      "Bash(python -m pytest ../tests -k \"afloeser\" -v)",
+      "Bash(sed -i 's/`--light-tint` #d4edcc/#d4edcc \\(samme farve som allerede bruges i lønkørsel-headeren, blot uden en navngivet CSS-variabel\\)/; s/`var\\(--light-tint\\)`/`#d4edcc`/g; s/CSS-variablerne `--accent`\\\\/`--light-tint` \\(allerede definerede i `style.css`\\)/CSS-variablen `--accent` \\(allerede defineret i style.css\\)\\\\/2026-08-27-afloeser-design.md/' \"docs/superpowers/specs/2026-08-27-afloeser-design.md\")",
+      "Bash(sed -i 's/CSS-variablerne `--accent`\\\\/`--light-tint` \\(allerede definerede i `style.css`\\)/CSS-variablen `--accent` \\(allerede defineret i style.css\\); `#d4edcc` bruges som literal hex-værdi, matcher eksisterende konvention \\(ingen --light-tint-variabel findes reelt i style.css\\)/; s/background: var\\(--light-tint\\);/background: #d4edcc;/' \"docs/superpowers/plans/2026-08-27-afloeser.md\")"
     ]
   }
 }
