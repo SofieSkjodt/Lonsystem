@@ -18,6 +18,7 @@ deploy/auto_deploy.log
 deploy/restart.log
 deploy/last_known_good.txt
 backup/backup.log
+.claude/settings.local.json
 
 # Rigtige person-/lønoplysninger – må ALDRIG spores i git (se deploy/PRODUKTION_OPSAETNING.md)
 /ddd-filer/
