@@ -532,6 +532,11 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         totals["skole_kursus"] += dur
                         absence_hours = dur
                         absence_kr = dur * hourly_rate
+                        # Skole/kursus-timer forbruger dagens garanterede timer ligesom
+                        # arbejdstid, så efterfølgende kørsel samme dag korrekt bliver
+                        # overtid når garantien er brugt op (bekræftet af bruger for
+                        # Mikkel Bo Rosenkilde, mandag 24/8-2026).
+                        day_normal_remaining = max(Decimal("0"), day_normal_remaining - dur)
                     elif act.activity_type == "sygdom_u_8uger":
                         # Ulønnet – vises med timer i Lønafregning, men altid 0 kr.
                         absence_hours = Decimal(str((act.end_time - act.start_time).total_seconds())) / 3600
