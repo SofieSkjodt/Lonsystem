@@ -20,8 +20,11 @@ Write-Host "== 1/3: Tager backup af databasen =="
 py backup\backup.py
 
 Write-Host "== 2/3: Henter seneste kode fra GitHub (main) =="
-& $Git fetch origin
-& $Git checkout main
+# --quiet paa fetch/checkout: uden det skriver git sine normale statusbeskeder
+# (fx "Already on 'main'") til stderr, hvilket PowerShell med
+# $ErrorActionPreference = "Stop" fejlagtigt behandler som en fatal fejl.
+& $Git fetch origin --quiet
+& $Git checkout main --quiet
 & $Git reset --hard origin/main
 
 Write-Host "== 3/3: Installerer evt. nye Python-afhaengigheder =="
