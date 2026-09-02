@@ -84,14 +84,14 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
         data = f.read()
 
     card_number = _extract_card_number(data)
-    vehicle_reg = _extract_vehicle_registration(data)
+    vehicle_records = _extract_vehicle_usage_records(data)
     daily_odometer = _extract_daily_odometer(data)
     daily_records = _find_all_daily_records(data)
 
     if not daily_records:
         return []
 
-    return _build_activities(card_number, vehicle_reg, daily_odometer, daily_records, str(file_path))
+    return _build_activities(card_number, vehicle_records, daily_odometer, daily_records, str(file_path))
 
 
 DEFAULT_MAX_FILE_AGE_DAYS = 7
@@ -135,22 +135,73 @@ def scan_ddd_folder(
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _extract_vehicle_registration(data: bytes) -> str | None:
+def _extract_vehicle_usage_records(data: bytes) -> list[tuple[datetime, datetime, str]]:
     """
-    Forsøger at finde køretøjets registreringsnummer i .ddd-filen.
-    I EU-tachografformatet (Reg. 165/2014) gemmes registreringsnummeret i
-    CardVehiclesUsed-blokken som: 1 byte codePage (typisk 0x00) + ASCII-streng.
-    Vi søger efter dette mønster heuristisk.
+    Finder CardVehicleRecords: EU-tachografkortets tabel over hvilken bil der
+    blev brugt i hvilket tidsrum. Fast 31-byte struktur pr. post:
+      3 bytes  vehicleOdometerBegin
+      3 bytes  vehicleOdometerEnd
+      4 bytes  vehicleFirstUse   (TimeReal, UTC)
+      4 bytes  vehicleLastUse    (TimeReal, UTC)
+      1 byte   vehicleRegistrationNation
+      1 byte   codePage
+      13 bytes vehicleRegistrationNumber (ASCII, mellemrums-paddet)
+      2 bytes  vuDataBlockCounter
+
+    Et førerkort har IKKE nødvendigvis kun én bil for hele filen – chaufføren
+    kan have kørt i flere forskellige biler over tid (bekræftet ved
+    byte-analyse 2026-09-02: Anders Jersild Nielsens fil indeholdt bl.a.
+    DR30578, DX22215, DH56162 og EE20981 i forskellige perioder). Denne
+    funktion returnerer ALLE plausible (first_use, last_use, reg)-poster, så
+    den rigtige bil kan slås op pr. vagt ud fra dens eget tidsrum – i stedet
+    for (den tidligere fejlbehæftede tilgang) at antage ét globalt
+    registreringsnummer for hele filen ud fra det først fundne heuristiske
+    byte-mønster i filen, som lige så godt kunne stamme fra en helt anden,
+    ikke-relateret blok tidligere i filen.
+
+    En reel post dækker altid én enkelt køredag (first_use og last_use samme
+    UTC-dato) – det filtrerer effektivt tilfældige byte-sekvenser fra, der
+    godt kan ligne to gyldige tidsstempler, men som i praksis strækker sig
+    over måneder/år (bekræftet: sådanne "poster" opstår systematisk ved
+    fejlallignering, ofte forskudt præcis 31 byte fra en ægte post).
     """
-    # Primær søgning: codePage-byte (0x00 eller 0x01) efterfulgt af pladelignenede streng
-    for match in re.finditer(rb'[\x00\x01]([A-Z][A-Z0-9]{4,11})', data):
-        candidate = match.group(1).decode("ascii")
-        # Skal indeholde mindst ét bogstav og ét ciffer
-        if re.search(r'[A-Z]', candidate) and re.search(r'\d', candidate):
-            # Undgå at matche kortnummeret (2 bogstaver + 14 cifre)
-            if not re.fullmatch(r'[A-Z]{2}\d{14}', candidate):
-                return candidate
-    return None
+    RECORD_SIZE = 31
+    records: list[tuple[datetime, datetime, str]] = []
+    for pos in range(0, len(data) - RECORD_SIZE + 1):
+        first_use = struct.unpack_from(">I", data, pos + 6)[0]
+        if not (TS_MIN <= first_use <= TS_MAX):
+            continue
+        last_use = struct.unpack_from(">I", data, pos + 10)[0]
+        if not (TS_MIN <= last_use <= TS_MAX) or last_use < first_use:
+            continue
+        first_dt = datetime.utcfromtimestamp(first_use)
+        last_dt = datetime.utcfromtimestamp(last_use)
+        if first_dt.date() != last_dt.date():
+            continue
+        reg_bytes = data[pos + 16: pos + 29]
+        reg = reg_bytes.split(b"\x00")[0].decode("ascii", errors="ignore").strip()
+        if not re.fullmatch(r'[A-Z0-9]{4,13}', reg):
+            continue
+        if not (re.search(r'[A-Z]', reg) and re.search(r'\d', reg)):
+            continue
+        records.append((first_dt, last_dt, reg))
+    return records
+
+
+def _lookup_vehicle_registration(
+    start_dt: datetime, end_dt: datetime, vehicle_records: list[tuple[datetime, datetime, str]],
+) -> str | None:
+    """Finder registreringsnummeret der dækker vagtens tidsrum bedst (størst overlap)."""
+    best_reg = None
+    best_overlap = 0.0
+    for rec_start, rec_end, reg in vehicle_records:
+        overlap_start = max(start_dt, rec_start)
+        overlap_end = min(end_dt, rec_end)
+        overlap = (overlap_end - overlap_start).total_seconds()
+        if overlap > best_overlap:
+            best_overlap = overlap
+            best_reg = reg
+    return best_reg
 
 
 def _extract_card_number(data: bytes) -> str:
@@ -479,7 +530,7 @@ def _split_on_long_rests(
 
 def _build_activities(
     card_number: str,
-    vehicle_registration: str | None,
+    vehicle_records: list[tuple[datetime, datetime, str]] | None,
     daily_odometer: dict[int, int],
     daily_records: list[tuple[datetime, int, bytes]],
     source_file: str,
@@ -507,6 +558,7 @@ def _build_activities(
     forløbet (_split_on_long_rests) – det fanger flere separate vagter samme
     kalenderdag, adskilt af en lang hvileperiode.
     """
+    vehicle_records = vehicle_records or []
     distance_by_date: dict = {}
     final_shifts: list[list[tuple[datetime, datetime, int]]] = []
     pending: list[tuple[datetime, datetime, int]] = []
@@ -685,6 +737,7 @@ def _build_activities(
 
         day_start_ts = int(start_dt.replace(tzinfo=timezone.utc).timestamp())
         km_start = _lookup_daily_km(day_start_ts, daily_odometer)
+        vehicle_registration = _lookup_vehicle_registration(start_dt, end_dt, vehicle_records)
         dates_touched = dates_touched_per_shift[shift_idx]
         km_end = None
         if km_start is not None and len(dates_touched) == 1:

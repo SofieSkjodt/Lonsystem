@@ -2,11 +2,11 @@ import struct
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'app'))
 
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from parsers.ddd_parser import (
     _build_activities, _utc_to_local, ACTIVITY_REST, ACTIVITY_WORK, ACTIVITY_DRIVING,
-    scan_ddd_folder,
+    scan_ddd_folder, _extract_vehicle_usage_records, _lookup_vehicle_registration,
 )
 
 
@@ -184,3 +184,86 @@ def test_scan_ddd_folder_max_age_none_disables_filter(tmp_path):
 
     seen_names = {p.name for p, _ in results} | {e.split(":")[0] for e in errors}
     assert "old.ddd" in seen_names
+
+
+def _pack_vehicle_record(odo_begin, odo_end, first_use_dt, last_use_dt, reg, nation=0x0E, codepage=0x01):
+    """Bygger en 31-byte CardVehicleRecord (se _extract_vehicle_usage_records)."""
+    first_ts = int(first_use_dt.replace(tzinfo=timezone.utc).timestamp())
+    last_ts = int(last_use_dt.replace(tzinfo=timezone.utc).timestamp())
+    return (
+        struct.pack(">I", odo_begin)[1:]
+        + struct.pack(">I", odo_end)[1:]
+        + struct.pack(">I", first_ts)
+        + struct.pack(">I", last_ts)
+        + bytes([nation, codepage])
+        + reg.encode("ascii").ljust(13)
+        + b"\x00\x00"
+    )
+
+
+def test_extract_vehicle_usage_records_finds_real_records_ignores_decoy():
+    """
+    Reproducerer fejlen fra Anders Jersild Nielsen og Mathias Soltau Hansen
+    (1/9): en tidligere, ikke-relateret byte-sekvens tidligt i filen kan
+    tilfældigt ligne "codePage-byte + pladenummer" uden at være en reel
+    CardVehicleRecord. Den skal IKKE længere blive valgt – kun poster med den
+    fulde, gyldige 31-byte rekordstruktur (og som dækker én enkelt dag) tæller.
+    """
+    decoy = b"\x01CS50909      "  # ligner det gamle heuristik-mønster, men er ikke en rigtig record
+    rec1 = _pack_vehicle_record(
+        100, 200, datetime(2026, 9, 1, 3, 20, 7), datetime(2026, 9, 1, 13, 45, 37), "EB23579",
+    )
+    rec2 = _pack_vehicle_record(
+        200, 300, datetime(2026, 9, 2, 3, 0, 0), datetime(2026, 9, 2, 13, 0, 0), "CT15491",
+    )
+    data = b"\x00" * 50 + decoy + b"\x00" * 50 + rec1 + rec2
+
+    records = _extract_vehicle_usage_records(data)
+
+    regs = {reg for _, _, reg in records}
+    assert "EB23579" in regs
+    assert "CT15491" in regs
+    assert "CS50909" not in regs
+
+
+def test_lookup_vehicle_registration_picks_record_matching_shift_date():
+    """Hver vagt skal have sit EGET registreringsnummer, ikke et globalt for hele filen."""
+    records = [
+        (datetime(2026, 9, 1, 3, 20), datetime(2026, 9, 1, 13, 45), "EB23579"),
+        (datetime(2026, 9, 2, 3, 0), datetime(2026, 9, 2, 13, 0), "CT15491"),
+    ]
+
+    reg_sep1 = _lookup_vehicle_registration(
+        datetime(2026, 9, 1, 4, 0), datetime(2026, 9, 1, 12, 0), records,
+    )
+    reg_sep2 = _lookup_vehicle_registration(
+        datetime(2026, 9, 2, 4, 0), datetime(2026, 9, 2, 12, 0), records,
+    )
+
+    assert reg_sep1 == "EB23579"
+    assert reg_sep2 == "CT15491"
+
+
+def test_build_activities_assigns_per_day_vehicle_registration():
+    """
+    Integrationstest: to vagter samme fil skal have hver deres korrekte
+    registreringsnummer, hentet fra CardVehicleRecords-tabellen ud fra vagtens
+    eget tidsrum – IKKE ét globalt gæt for hele filen.
+    """
+    day1 = datetime(2026, 9, 1)
+    day2 = datetime(2026, 9, 2)
+    changes = [(0, ACTIVITY_REST), (274, ACTIVITY_WORK), (600, ACTIVITY_WORK)]
+    daily_records = [
+        (day1, 50, _pack(changes)),
+        (day2, 50, _pack(changes)),
+    ]
+    vehicle_records = [
+        (datetime(2026, 9, 1, 3, 0), datetime(2026, 9, 1, 12, 0), "EB23579"),
+        (datetime(2026, 9, 2, 3, 0), datetime(2026, 9, 2, 12, 0), "CT15491"),
+    ]
+
+    acts = _build_activities("X", vehicle_records, {}, daily_records, "test.ddd")
+
+    assert len(acts) == 2
+    assert acts[0].vehicle_registration == "EB23579"
+    assert acts[1].vehicle_registration == "CT15491"

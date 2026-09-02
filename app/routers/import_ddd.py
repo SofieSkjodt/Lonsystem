@@ -301,20 +301,24 @@ def _import_activity(
             existing.km_end = act.km_end
             changed = True
 
+        # Ret registreringsnummeret uafhængigt af tid/segment-ændringerne
+        # nedenfor – en tidligere fejlbehæftet parser-version kunne gemme et
+        # forkert registreringsnummer for en dag der ellers ikke ændrer sig
+        # ved genimport, og genimporten skal stadig kunne korrigere det. Feltet
+        # er metadata uden betydning for løn/godkendelse, så det rettes
+        # uanset aktivitetens status.
+        if act.vehicle_registration and act.vehicle_registration != existing.vehicle_registration:
+            existing.vehicle_registration = act.vehicle_registration
+            v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
+            existing.vehicle_number = v.vehicle_number if v else None
+            changed = True
+
         new_segments = [
             [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
         ]
         new_pause_intervals = [
             [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
         ]
-
-        def _sync_vehicle():
-            if act.vehicle_registration and not existing.vehicle_registration:
-                existing.vehicle_registration = act.vehicle_registration
-                if not existing.vehicle_number:
-                    v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
-                    if v:
-                        existing.vehicle_number = v.vehicle_number
 
         def _reopen_for_review():
             if existing.status != ActivityStatus.pending:
@@ -345,7 +349,6 @@ def _import_activity(
             # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
             # den nye fil stadig ser ufuldstændig ud.
             existing.is_likely_incomplete = act.is_likely_incomplete
-            _sync_vehicle()
             # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der
             # blev taget stilling til – genåbnes til afventende, så tiden skal
             # godkendes igen.
@@ -380,7 +383,6 @@ def _import_activity(
             existing.other_work_pct = act.other_work_pct
             existing.driving_pct = act.driving_pct
             existing.is_likely_incomplete = act.is_likely_incomplete
-            _sync_vehicle()
             changed = True
 
         if changed:
