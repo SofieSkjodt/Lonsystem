@@ -400,6 +400,12 @@ def download_timeseddel(
     )
 
 
+def _week_label(start: date, end: date) -> str:
+    w1 = start.isocalendar()[1]
+    w2 = end.isocalendar()[1]
+    return f"uge {w1}" if w1 == w2 else f"uge {w1}-{w2}"
+
+
 @router.post("/{employee_id}/send")
 def send_timeseddel(
     employee_id: int,
@@ -417,6 +423,7 @@ def send_timeseddel(
     calc         = _calculate_employee(emp, period.start_date, period.end_date, db)
     pdf_bytes    = _build_pdf(calc, _get_employee_cvr(emp, db))
     period_label = f"{period.start_date.strftime('%d-%m-%Y')} – {period.end_date.strftime('%d-%m-%Y')}"
+    week_label   = _week_label(period.start_date, period.end_date)
 
     try:
         from utils.email_sender import send_timeseddel as _send
@@ -424,6 +431,7 @@ def send_timeseddel(
             to_email      = emp.email,
             employee_name = emp.name,
             period_label  = period_label,
+            week_label    = week_label,
             pdf_bytes     = pdf_bytes,
         )
     except Exception as e:
@@ -456,6 +464,7 @@ def send_all_timesedler(
     employees = q.order_by(Employee.first_name, Employee.last_name).all()
 
     period_label = f"{body.from_date.strftime('%d-%m-%Y')} – {body.to_date.strftime('%d-%m-%Y')}"
+    week_label   = _week_label(body.from_date, body.to_date)
 
     sent = []
     skipped_no_email = []
@@ -476,6 +485,7 @@ def send_all_timesedler(
                 to_email=emp.email,
                 employee_name=emp.name,
                 period_label=period_label,
+                week_label=week_label,
                 pdf_bytes=pdf_bytes,
             )
             sent.append(emp.name)

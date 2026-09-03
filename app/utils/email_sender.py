@@ -15,7 +15,7 @@ def _sanitize_header(value: str) -> str:
     return value.replace("\r", "").replace("\n", "").replace("\0", "")
 
 
-def send_timeseddel(to_email: str, employee_name: str, period_label: str, pdf_bytes: bytes):
+def send_timeseddel(to_email: str, employee_name: str, period_label: str, pdf_bytes: bytes, week_label: str = ""):
     host     = os.getenv("SMTP_HOST", "smtp.office365.com")
     port     = int(os.getenv("SMTP_PORT", "587"))
     user     = os.getenv("SMTP_USER", "")
@@ -33,9 +33,11 @@ def send_timeseddel(to_email: str, employee_name: str, period_label: str, pdf_by
     msg["To"]      = to_email
     msg["Subject"] = f"Timeseddel – {safe_name_hdr} – {safe_period_hdr}"
 
+    period_with_week = f"{period_label} ({week_label})" if week_label else period_label
     body = (
         f"Kære {employee_name},\n\n"
-        f"Vedhæftet finder du din timeseddel for perioden {period_label}.\n\n"
+        f"Vedhæftet finder du din timeseddel for perioden {period_with_week}.\n\n"
+        f"Ved spørgsmål til din timeseddel, besvar denne mail.\n\n"
         f"Med venlig hilsen\nPoul Schou A/S"
     )
     msg.attach(MIMEText(body, "plain", "utf-8"))
