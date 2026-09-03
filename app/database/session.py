@@ -591,6 +591,12 @@ def _migrate_dispatcher_groups():
     import sqlite3 as _sqlite3
     from database.models import DispatcherGroup
 
+    with _sqlite3.connect(str(DB_PATH)) as conn:
+        emp_cols = {row[1] for row in conn.execute("PRAGMA table_info(employees)")}
+        if "dispatcher_group" not in emp_cols:
+            # Migrering allerede udført tidligere - rør ikke ved disponentgrupperne igen.
+            return
+
     db = SessionLocal()
     try:
         default_groups = [
@@ -604,9 +610,6 @@ def _migrate_dispatcher_groups():
         db.commit()
 
         with _sqlite3.connect(str(DB_PATH)) as conn:
-            emp_cols = {row[1] for row in conn.execute("PRAGMA table_info(employees)")}
-            if "dispatcher_group" not in emp_cols:
-                return
             rows = conn.execute(
                 "SELECT id, dispatcher_group FROM employees "
                 "WHERE dispatcher_group IS NOT NULL AND dispatcher_group != ''"
