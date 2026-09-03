@@ -880,6 +880,21 @@ def _build_proevekoersel_workbook(employees, period, db):
                 cell.font = bold
         ws.append([])
 
+    # Dansk taltformat (komma som decimal, punktum som tusind-separator ved
+    # visning – Excel lokaliserer selv formatkoden efter appens sprogindstilling,
+    # jf. samme separatorer som PDF-timesedlen/prøvekørsel-Excel'en skal matche).
+    # Kolonne G/I/J/K/L/M er timer (kun decimal), N/P er beløb (tusind + decimal).
+    _HOUR_COLS = {7, 9, 10, 11, 12, 13}
+    _MONEY_COLS = {14, 16}
+    for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
+        for idx, cell in enumerate(row, start=1):
+            if not isinstance(cell.value, (int, float)):
+                continue
+            if idx in _MONEY_COLS:
+                cell.number_format = '#,##0.00'
+            elif idx in _HOUR_COLS:
+                cell.number_format = '0.00'
+
     # Bredder tilpasset dataindholdet (ikke de – ofte længere – ombrudte
     # overskrifter), så alle 16 kolonner kan ses uden vandret scroll.
     column_widths = {
