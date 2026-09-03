@@ -584,9 +584,10 @@ def _ensure_paragraf_56_alert_permission():
 
 def _migrate_dispatcher_groups():
     """
-    Seeder de faste disponentgrupper og migrerer eksisterende medarbejderes
-    (legacy) dispatcher_group-streng til den nye many-to-many-tabel.
-    Idempotent – dropper legacy-kolonnen efter migrering.
+    Migrerer eksisterende medarbejderes (legacy) dispatcher_group-streng til
+    den nye many-to-many-tabel. Idempotent – dropper legacy-kolonnen efter
+    migrering. Opretter ingen faste/hardcodede grupper; grupper kommer
+    udelukkende fra faktiske medarbejderdata eller senere CRUD via UI.
     """
     import sqlite3 as _sqlite3
     from database.models import DispatcherGroup
@@ -599,16 +600,6 @@ def _migrate_dispatcher_groups():
 
     db = SessionLocal()
     try:
-        default_groups = [
-            "2 - Kran", "4 - Makulering", "5 - Miljø",
-            "8 - THG", "9 - BN", "10 - ISOPLUS-CHJ",
-        ]
-        existing_names = {g.name for g in db.query(DispatcherGroup).all()}
-        for name in default_groups:
-            if name not in existing_names:
-                db.add(DispatcherGroup(name=name))
-        db.commit()
-
         with _sqlite3.connect(str(DB_PATH)) as conn:
             rows = conn.execute(
                 "SELECT id, dispatcher_group FROM employees "
