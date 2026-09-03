@@ -91,6 +91,7 @@ def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
         "ot_rates": calc["ot_rates"],
         "salt_kr": calc["salt_kr"],
         "total_kr": float(total_kr_with_extras),
+        "activity_count": calc["activity_count"],
         "days": days,
     }
 
@@ -167,6 +168,9 @@ def payroll_settlement_preview(period_start: Optional[str] = None,
     period = _resolve_period(period_start, db)
     employees = _active_employees(db)
     employees_data = [_employee_settlement_data(e, period.start_date, period.end_date, db) for e in employees]
+    # Kun medarbejdere med data (mindst én godkendt aktivitet) for perioden
+    # skal vises – bekræftet af bruger 2026-09-03.
+    employees_data = [e for e in employees_data if e["activity_count"] > 0]
     employees_data.sort(key=lambda e: e["employee_name"] or "")
     return {
         "period_start": period.start_date.isoformat(),
@@ -244,10 +248,14 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
         )
 
     employees = _active_employees(db)
+    # Kun medarbejdere med data (mindst én godkendt aktivitet) for perioden
+    # skal med i eksporten – bekræftet af bruger 2026-09-03.
     employee_pairs = sorted(
         (
-            (e, _employee_settlement_data(e, period.start_date, period.end_date, db))
+            (e, data)
             for e in employees
+            for data in [_employee_settlement_data(e, period.start_date, period.end_date, db)]
+            if data["activity_count"] > 0
         ),
         key=lambda pair: pair[1]["employee_name"] or "",
     )

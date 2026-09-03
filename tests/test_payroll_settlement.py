@@ -281,15 +281,35 @@ def test_page_totals_aggregates_across_employees():
 
 
 def test_payroll_settlement_preview_defaults_to_current_period(db, employee):
+    from datetime import datetime, timedelta
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
     from routers.payroll_settlement_router import payroll_settlement_preview
+    from conftest import make_activity
     _setup_rates(db, employee, hourly=Decimal("150.00"))
     _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date.today(), db)
+    activity_start = datetime.combine(period.start_date, datetime.min.time()) + timedelta(hours=6)
+    make_activity(db, employee, activity_start, activity_start + timedelta(hours=8),
+                  status=ActivityStatus.approved)
 
     result = payroll_settlement_preview(current_user=_dummy_user(), db=db)
 
     assert "page_totals" in result
     assert len(result["employees"]) == 1
     assert result["employees"][0]["employee_number"] == employee.employee_number
+
+
+def test_payroll_settlement_preview_excludes_employees_without_activity_in_period(db, employee):
+    """Kun medarbejdere med data (mindst én godkendt aktivitet) for perioden
+    skal vises – bekræftet af bruger 2026-09-03."""
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+
+    result = payroll_settlement_preview(current_user=_dummy_user(), db=db)
+
+    assert result["employees"] == []
 
 
 def test_payroll_settlement_preview_follows_explicit_period_start(db, employee):
@@ -420,15 +440,18 @@ def test_export_settlement_csv_can_target_a_past_closed_period_while_today_is_op
 def test_export_settlement_csv_content_has_lonnummer_column_and_all_14_days(db, employee, tmp_path):
     from datetime import datetime
     from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
     from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
     from conftest import make_activity
     _setup_rates(db, employee, hourly=Decimal("150.00"))
     _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
     make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
                   status=ActivityStatus.approved)
 
-    result = export_settlement_csv(ExportSettlementCsvRequest(output_folder=str(tmp_path)),
-                                    current_user=_dummy_user(), db=db)
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
 
     content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
     lines = [l for l in content.splitlines() if l]
@@ -439,6 +462,21 @@ def test_export_settlement_csv_content_has_lonnummer_column_and_all_14_days(db, 
     # 14 dagsrækker for den ene medarbejder – ingen "Total løn for"-række
     assert len(lines) == 1 + 14
     assert employee.employee_number in lines[1]
+
+
+def test_export_settlement_csv_excludes_employees_without_activity_in_period(db, employee, tmp_path):
+    """Kun medarbejdere med data (mindst én godkendt aktivitet) for den
+    eksporterede periode skal med i CSV'en – bekræftet af bruger 2026-09-03."""
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+
+    result = export_settlement_csv(ExportSettlementCsvRequest(output_folder=str(tmp_path)),
+                                    current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    lines = [l for l in content.splitlines() if l]
+    assert len(lines) == 1  # kun header – ingen medarbejderrækker
 
 
 def test_export_settlement_csv_content_shows_sygdom_hours_and_beloeb(db, employee, tmp_path):
