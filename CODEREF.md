@@ -421,6 +421,8 @@ Filens dato/minutter er **UTC** – konverteres til Europe/Copenhagen (DST-korre
 ## Auto-godkendelse ved oprettelse af aktivitet (2026-08-25, activities.py + auth.py + session.py)
 Ny permission `auto_approve_manual_activities` ("Auto-godkend ved oprettelse") – styrer om `create_manual_activity()` sætter `status=approved` direkte i stedet for `pending` for normal arbejdstid. `admin` har den automatisk (systemrolle), `lonbogholder` får den som default-seed + migration (`_ensure_auto_approve_permission()`, samme mønster som `_ensure_manage_baselines_permission()`), `disponent` får den ikke som default men kan tildeles den via rolle-editoren. Er aktiviteten under 4 timer (samme beregning som `is_under_4h`/godkendelses-endpointet: `_duration_minutes()` + `_day_reaches_4h_with_approved()`) og kommentarfeltet er tomt, sættes `comment = current_user.initials` automatisk – kun for brugere med permissionen, og kun hvis de ikke selv har skrevet en kommentar. Fraværstypers eksisterende ubetingede auto-godkendelse (alle roller) er uændret; kommentar-fallback'en udløses dog ikke for roller uden permissionen.
 
+**Rettet 2026-09-03:** Denne godkendelse er UAFHÆNGIG af den globale auto-godkendelses-kontakt (`SystemSettings.auto_approval_enabled`, se `docs/superpowers/specs/2026-08-27-global-auto-godkendelse-kontakt-design.md`). Kontakten styrer kun den statistiske baseline-godkendelse (DDD-import + bulk-knappen "Autogodkend aktiviteter"). `create_manual_activity()` tjekker derfor kun `auto_approve_manual_activities`-permissionen, ikke `is_auto_approval_enabled(db)` – oprindeligt (fejlagtigt) koblet sammen i den globale kontakt-implementering.
+
 ---
 
 ## Danløn CSV-struktur (payroll_router.py)

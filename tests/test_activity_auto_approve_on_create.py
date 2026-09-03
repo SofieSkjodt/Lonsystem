@@ -128,7 +128,10 @@ def test_system_role_admin_auto_approves_without_explicit_permission(db, employe
     assert resp.comment == "ADM"
 
 
-def test_permission_holder_normal_activity_stays_pending_when_globally_disabled(db, employee):
+def test_permission_holder_normal_activity_still_approved_when_globally_disabled(db, employee):
+    # Den globale auto-godkendelses-kontakt styrer kun statistisk baseline-
+    # godkendelse (DDD-import/bulk-knap) - IKKE permission-baseret
+    # godkendelse ved manuel oprettelse, som er en selvstændig mekanisme.
     from routers.activities import create_manual_activity
     from conftest import set_auto_approval_enabled
 
@@ -141,9 +144,8 @@ def test_permission_holder_normal_activity_stays_pending_when_globally_disabled(
         end_time=datetime(2026, 1, 5, 14, 0),  # 8 timer
     )
     resp = create_manual_activity(body, current_user=_user(), db=db)
-    assert resp.status == ActivityStatus.pending
-    assert resp.approved_by is None
-    assert resp.comment is None
+    assert resp.status == ActivityStatus.approved
+    assert resp.approved_by == "LB1"
 
 
 def test_disponent_absence_type_still_approved_when_globally_disabled(db, employee):

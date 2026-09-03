@@ -456,10 +456,7 @@ def create_manual_activity(body: ActivityCreate,
 
     period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"
-    can_auto_approve = (
-        user_has_permission(db, current_user, "auto_approve_manual_activities")
-        and is_auto_approval_enabled(db)
-    )
+    can_auto_approve = user_has_permission(db, current_user, "auto_approve_manual_activities")
     activity = Activity(
         employee_id=body.employee_id,
         pay_period_id=period.id,
