@@ -146,6 +146,25 @@ def test_entire_day_becomes_ghost_when_only_stale_status_and_nothing_real():
     assert all(a.start_time.date() != day2.date() for a in acts)
 
 
+def test_short_leading_rest_not_at_midnight_kept_as_shift_start():
+    """
+    Reproducerer Mikkel Hørlin 2/9-2026: dagens allerførste registrering
+    (ikke minut 0, men minut 294 = 04:54 UTC / 06:54 lokal) er "hvil", og
+    skifter til "kørsel" 8 minutter senere (minut 302). Da der intet er
+    forud for denne registrering (ingen videreført status fra i går), er
+    den korte indledende hvil chaufførens faktiske dagsstart og skal IKKE
+    droppes til fordel for det første ikke-hvil-tidspunkt.
+    """
+    day = datetime(2026, 9, 2)
+    changes = [(294, ACTIVITY_REST), (302, ACTIVITY_DRIVING), (600, ACTIVITY_WORK)]
+    daily_records = [(day, 65, _pack(changes))]
+
+    acts = _build_activities("X", None, {}, daily_records, "test.ddd")
+
+    assert len(acts) == 1
+    assert acts[0].start_time == _utc_to_local(day + timedelta(minutes=294))
+
+
 def test_scan_ddd_folder_excludes_files_older_than_max_age(tmp_path):
     """
     scan_ddd_folder() gennemsøges hver gang hele mappen scannes (både ved

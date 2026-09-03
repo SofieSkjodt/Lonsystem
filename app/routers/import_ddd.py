@@ -281,13 +281,20 @@ def _import_activity(
     if declined:
         return "skipped_declined", None
 
-    # Check for existing activity
+    # Check for existing activity. Match på tidsoverlap i stedet for eksakt
+    # start_time-lighed: en rettelse i parseren (eller en senere, mere
+    # komplet kortudlæsning) kan ændre det beregnede starttidspunkt for en
+    # vagt, og skal stadig kunne opdatere den eksisterende række i stedet for
+    # fejlagtigt at oprette en duplikat (bekræftet 2026-09-03: Mikkel Hørlin
+    # 2/9 – en parser-rettelse flyttede vagtens beregnede start fra 07:02 til
+    # 06:54).
     existing = (
         db.query(Activity)
         .filter(
             Activity.employee_id == employee.id,
-            Activity.start_time == act.start_time,
             Activity.source == ActivitySource.tachograph,
+            Activity.start_time < act.end_time,
+            Activity.end_time > act.start_time,
         )
         .first()
     )
@@ -328,6 +335,28 @@ def _import_activity(
                 existing.deactivated_by = None
                 existing.auto_approved = False
                 existing.auto_approval_flags = []
+
+        if act.start_time < existing.start_time:
+            # Analogt med udvidelse ved et senere sluttidspunkt herunder: en
+            # ny fil (eller en rettet parser) kan afsløre et TIDLIGERE reelt
+            # starttidspunkt end det hidtil gemte. Tilføj kun de nye
+            # segmenter/pauser der ligger FØR det hidtidige starttidspunkt –
+            # rør ikke ved det der allerede er gemt fra og med det gamle
+            # starttidspunkt, af samme grund som ved sluttidspunktet nedenfor
+            # (mulige manuelle rettelser må ikke gå tabt).
+            cutoff = existing.start_time
+            existing.segments = [
+                s for s in new_segments if _dt_now.fromisoformat(s[1]) <= cutoff
+            ] + (existing.segments or [])
+            existing.pause_intervals = [
+                p for p in new_pause_intervals if _dt_now.fromisoformat(p[1]) <= cutoff
+            ] + (existing.pause_intervals or [])
+            existing.start_time = act.start_time
+            _recalculate_pcts(existing)
+            # Godkendt/deaktiveret aktivitet dækker nu en længere periode end
+            # det, der blev taget stilling til – genåbnes til afventende.
+            _reopen_for_review()
+            changed = True
 
         if act.end_time > existing.end_time:
             # En senere kortudlæsning kan dække en mere komplet dag (senere

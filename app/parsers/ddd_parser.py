@@ -622,9 +622,22 @@ def _build_activities(
             ):
                 day_start_minute = changes[1][0]
         else:
-            day_start_minute = first_nonrest_minute
-            if len(changes) > 1 and changes[0][0] == 0 and changes[1][1] == ACTIVITY_REST:
-                day_start_minute = changes[1][0]
+            if changes[0][0] != 0:
+                # Dagens allerførste registrering ER selve denne hvilepost –
+                # der er intet forud for den (dagens data starter simpelthen
+                # her, ikke ved midnat), så den kan ikke være en "videreført"
+                # status fra i går. Den udgør derfor chaufførens faktiske
+                # dagsstart, uanset hvor kort den er (bekræftet 2026-09-03:
+                # Mikkel Hørlin 2/9 – kortet fik status "hvil" kl. 06:54,
+                # skiftede til "kørsel" kl. 07:02; vagten skal starte 06:54).
+                day_start_minute = changes[0][0]
+            else:
+                # Minut 0 er en videreført hvil-status fra dagen inden – det
+                # er ikke muligt at skelne fra rå data alene om det er en
+                # ægte kort hvil eller bare "hængende" midnatsstatus, så vi
+                # springer den over og lader vagten starte ved næste
+                # rigtige (ikke-hvil) registrering.
+                day_start_minute = first_nonrest_minute
 
         last_minute = changes[-1][0]
         if last_minute <= day_start_minute:

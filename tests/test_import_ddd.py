@@ -101,6 +101,42 @@ def test_later_more_complete_readout_still_extends_shift(db, employee):
     assert len(act.pause_intervals) == 1
 
 
+def test_corrected_earlier_start_time_extends_existing_activity_not_duplicates(db, employee):
+    """
+    Reproducerer Mikkel Hørlin 2/9-2026: aktiviteten blev oprindeligt
+    importeret med start 07:02 (en parser-bug droppede en 8 min indledende
+    hvil). Efter parser-rettelsen beregnes samme vagt nu korrekt til at
+    starte 06:54. En genimport skal finde og OPDATERE den eksisterende
+    aktivitet (samme vagt, blot et rettet starttidspunkt) – ikke oprette en
+    ny, overlappende duplikat-aktivitet.
+    """
+    old_start = datetime(2026, 9, 2, 7, 2)
+    end = datetime(2026, 9, 2, 14, 49)
+    act = make_activity(db, employee, start=old_start, end=end, status=ActivityStatus.pending)
+    act.segments = [[old_start.isoformat(), end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    corrected_start = datetime(2026, 9, 2, 6, 54)
+    corrected = _parsed(
+        corrected_start, end,
+        segments=[
+            (corrected_start, old_start, "rest"),
+            (old_start, end, "driving"),
+        ],
+        pauses=[(corrected_start, old_start)],
+    )
+
+    result, _ = _import_activity(corrected, db, employee)
+    db.refresh(act)
+
+    assert result == "updated"
+    assert act.start_time == corrected_start
+    assert act.pause_intervals == [[corrected_start.isoformat(), old_start.isoformat()]]
+    assert len(act.segments) == 2
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
+
+
 def _test_user():
     return AppUser(name="Test", initials="TST", role="admin", password_hash="x")
 
