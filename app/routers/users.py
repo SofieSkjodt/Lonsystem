@@ -86,7 +86,9 @@ def update_user(
     if not user:
         raise HTTPException(404, "Bruger ikke fundet")
     if body.initials and body.initials.upper() != user.initials:
-        if db.query(AppUser).filter(AppUser.initials.ilike(body.initials)).first():
+        if db.query(AppUser).filter(
+            AppUser.initials.ilike(body.initials), AppUser.id != user.id
+        ).first():
             raise HTTPException(400, "Initialer er allerede i brug")
         user.initials = body.initials.upper()
     if body.name is not None:
