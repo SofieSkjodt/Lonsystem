@@ -1569,11 +1569,17 @@ async function loadAbsenceTypes() {
 }
 
 function isoWeekNumber(d) {
-  const jan4 = new Date(d.getFullYear(), 0, 4);
-  const startOfWeek1 = new Date(jan4);
-  startOfWeek1.setDate(jan4.getDate() - ((jan4.getDay() + 6) % 7));
-  const diff = d - startOfWeek1;
-  return Math.floor(diff / 604800000) + 1;
+  // Regner udelukkende i UTC (ingen lokal-tid-aritmetik), så sommertidsskiftet i
+  // marts/oktober ikke stjæler/tilføjer en time og forskyder ugenummeret – det
+  // skete tidligere for enhver dato efter forårets skift, fordi datodifferencen
+  // blev udregnet i lokal tid (fx 17-08-2026 gav uge 33 i stedet for korrekt 34).
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const dayNum = (date.getUTCDay() + 6) % 7; // 0 = mandag
+  date.setUTCDate(date.getUTCDate() - dayNum + 3); // torsdag i denne uge (ISO 8601-definitionen)
+  const firstThursday = new Date(Date.UTC(date.getUTCFullYear(), 0, 4));
+  const firstThursdayDayNum = (firstThursday.getUTCDay() + 6) % 7;
+  firstThursday.setUTCDate(firstThursday.getUTCDate() - firstThursdayDayNum + 3);
+  return 1 + Math.round((date - firstThursday) / 604800000);
 }
 
 function updateManualTypeVisibility() {
