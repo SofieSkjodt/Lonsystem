@@ -134,7 +134,7 @@ Notér outputtet, fx `C:\Users\LoenPC\AppData\Local\Programs\Python\Python313\py
 
 **Sæt backup-mappen** (kræver ikke admin, da den sættes for din egen bruger):
 ```
-[Environment]::SetEnvironmentVariable("LONSYSTEM_BACKUP_DIR", "C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter", "User")
+[Environment]::SetEnvironmentVariable("LONSYSTEM_BACKUP_DIR", "C:\Users\LoenPC\OneDrive - Poul Schou A S\LonsystemBackup", "User")
 ```
 
 **Åbn Task Scheduler:** Start-menuen → søg "Task Scheduler" → åbn den (kræver ikke
@@ -357,8 +357,14 @@ Opgaven "LonsystemBackup" (oprettet i Del 3) kører [backup/backup.py](../backup
 fire gange dagligt (00:00, 06:00, 12:00, 18:00) og zipper databasen samt de tre
 Excel-satsfiler. Zip-filerne gemmes i:
 ```
-C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter
+C:\Users\LoenPC\OneDrive - Poul Schou A S\LonsystemBackup
 ```
+(Oprindeligt blev "Dokumenter"-mappen brugt, men den mappe sad fast som en
+ikke-skrivbar OneDrive-pladsholder fra 2026-09-01 og fremad — sqlite fejlede
+med "unable to open database file" ved hvert forsøg. En ny mappe oprettet
+direkte i OneDrive-roden virker uden problemer. Ret `LONSYSTEM_BACKUP_DIR`
+(Del 3B) hvis stien nogensinde skal ændres igen.)
+
 De seneste 5 dages backups beholdes, ældre slettes automatisk. Backup kører også
 automatisk som første skridt i hvert deploy (både manuelt og via auto-deploy).
 

@@ -26,7 +26,7 @@ $AppDirectory = Join-Path $ProjectRoot "app"
 $AutoCheckPath = Join-Path $DeployDirectory "auto_deploy_check.ps1"
 $RestartScript = Join-Path $DeployDirectory "restart_server.ps1"
 $BackupScript = Join-Path $ProjectRoot "backup\backup.py"
-$BackupDir = "C:\Users\LoenPC\OneDrive - Poul Schou A S\Dokumenter"
+$BackupDir = "C:\Users\LoenPC\OneDrive - Poul Schou A S\LonsystemBackup"
 
 foreach ($RequiredPath in @($AppDirectory, $AutoCheckPath, $RestartScript, $BackupScript)) {
     if (-not (Test-Path -LiteralPath $RequiredPath)) {
