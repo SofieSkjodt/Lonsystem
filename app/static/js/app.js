@@ -64,6 +64,33 @@ const PERMISSION_LABELS = {
   payroll_settlement_export: "Lønafregning (eksport)",
 };
 
+const PERMISSION_DESCRIPTIONS = {
+  payroll:             "Adgang til at køre og eksportere lønkørsel (Danløn CSV) for en periode.",
+  absence_overview:    "Adgang til fraværsoversigt-fanen, som viser fraværstyper på tværs af medarbejdere.",
+  import_ddd:          "Kan importere .ddd-filer (tachograf-data fra chaufførkort/køretøjer).",
+  user_management:     "Adgang til Brugerstyring – oprette/redigere brugere og roller.",
+  reopen_period:       "Kan genåbne en allerede lukket/afregnet lønperiode.",
+  stamdata:            "Adgang til Stamdata-siden (overenskomster, satser, løntypekoder m.m.).",
+  view_employees:      "Kan se medarbejderlisten og deres stamdata.",
+  manage_employees:    "Kan oprette og redigere medarbejdere.",
+  view_vehicles:       "Kan se vognparkens registreringsnumre/vognnumre.",
+  manage_vehicles:     "Kan tilføje og redigere køretøjer i vognparken.",
+  manage_employee_supplements: "Kan administrere faste tillæg pr. medarbejder.",
+  manage_holidays:     "Kan tilføje, redigere og slette helligdage i kalenderen.",
+  anciennitet_alert:   "Ser advarsel når en medarbejders anciennitet nærmer sig en løn-relevant grænse (fx sygdom med løn).",
+  paragraf_56_alert:   "Ser advarsel om §56-aftaler der kræver opmærksomhed.",
+  approve_activities:  "Kan godkende, afvise eller genåbne aktiviteter manuelt.",
+  auto_approve_manual_activities: "Aktiviteter brugeren selv opretter manuelt i aktivitetsoversigten, bliver godkendt automatisk med det samme. Uafhængig af den globale auto-godkendelses-kontakt (Stamdata).",
+  manage_auto_approval: "Kan slå den globale auto-godkendelse til/fra i Stamdata. Styrer kun DDD-import og bulk-knappen \"Autogodkend aktiviteter\" (baseret på medarbejderens historiske mønster) – påvirker ikke manuel oprettelse.",
+  view_calendar:       "Kan se aktivitetsoversigten/-kalenderen.",
+  toggle_springer:     "Kan sætte/fjerne springertillæg-markering på en medarbejders linje.",
+  vagtplan_view:       "Kan se vagtplanen.",
+  vagtplan_edit_own:   "Kan redigere egen linje i vagtplanen.",
+  vagtplan_edit_all:   "Kan redigere alle medarbejderes linjer i vagtplanen.",
+  payroll_settlement_view:   "Kan se lønafregningsoversigten.",
+  payroll_settlement_export: "Kan eksportere lønafregningen.",
+};
+
 let manualPauses = [];
 let _resizeSegState = null;
 let _pauseEditState = null; // { mode: "create"|"activity", idx, activityId? }
@@ -4140,6 +4167,8 @@ function _renderPermCheckboxes(selectedPerms, isSystem) {
                ${isSystem ? "disabled" : ""}
                style="width:15px;height:15px;accent-color:var(--primary);cursor:${isSystem ? "default" : "pointer"}">
         ${label}
+        <span title="${h(PERMISSION_DESCRIPTIONS[key] || "")}"
+              style="display:inline-flex;align-items:center;justify-content:center;width:14px;height:14px;border-radius:50%;border:1px solid var(--border);color:var(--text-light);font-size:10px;font-style:italic;font-family:serif;cursor:help;flex-shrink:0">i</span>
       </label>`).join("") +
     (isSystem ? `<p style="font-size:12px;color:var(--text-light);margin-top:8px;font-style:italic">Systemrollers rettigheder kan ikke ændres</p>` : "");
 }
