@@ -155,7 +155,11 @@ def _migrate():
                 "ON activities(employee_id, start_time, source)"
             )
             conn.commit()
-        if "uq_activities_employee_start_tachograph" not in existing_indexes:
+        tachograph_index_sql = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='index' "
+            "AND name='uq_activities_employee_start_tachograph'"
+        ).fetchone()
+        if tachograph_index_sql is None:
             # Fjern evt. eksisterende dubletter (samme medarbejder+starttid,
             # tachograf-kilde) opstået pga. den tidligere manglende spærre,
             # før det unikke indeks oprettes – ellers fejler CREATE UNIQUE
@@ -171,7 +175,21 @@ def _migrate():
             )
             conn.execute(
                 "CREATE UNIQUE INDEX uq_activities_employee_start_tachograph "
-                "ON activities(employee_id, start_time) WHERE source = 'tachograph'"
+                "ON activities(employee_id, start_time) "
+                "WHERE source = 'tachograph' AND status != 'deactivated'"
+            )
+            conn.commit()
+        elif "status != 'deactivated'" not in tachograph_index_sql[0]:
+            # Opgraderer det gamle indeks (uden status-undtagelsen), som
+            # blokerede split_activity(): den deaktiverede original beholdt
+            # samme starttid+tachograf-kilde som den nye "del 1", og det
+            # udløste en unik-indeks-fejl (500 internal server error) ved
+            # splitning af en tachograf-importeret vagt.
+            conn.execute("DROP INDEX uq_activities_employee_start_tachograph")
+            conn.execute(
+                "CREATE UNIQUE INDEX uq_activities_employee_start_tachograph "
+                "ON activities(employee_id, start_time) "
+                "WHERE source = 'tachograph' AND status != 'deactivated'"
             )
             conn.commit()
         if "ix_activities_period_status" not in existing_indexes:

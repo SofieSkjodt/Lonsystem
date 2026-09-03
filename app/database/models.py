@@ -189,11 +189,16 @@ class Activity(Base):
         # spærre opdager duplikat-tjekket i import_ddd.py det ikke, og vagten
         # tælles dobbelt i lønnen. Kun tachograf-kilden er omfattet, da manuelle/
         # vagtplan-aktiviteter ikke har det samme check-then-insert-mønster.
+        # Deaktiverede rækker er undtaget: split_activity() (se activities.py)
+        # deaktiverer den oprindelige tachograf-vagt i stedet for at slette
+        # den, og opretter to nye tachograf-kilde-rækker med samme starttid –
+        # uden undtagelsen ville det andet split-forsøg (og alle senere) fejle
+        # med en unik-indeks-fejl (500 internal server error).
         Index(
             "uq_activities_employee_start_tachograph",
             "employee_id", "start_time",
             unique=True,
-            sqlite_where=text("source = 'tachograph'"),
+            sqlite_where=text("source = 'tachograph' AND status != 'deactivated'"),
         ),
         # Lønkørsel, aktivitetsoversigt og fraværsoversigt filtrerer alle på
         # denne kombination (pay_period_id + status) – uden indekset bliver
