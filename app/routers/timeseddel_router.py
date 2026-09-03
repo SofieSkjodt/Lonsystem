@@ -74,7 +74,23 @@ def _p(text, style):
 
 def _v(val):
     try:
-        return f'{float(val):.2f}' if val and float(val) > 0 else ''
+        return f'{float(val):.2f}'.replace('.', ',') if val and float(val) > 0 else ''
+    except (TypeError, ValueError):
+        return ''
+
+
+def _kr(val) -> str:
+    """Formaterer et kronebeløb med tusind-separator og dansk decimaltegn
+    (fx 25.128,09) – bruges på alle beløbskolonner (DKK/Sats/Total kr./I alt)."""
+    try:
+        return f'{float(val):,.2f}'.replace(',', 'X').replace('.', ',').replace('X', '.')
+    except (TypeError, ValueError):
+        return '0,00'
+
+
+def _vkr(val):
+    try:
+        return _kr(val) if val and float(val) > 0 else ''
     except (TypeError, ValueError):
         return ''
 
@@ -145,7 +161,7 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         [_p('Medarbejder', s_sub),      _p(_esc(calc['employee_name']), s_bold),
          _p('Lønnummer', s_sub),  _p(_esc(str(calc.get('employee_number', ''))), s_bold)],
         [_p('Overenskomsttype', s_sub), _p(_esc(str(calc.get('agreement_type', ''))), s_bold),
-         _p('Timesats', s_sub),        _p(f"{calc['hourly_rate']:.2f} kr/t", s_bold)],
+         _p('Timesats', s_sub),        _p(f"{_kr(calc['hourly_rate'])} kr/t", s_bold)],
     ], colWidths=[W * 0.20, W * 0.30, W * 0.20, W * 0.30])
     info.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), GREY_BG),
@@ -172,25 +188,25 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
 
     def add_row(label, hours, rate_str, dkk_str, absence=False):
         st = s_abs if absence else s_body
-        sum_rows.append([_p(label, st), _p(f'{hours:.2f}', s_right),
+        sum_rows.append([_p(label, st), _p(f'{hours:.2f}'.replace('.', ','), s_right),
                          _p(rate_str, s_right), _p(dkk_str, s_right)])
 
     if calc.get('normal_hours', 0) > 0.001:
         h = float(calc['normal_hours'])
-        add_row('Normal tid', h, f'{hr:.2f} kr/t', f'{h * hr:.2f}')
+        add_row('Normal tid', h, f'{_kr(hr)} kr/t', _kr(h * hr))
     if calc.get('ot_before_hours', 0) > 0.001:
         h = float(calc['ot_before_hours'])
-        add_row('Overtid 1 time før', h, f'{ot_before_rate:.2f} kr/t', f'{h * ot_before_rate:.2f}')
+        add_row('Overtid 1 time før', h, f'{_kr(ot_before_rate)} kr/t', _kr(h * ot_before_rate))
     if calc.get('ot_13_hours', 0) > 0.001:
         h = float(calc['ot_13_hours'])
-        add_row('Overtid 1–3 timer efter', h, f'{ot_13_rate:.2f} kr/t', f'{h * ot_13_rate:.2f}')
+        add_row('Overtid 1–3 timer efter', h, f'{_kr(ot_13_rate)} kr/t', _kr(h * ot_13_rate))
     if calc.get('ot_extra_hours', 0) > 0.001:
         h = float(calc['ot_extra_hours'])
-        add_row('Øvrig overtid', h, f'{ot_extra_rate:.2f} kr/t', f'{h * ot_extra_rate:.2f}')
+        add_row('Øvrig overtid', h, f'{_kr(ot_extra_rate)} kr/t', _kr(h * ot_extra_rate))
     if calc.get('salt_hours', 0) > 0.001:
         add_row('Salttillæg', float(calc['salt_hours']),
-                f"{float(calc.get('salt_rate', 0)):.2f} kr/t",
-                f"{float(calc.get('salt_kr', 0)):.2f}")
+                f"{_kr(calc.get('salt_rate', 0))} kr/t",
+                _kr(calc.get('salt_kr', 0)))
     if calc.get('afspadsering_hours', 0) > 0.001:
         add_row('Afspadsering', float(calc['afspadsering_hours']), '–', '–', True)
     if calc.get('sygdom_hours', 0) > 0.001:
@@ -212,16 +228,30 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         sum_rows.append([
             _p('Overnatning', s_body),
             _p(f'{count} stk', s_right),
-            _p(f'{rate:.2f} kr/stk', s_right),
-            _p(f'{kr:.2f}', s_right),
+            _p(f'{_kr(rate)} kr/stk', s_right),
+            _p(_kr(kr), s_right),
+        ])
+    if calc.get('dob_overnight_count', 0) > 0:
+        count = int(calc['dob_overnight_count'])
+        rate  = float(calc.get('dob_overnight_rate', 0))
+        kr    = float(calc.get('dob_overnight_kr', 0))
+        sum_rows.append([
+            _p('DOB Overnatning', s_body),
+            _p(f'{count} stk', s_right),
+            _p(f'{_kr(rate)} kr/stk', s_right),
+            _p(_kr(kr), s_right),
         ])
 
-    total_display_kr = float(calc.get('total_kr', 0)) + float(calc.get('overnight_kr', 0))
+    total_display_kr = (
+        float(calc.get('total_kr', 0))
+        + float(calc.get('overnight_kr', 0))
+        + float(calc.get('dob_overnight_kr', 0))
+    )
     sum_rows.append([
         _p('I alt', s_bold),
-        _p(f"{float(calc.get('total_hours', 0)):.2f} t", s_bold_r),
+        _p(f"{float(calc.get('total_hours', 0)):.2f}".replace('.', ',') + " t", s_bold_r),
         _p('', s_body),
-        _p(f"{total_display_kr:.2f} kr", s_bold_r),
+        _p(f"{_kr(total_display_kr)} kr", s_bold_r),
     ])
 
     sum_t = Table(sum_rows, colWidths=[W * 0.45, W * 0.18, W * 0.18, W * 0.19])
@@ -260,14 +290,23 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
     story.append(_p('DAGSOVERSIGT', s_h2))
     story.append(Spacer(1, 2 * mm))
 
-    day_rows = [[
+    # "Salt, timer"-kolonnen udelades helt, hvis ingen dage i perioden har salttillæg.
+    has_salt = any((day.get('salt_hours') or 0) > 0.001 for day in calc['days'])
+
+    headers = [
         _p('Dato', s_th),      _p('Dag', s_th),
+        _p('Start', s_th_r),   _p('Slut', s_th_r),
         _p('Normal', s_th_r),      _p('Overtid før', s_th_r),
         _p('Overtid 1–3', s_th_r), _p('Øvrig overtid', s_th_r),
-        _p('Salt, timer', s_th_r),
-        _p('Total antal', s_th_r), _p('Total kr.', s_th_r),
-        _p('Fravær / Note', s_th),
-    ]]
+    ]
+    widths_mm = [20, 15, 14, 14, 15, 22, 22, 24]
+    if has_salt:
+        headers.append(_p('Salt, timer', s_th_r))
+        widths_mm.append(20)
+    headers += [_p('Total antal', s_th_r), _p('Total kr.', s_th_r), _p('Fravær / Note', s_th)]
+    widths_mm += [20, 18]
+
+    day_rows = [headers]
 
     weekend_rows = []
     for i, day in enumerate(calc['days'], start=1):
@@ -277,29 +316,42 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         is_we    = day['weekday'] >= 5
         absence  = day.get('absence_type') or ''
 
+        note_parts = [absence] if absence else []
+        if day.get('dob_overnight'):
+            note_parts.append('DOB Overnatning')
+        elif day.get('overnight'):
+            note_parts.append('Overnatning')
+        note = ', '.join(note_parts)
+
         if is_we:
             weekend_rows.append(i)
             cs, csr, ca = s_td_we, s_td_we_r, s_td_we
-        elif absence:
+        elif note:
             cs, csr, ca = s_td, s_td_r, s_td_abs
         else:
             cs, csr, ca = s_td, s_td_r, s_td
 
-        day_rows.append([
+        row = [
             _p(_esc(date_str), cs),        _p(_esc(wday), cs),
+            _p(_esc(day.get('start_time') or ''), csr),
+            _p(_esc(day.get('end_time') or ''),   csr),
             _p(_v(_day_normal_hours(day)), csr),
             _p(_v(day.get('ot_before')),   csr),
             _p(_v(day.get('ot_13')),       csr),
             _p(_v(day.get('ot_extra')),    csr),
-            _p(_v(day.get('salt_hours')),  csr),
+        ]
+        if has_salt:
+            row.append(_p(_v(day.get('salt_hours')), csr))
+        row += [
             _p(_v(day.get('total_hours')), csr),
-            _p(_v(day.get('total_kr')),    csr),
-            _p(_esc(absence), ca),
-        ])
+            _p(_vkr(day.get('total_kr')),  csr),
+            _p(_esc(note), ca),
+        ]
+        day_rows.append(row)
 
-    fixed_w  = (22 + 18 + 16 + 28 + 28 + 30 + 24 + 24 + 20) * mm
+    fixed_w  = sum(widths_mm) * mm
     last_col = W - fixed_w
-    cw = [22*mm, 18*mm, 16*mm, 28*mm, 28*mm, 30*mm, 24*mm, 24*mm, 20*mm, last_col]
+    cw = [w * mm for w in widths_mm] + [last_col]
 
     day_t = Table(day_rows, colWidths=cw)
     day_style = [

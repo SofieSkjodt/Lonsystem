@@ -3166,7 +3166,7 @@ function renderPayrollPreview(data) {
           <div>I alt</div>
           <div>${fmtHours(emp.total_hours)}</div>
           <div></div>
-          <div class="text-right">${fmtKr(emp.total_kr)}</div>
+          <div class="text-right">${fmtKr(emp.total_kr + (emp.overnight_kr || 0) + (emp.dob_overnight_kr || 0))}</div>
         </div>
       </div>`;
     container.appendChild(el);

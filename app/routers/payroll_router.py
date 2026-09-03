@@ -411,7 +411,10 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     # Overnatning håndteres som kolonne (ikke fraværsrække) – forhåndsberegn datoer.
     # DOB-overnatning tælles med i overnight_dates (samme dag-markering), men holdes
     # ude af overnight_count (kode 14) – den har sin egen tælling og sats (kode 43).
+    # dob_overnight_dates holdes separat, så dagsoversigten kan skelne de to typer
+    # i "Fravær / Note"-kolonnen (se PDF-timeseddel _build_pdf()).
     overnight_dates = {a.start_time.date() for a in activities if a.activity_type in ("overnatning", "dob_overnatning")}
+    dob_overnight_dates = {a.start_time.date() for a in activities if a.activity_type == "dob_overnatning"}
     totals["overnight_count"] = sum(1 for a in activities if a.activity_type == "overnatning")
     totals["dob_overnight_count"] = sum(1 for a in activities if a.activity_type == "dob_overnatning")
 
@@ -438,6 +441,12 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
     while cur <= end:
         acts_today = [a for a in acts_by_date.get(cur, []) if a.activity_type not in ("overnatning", "dob_overnatning")]
         overnight_today = 1 if cur in overnight_dates else 0
+        dob_overnight_today = 1 if cur in dob_overnight_dates else 0
+        # En dag kan være splittet i flere godkendte aktiviteter (=flere rækker i
+        # days[]) – overnatningsmarkøren skal kun vises på FØRSTE række for dagen,
+        # ellers tæller fx PDF-timeseddelens dagsoversigt og Excel-prøvekørslen
+        # samme overnatning flere gange (fundet af bruger 2026-09-03, Henrik Skov-sagen).
+        day_overnight_shown = False
 
         # Dag-klassifikation og SH-betaling (gælder uanset om der køres,
         # MEDMINDRE medarbejderen er afløser og der ikke er kørsel den dag)
@@ -480,10 +489,15 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                 "start_time": None, "end_time": None,
                 "vehicle_number": None,
                 "overnight": overnight_today,
+                "dob_overnight": dob_overnight_today,
             })
         else:
             for act in acts_today:
                 label = _ABSENCE_LABELS.get(act.activity_type)
+                row_overnight, row_dob_overnight = 0, 0
+                if not day_overnight_shown and (overnight_today or dob_overnight_today):
+                    row_overnight, row_dob_overnight = overnight_today, dob_overnight_today
+                    day_overnight_shown = True
                 if label:
                     # absence_hours/absence_kr er KUN til visning i Lønafregning
                     # (payroll_settlement_router.py) – de indgår IKKE i totals{}
@@ -554,7 +568,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "absence_kr": float(_round2(absence_kr)) if absence_kr is not None else None,
                         "start_time": None, "end_time": None,
                         "vehicle_number": None,
-                        "overnight": overnight_today,
+                        "overnight": row_overnight,
+                        "dob_overnight": row_dob_overnight,
                     })
                 else:
                     _segs = getattr(act, "segments", None)
@@ -647,7 +662,8 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "start_time":   act.start_time.strftime("%H:%M"),
                         "end_time":     act.end_time.strftime("%H:%M"),
                         "vehicle_number": act.vehicle_number or "",
-                        "overnight":    overnight_today,
+                        "overnight":    row_overnight,
+                        "dob_overnight": row_dob_overnight,
                     })
         if is_hourly_flexible:
             week_normal_remaining = day_normal_remaining
