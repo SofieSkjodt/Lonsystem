@@ -88,9 +88,11 @@ Transport- og Logistikoverenskomsten 2025-2028, satser pr. 1. marts 2026:
 - Timen før + 1.-3. time efter normal arbejdstid: +44,54 kr.
 - Derefter samt søn- og helligdage: +109,40 kr.
 
-**Tillæg ubekvem arbejdstid:**
-- Kl. 18.00–23.00: +46,93 kr./time
-- Kl. 23.00–06.00: +52,65 kr./time
+**Tillæg ubekvem arbejdstid – UDGÅET (erstattet 10/6-2026):**
+Dette var det oprindelige krav (18-23: +46,93 kr./time, 23-06: +52,65 kr./time), men er
+bekræftet af bruger og fuldstændigt erstattet af de tre overtidstillæg ovenfor
+(se `docs/PAYROLL_RULES.md`, afsnit "Ubekvem arbejdstid – UDGÅET"). Findes IKKE i den
+nuværende kode og skal ikke lægges til oveni overtidstillæggene.
 
 ### Minimum 4-timer regel
 Ifølge overenskomsten (§ 5 afløser / Chaufføroverenskomstens § 3, stk. 1):
@@ -182,15 +184,15 @@ Dage der er helligdage fremhæves med grøn baggrundsfarve (`#056a10`) i aktivit
 ## Afklarede punkter
 
 - [x] **Platform**: Lokal web-applikation (FastAPI + SQLite + browser)
-- [x] **Lønperiode**: Altid 14 dage, starter på næste hverdag efter forrige periodes slutdag
+- [x] **Lønperiode**: Altid 14 dage, faste perioder mandag-søndag beregnet fra et fast anker (mandag 1/6-2026), ikke "næste hverdag efter forrige periode"
 - [x] **CSV generering**: Kun ved klik på "Kør løn" – ingen fast dato
 - [x] **Effektiv tid**: Total tid fra start til slut (inkl. alle tachografaktiviteter + pålæsning/aflæsning)
-- [x] **Split**: Opdeling af aktivitet i del 1 (deaktiveret) og del 2 (kan godkendes) – bruges ved fejl i starttid
-- [x] **Minimum 4 timer**: Markeres rød, kræver manuel godkendelse med initialer og begrundelse
-- [x] **Overarbejde**: Håndteres (se OVERTIME_RULES.md) – tidlig (05-06), normal (1-3 t), ekstra (>3 t)
+- [x] **Split**: Den oprindelige aktivitet deaktiveres; del 1 og del 2 oprettes som nye, begge afventende (skal godkendes hver for sig) – bruges ved fejl i starttid
+- [x] **Minimum 4 timer**: Markeres med advarselsikon (forbliver afventende, ikke deaktiveret), kræver manuel godkendelse med initialer og begrundelse
+- [x] **Overarbejde**: Håndteres (se OVERTIME_RULES.md) – tidsrumsbaseret (kl. 05-06, 18-21 samt timer ud over normaltidsloftet i kl. 06-18, kl. 21-05), ikke akkumulerede timer
 - [x] **Danløn-koder**: Midlertidigt alle "1"
 - [x] **CVR-nummer**: 13246505
-- [x] **Medarbejdertyper**: Alle typer (trainee, driver, driver_senior, driver_qualified + kvalifikationstillæg)
+- [x] **Medarbejdertyper**: Der er ikke længere en fast type-enum (trainee/driver/driver_senior/driver_qualified) – i stedet en Stamdata-styret `agreement_kind` (systemnøgler `hourly_fixed`/`hourly_flexible`) + fritekst `agreement_type` fra Excel/Stamdata, med tilhørende timesats
 - [x] **Pop-up anciennitet**: Vises ved programopstart med knapper "Luk" / "Gå til medarbejder for at ændre timesats"
 - [x] **Manuelt input**: Dagssedler tastes manuelt – inkl. pålæsning og aflæsning (ikke i .ddd)
 - [x] **Output**: Gem lokalt i mappen indtil stier kendes

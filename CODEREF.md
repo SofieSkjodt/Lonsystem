@@ -67,7 +67,7 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | agreement_kind | String(50) | Nøgle fra `master_agreement_kinds.key` (se nedenfor) – IKKE længere en hård `Enum`-kolonne (fra v24) |
 | agreement_type | String | Overenskomsttype fra Stamdata; tom streng `""` hvis den valgte `agreement_kind` har `requires_agreement_type=False` |
 | work_schedule | JSON | `{"even":[0..6],"odd":[0..6]}` timer man-søn |
-| dispatcher_groups | many-to-many via employee_dispatcher_groups | Se DispatcherGroup nedenfor – medarbejder kan have 0-N grupper |
+| dispatcher_group_id / dispatcher_group | Int FK nullable / relation | Én disponentgruppe (nullable) – se DispatcherGroup nedenfor og linje ~574 for migreringshistorik |
 | hire_date / termination_date | Date | Ansættelses-/slutdato |
 | paragraf_56 | Boolean | Krydses af i medarbejder-modalen; kræver paragraf_56_start_date/paragraf_56_end_date udfyldt (400 ellers). Ingen kobling til lønberegning eller den eksisterende "§56 syg"-fraværstype endnu |
 | paragraf_56_start_date / paragraf_56_end_date | Date nullable | Se paragraf_56 – nulstilles til NULL server-side når paragraf_56 sættes til false |
@@ -82,12 +82,12 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | requires_agreement_type | Boolean | Om `agreement_type` er påkrævet for medarbejdere med denne `agreement_kind` (håndhævet i `routers/employees.py`) |
 Seedes ved opstart (`session.py: _seed_agreement_kinds`) med `hourly_fixed`/`hourly_flexible`, IKKE fra Excel. CRUD under Stamdata → "Aftale" (kræver `stamdata`-tilladelse). Overtidsberegning: medarbejdere med en `agreement_kind` uden for de to systemnøgler springes automatisk over i `_calculate_employee()` og får `calculate_flat_hours()` i stedet (ingen tillæg/loft, kun flad normaltid) — se `docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md`.
 
-### DispatcherGroup (tabel: dispatcher_groups) + EmployeeDispatcherGroup (join-tabel)
+### DispatcherGroup (tabel: dispatcher_groups)
 | Felt | Type | Bemærk |
 |---|---|---|
 | name | String unik | Fx "2 - Kran" |
 | description | Text nullable | |
-CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Lightweight read-only liste til dropdowns: `GET /api/employees/dispatcher-groups` (kun `get_current_user`). Medarbejder-modal bruger afkrydsningsbokse (`EmployeeCreate/Update.dispatcher_group_ids`), ingen primær gruppe. Historik: frem til 2026-07-27 lå dette som en enkelt `employees.dispatcher_group`-streng; migreret til many-to-many (kolonnen droppet, se `session.py: _migrate_dispatcher_groups`).
+CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Lightweight read-only liste til dropdowns: `GET /api/employees/dispatcher-groups` (kun `get_current_user`). Medarbejder-modal bruger nu ét dropdown-felt (`Employee.dispatcher_group_id`, nullable) – ikke afkrydsningsbokse. Historik: en enkelt `employees.dispatcher_group`-streng blev frem til 2026-07-27 migreret til en many-to-many `EmployeeDispatcherGroup`-jointabel, som siden er erstattet igen af den nuværende enkelte FK – se linje ~574 for den fulde migreringshistorik.
 
 ### Activity (tabel: activities)
 | Felt | Type | Bemærk |
@@ -166,10 +166,10 @@ Status (Aktiv/Inaktiv) er IKKE lagret – beregnes ved visning ud fra om dags da
 | GET | /{id} | Hent én |
 | PATCH | /{id} | Rediger |
 | GET | /agreement-types | [{name, hourly_rate}] fra Excel |
-| GET | /dispatcher-groups | Alle disponentgrupper (kun `get_current_user`) – bruges til afkrydsningsboksene i medarbejder-modalen |
+| GET | /dispatcher-groups | Alle disponentgrupper (kun `get_current_user`) – bruges til dropdown i medarbejder-modalen |
 | GET | /anciennitet-alerts | Medarbejdere med ≥9 mdr der mangler variant |
 
-`EmployeeCreate`/`EmployeeUpdate` bruger `dispatcher_group_ids: list[int]` (ikke længere en enkelt streng); `EmployeeResponse.dispatcher_groups` er en liste af `{id, name, description}`. Fuld CRUD på selve grupperne (opret/omdøb/slet) ligger under `/api/stamdata/dispatcher-groups` (kræver `stamdata`-tilladelse) – fane "Disponentgrupper" i Stamdata-viewet.
+`EmployeeCreate`/`EmployeeUpdate` bruger `dispatcher_group_id: Optional[int]` (én gruppe, ikke en liste); `EmployeeResponse.dispatcher_group` er et enkelt `{id, name, description}`-objekt eller `null`. Fuld CRUD på selve grupperne (opret/omdøb/slet) ligger under `/api/stamdata/dispatcher-groups` (kræver `stamdata`-tilladelse) – fane "Disponentgrupper" i Stamdata-viewet.
 
 **Advarsel om mulig dublet ved oprettelse (app.js: `confirmEmployee`, kun ved `id` tom):** Før POST slås navn (for+efternavn, case-insensitive) og førerkortnummer op mod `GET /api/employees?active_only=false`. Navnesammenfald → `modal-emp-duplicate-warning` med to knapper: "Ændre" (luk advarslen, bliv i oprettelsesmodalen) og "OK, opret alligevel" (kalder `_saveEmployee` med det gemte `_pendingEmployeeBody`). Match på førerkortnummer skjuler OK-knappen (`btn-emp-duplicate-ok`) – kan kun rettes, ikke ignoreres, da kolonnen stadig er unik i DB.
 
@@ -207,7 +207,7 @@ AnciennitetsAlert:  employee_id, employee_name, hire_date, months_employed, sugg
 ```python
 _LABEL_OVERRIDES = {"Kursus/Skole": "skole_kursus"}  # bagudkompatibilitet
 # Ellers: lowercase, æ→ae ø→oe å→aa, mellemrum//-/→_, dobbelt__ fjernes
-_BACKEND_ONLY_TYPES = {"sygdom_u_8uger"}  # filtreres fra dropdown; tildeles automatisk
+_BACKEND_ONLY_TYPES = {"sygdom_u_8uger", "sygdom_u_8_uger", "barn_1sygedag_u_8uger", "barsel_u_loen"}  # filtreres fra dropdown; tildeles automatisk
 ```
 `ActivityType`-enum i models.py bevares for bagudkompatibilitet (sammenligning). `activity_type`-kolonnen er `String(50)`.
 
@@ -221,59 +221,66 @@ _BACKEND_ONLY_TYPES = {"sygdom_u_8uger"}  # filtreres fra dropdown; tildeles aut
 
 ## JS – app.js nøglefunktioner
 
-### State & konstanter (linje 5-21)
+**Linjenumre nedenfor er verificeret mod app.js 2026-09-04 (filen er ~5540 linjer, ikke ~3100).
+Da app.js har automatisk cache-busting og ændres ofte, kan tallene igen drive – ved tvivl, grep
+efter funktionsnavnet i stedet for at stole blindt på tallet.**
+
+### State & konstanter (linje 15-38)
 ```js
-state = { currentView, currentPeriodStart, periodInfo, activities, employees,
-          vehicles, agreementTypes, absenceTypes, selectedActivityId, approvedBy }
-TYPE_LABELS = { normal: "Normal tid" }  // + fraværstyper tilføjes dynamisk
-ABSENCE_LABELS = {}   // value → UPPERCASE badge-tekst
-ABSENCE_TYPES = new Set()  // populeres af loadAbsenceTypes()
+state = { currentView, currentPeriodStart, periodInfo, activities, employees, vehicles,
+          agreementTypes, agreementKinds, absenceTypes, selectedActivityId, currentUser,
+          roles, usersAdminTab, holidays, dispatcherGroups, autoApprovalEnabled, vagtplan }
+// Væsentligt flere felter end tidligere (auth/roller/helligdage/vagtplan tilføjet siden v5-v14) –
+// se linje 15 for den fulde, aktuelle liste i stedet for at antage denne er komplet.
+TYPE_LABELS = { normal: "Normal tid" }  // + fraværstyper tilføjes dynamisk (linje 101)
+ABSENCE_LABELS = {}   // value → UPPERCASE badge-tekst (linje 102)
+ABSENCE_TYPES = new Set()  // populeres af loadAbsenceTypes() (linje 103)
 ```
 
 ### Init & data-load
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `init()` | 1594 | Startup: loadAbsenceTypes → loadAgreementTypes → setView |
-| `loadAbsenceTypes()` | 810 | GET /absence-types → fylder TYPE_LABELS, ABSENCE_LABELS, ABSENCE_TYPES, #manual-type dropdown |
-| `loadActivities()` | 126 | GET + renderActivitiesTable |
-| `loadEmployees()` | 949 | GET + renderEmployeeList |
-| `loadPayrollPreview()` | 1306 | GET /api/payroll/preview + render |
-| `loadAgreementTypes()` | 1006 | Fylder state.agreementTypes |
+| `init()` | 5376 | Startup: loadAbsenceTypes → loadAgreementTypes → setView |
+| `loadAbsenceTypes()` | 1573 | GET /absence-types → fylder TYPE_LABELS, ABSENCE_LABELS, ABSENCE_TYPES, #manual-type dropdown |
+| `loadActivities()` | 465 | GET + renderActivitiesTable |
+| `loadEmployees()` | 2348 | GET + renderEmployeeList |
+| `loadPayrollPreview()` | 3116 | GET /api/payroll/preview + render |
+| `loadAgreementTypes()` | 2500 | Fylder state.agreementTypes |
 
 ### Aktiviteter
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `renderActivitiesTable()` | 138 | 14-dages grid-rendering |
-| `renderCellActivity(a)` | 220 | Badge-HTML for én aktivitet i grid |
-| `openActivityDetail(id)` | ~360 | Åbner modal-activity; Aktivitetsfordeling-bjælken beregner pause-% for manuelle aktiviteter uden segmentdata |
-| `saveActivityTimes()` | 467 | PATCH tider |
-| `quickApprove(id)` | 258 | Sætter selectedActivityId → openApproveModal |
-| `quickDeactivate(id)` | 262 | Sætter selectedActivityId → openDeactivateModal |
-| `quickReopen(id)` | 266 | POST /reopen direkte |
-| `openApproveModal()` | 491 | Fylder #approve-by, åbner modal-approve |
-| `confirmApprove()` | 500 | POST /approve |
-| `openDeactivateModal()` | 535 | Fylder #deactivate-by, åbner modal-deactivate |
-| `confirmDeactivate()` | 541 | POST /deactivate |
-| `modalDeactivate()` | 531 | Fra modal → openDeactivateModal |
-| `modalReopen()` | 553 | POST /reopen fra modal |
-| `openSplitModal()` | 563 | Åbner modal-split |
-| `confirmSplit()` | 581 | POST /split |
-| `undoEdit()` | 447 | POST /undo-edit |
-| `undoSplit()` | 457 | POST /undo-split |
+| `renderActivitiesTable()` | 482 | 14-dages grid-rendering |
+| `renderCellActivity(a)` | 646 | Badge-HTML for én aktivitet i grid |
+| `openActivityDetail(id)` | 777 | Åbner modal-activity; Aktivitetsfordeling-bjælken beregner pause-% for manuelle aktiviteter uden segmentdata |
+| `saveActivityTimes()` | 1163 | PATCH tider |
+| `quickApprove(id)` | 717 | Sætter selectedActivityId → openApproveModal |
+| `quickDeactivate(id)` | 721 | Sætter selectedActivityId → openDeactivateModal |
+| `quickReopen(id)` | 725 | POST /reopen direkte |
+| `openApproveModal()` | 1222 | Fylder #approve-by, åbner modal-approve |
+| `confirmApprove()` | 1232 | POST /approve |
+| `openDeactivateModal()` | 1267 | Fylder #deactivate-by, åbner modal-deactivate |
+| `confirmDeactivate()` | 1278 | POST /deactivate |
+| `modalDeactivate()` | 1263 | Fra modal → openDeactivateModal |
+| `modalReopen()` | 1296 | POST /reopen fra modal |
+| `openSplitModal()` | 1307 | Åbner modal-split |
+| `confirmSplit()` | 1325 | POST /split |
+| `undoEdit()` | 1142 | POST /undo-edit |
+| `undoSplit()` | 1153 | POST /undo-split |
 
 ### Manuel aktivitet
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `openManualActivityModal()` | ~1120 | Nulstiller form + manualPauses, sætter type=normal, åbner modal |
-| `updateManualTypeVisibility()` | ~919 | Skjuler/viser felter afhængig af type; kalder defaults; skjuler pause-sektion for dato-kun-typer |
-| `applyFerieDefaults()` | ~970 | Dato-kun, 06:00 + normaltimer (fallback 7,4 t) |
-| `applySygdomDefaults()` | ~994 | Identisk med ferie; dato-kun |
-| `applyAfspadseringDefaults()` | ~1014 | 06:00 + normaltimer (fallback 7,4 t); tidsfelter synlige |
-| `confirmManualActivity()` | ~1200 | POST /api/activities inkl. pause_intervals |
-| `renderManualPauses()` | ~1074 | Opdaterer #manual-pauses-list med tilføjede pauser + slet-knapper |
-| `addManualPause()` | ~1087 | Validerer at starttid er sat; åbner modal-pause med korrekt titel og dato |
-| `confirmPause()` | ~1100 | Læser pause-picker, validerer, tilføjer til manualPauses, lukker modal |
-| `deleteManualPause(idx)` | ~1112 | Fjerner pause ved index og re-renderer listen |
+| `openManualActivityModal()` | 1991 | Nulstiller form + manualPauses, sætter type=normal, åbner modal |
+| `updateManualTypeVisibility()` | 1612 | Skjuler/viser felter afhængig af type; kalder defaults; skjuler pause-sektion for dato-kun-typer |
+| `applyFerieDefaults()` | 1709 | Dato-kun, 06:00 + normaltimer (fallback 7,4 t) |
+| `applySygdomDefaults()` | 1734 | Identisk med ferie; dato-kun |
+| `applyAfspadseringDefaults()` | 1758 | 06:00 + normaltimer (fallback 7,4 t); tidsfelter synlige |
+| `confirmManualActivity()` | 2123 | POST /api/activities inkl. pause_intervals |
+| `renderManualPauses()` | 1793 | Opdaterer #manual-pauses-list med tilføjede pauser + slet-knapper |
+| `addManualPause()` | 1807 | Validerer at starttid er sat; åbner modal-pause med korrekt titel og dato |
+| `confirmPause()` | 1842 | Læser pause-picker, validerer, tilføjer til manualPauses, lukker modal |
+| `deleteManualPause(idx)` | 1864 | Fjerner pause ved index og re-renderer listen |
 
 **Dato-kun typer** (tidsfelter + sluttidsgruppe skjules): `ferie`, `sygdom`.  
 **Heldagsstandard, redigerbar**: `afspadsering`.  
@@ -283,36 +290,36 @@ ABSENCE_TYPES = new Set()  // populeres af loadAbsenceTypes()
 ### Medarbejdere
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `renderEmployeeList()` | 959 | HTML for medarbejderlisten |
-| `openNewEmployeeModal()` | 1019 | Nulstiller form |
-| `openEditEmployee(id)` | 1037 | Fylder form med eksisterende data |
-| `confirmEmployee()` | 1682 | Validerer, kører dublet-tjek (kun ved oprettelse), kalder `_saveEmployee` |
-| `_saveEmployee(id, body)` | 1729 | Selve POST/PATCH – udtrukket fra `confirmEmployee` så dublet-advarslen kan kalde den bagefter |
-| `_showEmployeeDuplicateWarning(body, nameMatches, cardMatches)` | 1746 | Bygger og åbner `modal-emp-duplicate-warning`; skjuler OK-knappen ved førerkort-match |
-| `checkAnciennitetsAlerts()` | ~1786 | GET /anciennitet-alerts; server filtrerer allerede dismissed; viser modal |
-| `dismissAnciennitetsAlert(id)` | ~1650 | POST /api/employees/{id}/dismiss-anciennitet (server-side, ikke localStorage) |
-| `buildScheduleTable(schedule)` / `readScheduleTable()` | 1540 / 1578 | Se "Timefordeling – fra/til-tid" nedenfor |
+| `renderEmployeeList()` | 2358 | HTML for medarbejderlisten |
+| `openNewEmployeeModal()` | 2578 | Nulstiller form |
+| `openEditEmployee(id)` | 2604 | Fylder form med eksisterende data |
+| `confirmEmployee()` | 2647 | Validerer, kører dublet-tjek (kun ved oprettelse), kalder `_saveEmployee` |
+| `_saveEmployee(id, body)` | 2710 | Selve POST/PATCH – udtrukket fra `confirmEmployee` så dublet-advarslen kan kalde den bagefter |
+| `_showEmployeeDuplicateWarning(body, nameMatches, cardMatches)` | 2727 | Bygger og åbner `modal-emp-duplicate-warning`; skjuler OK-knappen ved førerkort-match |
+| `checkAnciennitetsAlerts()` | 2763 | GET /anciennitet-alerts; server filtrerer allerede dismissed; viser modal |
+| `dismissAnciennitetsAlert(id)` | 2754 | POST /api/employees/{id}/dismiss-anciennitet (server-side, ikke localStorage) |
+| `buildScheduleTable(schedule)` / `readScheduleTable()` | 2447 / 2485 | Se "Timefordeling – fra/til-tid" nedenfor |
 
 ### Lønkørsel
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `renderPayrollPreview(data)` | 1316 | Bygger medarbejder-kort HTML |
-| `payrollRow(label,hours,rate)` | 1371 | Én datatabelrække (4 kolonner: label/timer/sats/DKK) |
-| `payrollRowSalt(label,hours,rate,kr)` | 1381 | Salt-rækken |
-| `proevekoersel(employeeId)` | 1391 | Åbner mappe-modal |
-| `exportCsv()` | 1429 | Åbner CSV-modal |
-| `openPdfModal()` | 1496 | Åbner PDF-modal |
+| `renderPayrollPreview(data)` | 3126 | Bygger medarbejder-kort HTML |
+| `payrollRow(label,hours,rate)` | 3206 | Én datatabelrække (4 kolonner: label/timer/sats/DKK) |
+| `payrollRowSalt(label,hours,rate,kr)` | 3217 | Salt-rækken |
+| `proevekoersel(employeeId)` | 3258 | Åbner mappe-modal |
+| `exportCsv()` | 3284 | Åbner CSV-modal |
+| `openPdfModal()` | 5123 | Åbner PDF-modal |
 
 ### Datetime-pickers
 | Funktion | Linje | Hvad |
 |---|---|---|
-| `buildDatetimePicker(id, isoValue)` | 603 | Injecter dato+time-inputs i #id |
-| `readDatetimePicker(id)` | 620 | → ISO-streng |
-| `setDatetimePicker(id, isoValue)` | 631 | Sætter værdier |
-| `buildDatePicker(id, val)` | 644 | Ren dato-picker |
-| `setDatePicker(id, iso)` / `readDatePicker(id)` | 791/787 | |
+| `buildDatetimePicker(id, isoValue)` | 1361 | Injecter dato+time-inputs i #id |
+| `readDatetimePicker(id)` | 1375 | → ISO-streng |
+| `setDatetimePicker(id, isoValue)` | 1383 | Sætter værdier |
+| `buildDatePicker(id, val)` | 1395 | Ren dato-picker |
+| `setDatePicker(id, iso)` / `readDatePicker(id)` | 1548/1544 | |
 
-### Format-hjælpere (linje 1551+)
+### Format-hjælpere (linje 5194+)
 ```js
 formatDate(iso)      // "15-06-2026"
 formatTime(iso)      // "08:00"
@@ -431,24 +438,28 @@ Kolonner: `CVR ; medarbejdernr ; Danløn-kode ; timer/antal ; sats ; (total)`
 
 Én række per løntype der har antal > 0 OG `include_in_csv=true` i Stamdata → Løntypekoder
 (`master_pay_types`). Koden, enheden (timer/antal) og om sats/total skal med er alt sammen
-konfigureret pr. type i den tabel – DB er authoritative, ikke hardkodede konstanter:
+konfigureret pr. type i den tabel – DB er authoritative, ikke hardkodede konstanter. Ved seeding
+(`session.py`, kun ved tom tabel) sættes koden fra `calculators/pay_rates.py`s `DANLOEN_CODE_*`-
+konstanter, som (pt. 2026-09) alle er sat til placeholder `"1"` undtagen SH-koderne – se filens
+egen kommentar ("kravdokument: disse findes pt. ikke"). De faktiske koder skal derfor slås op i
+Stamdata → Løntypekoder for det aktuelle system, ikke antages fra denne tabel:
 
-| code_key | Danløn-kode (default) | Enhed | Bemærkning |
+| code_key | Seedet default | Enhed | Bemærkning |
 |---|---|---|---|
 | NORMAL | 1 | timer | |
-| SPRINGERTILLAEG | 1 | timer | kun med hvis flueben sat for medarbejder+periode, se afsnit nedenfor |
-| OT_BEFORE | 7 | timer | |
-| OT_13 | 8 | timer | inkl. søgnehelligdags-kode8 |
-| OT_EXTRA | 9 | timer | inkl. søgnehelligdags-kode9 |
-| SALT | 6 | timer | |
-| OVERNATNING | 14 | antal | `csv_quantity_type="count"` |
-| AFSPADSERING | 71 | timer | total (ikke sats) vises |
-| SYGDOM / PARAGRAF_56 / BARSEL | 51 | timer | samme kode for alle tre (§56 bruger dagpengesats, de øvrige medarbejderens timesats) |
-| BARN_1SYGEDAG | 15 | timer | dagpengesats |
-| FERIEFRI | 81 | timer/antal | enhed styres af Stamdata (se `_builtin_absence_qty()` nedenfor) |
-| SKOLE_KURSUS | 2 | timer | total (ikke sats) vises |
-| SH_FULDLOENNET / SH_TIMELOENNET | 4 / 63 | timer | søgnehelligdag |
-| `ferie` (brugerdefineret type) | 60 | timer | `include_in_csv=false` som default – ferie tælles og vises i UI, men skrives IKKE til CSV før det slås til i Stamdata |
+| SPRINGERTILLAEG | 1 (placeholder) | timer | kun med hvis flueben sat for medarbejder+periode, se afsnit nedenfor |
+| OT_BEFORE | 1 (placeholder) | timer | |
+| OT_13 | 1 (placeholder) | timer | |
+| OT_EXTRA | 1 (placeholder) | timer | |
+| SALT | 1 (placeholder) | timer | |
+| OVERNATNING | 1 (placeholder) | antal | `csv_quantity_type="count"` |
+| AFSPADSERING | 1 (placeholder) | timer | total (ikke sats) vises |
+| SYGDOM / PARAGRAF_56 / BARSEL | 1 (placeholder, separate DANLOEN_CODE_*-konstanter, pt. samme værdi) | timer | §56 bruger dagpengesats, de øvrige medarbejderens timesats |
+| BARN_1SYGEDAG | 1 (placeholder) | timer | dagpengesats |
+| FERIEFRI | 1 (placeholder) / `DANLOEN_CODE_FERIEFRI_FULDLOENNET=5` for fuldlønnede feriefri-timer | timer/antal | enhed styres af Stamdata (se `_builtin_absence_qty()` nedenfor) |
+| SKOLE_KURSUS | 1 (placeholder) | timer | total (ikke sats) vises |
+| SH_FULDLOENNET / SH_TIMELOENNET | 4 / 63 (reelle koder, ikke placeholder) | timer | søgnehelligdag |
+| `ferie` (brugerdefineret type, tilføjet via Stamdata) | 60 | timer | `include_in_csv=false` som default – ferie tælles og vises i UI, men skrives IKKE til CSV før det slås til i Stamdata |
 
 **Case-bug rettet (2026-07-30):** `_get_pay_type_data()` slog op med den rå (case-sensitive)
 `code_key` fra DB, mens `_user_pay_type_rows()` slog op med `.upper()`. For alle indbyggede

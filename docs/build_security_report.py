@@ -237,12 +237,14 @@ def build():
          Paragraph("Field(gt=0) på RateBody.rate og AgreementTypeBody.hourly_rate.", label_cell)],
 
         [severity_badge("VIGTIGT", ORANGE),
-         Paragraph("<b>Manglende inputgrænser på skemafelter</b> – trip_number (DB: "
-                   "String(6)) accepterede ubegrænsede strenge; work_schedule accepterede "
-                   "negative og > 24 timers værdier.", label_cell),
+         Paragraph("<b>Manglende inputgrænser på skemafelter</b> – comment og work_schedule "
+                   "accepterede ubegrænsede/ugyldige værdier. NB (verificeret 2026-09): "
+                   "trip_number (DB: String(6)) findes slet ikke i schemas.py og har derfor "
+                   "stadig ingen Pydantic-valideret længdegrænse – kun DB-kolonnens "
+                   "String(6), som SQLite ikke håndhæver.", label_cell),
          Paragraph("database/schemas.py", label_cell),
-         Paragraph("max_length=6 på trip_number, max_length=1000 på comment, "
-                   "ge=0/le=24 per element i work_schedule, ge=0 på loading/unloading/km.", label_cell)],
+         Paragraph("max_length=1000 på comment, ge=0/le=24 per element i work_schedule, "
+                   "ge=0 på loading/unloading/km. (trip_number-grænsen er IKKE implementeret, se note.)", label_cell)],
 
         [severity_badge("VIGTIGT", ORANGE),
          Paragraph("<b>km_end < km_start accepteret</b> – negativt kilometertal "
@@ -270,18 +272,23 @@ def build():
     # ── 3. Åbne punkter ───────────────────────────────────────────────────────
     story.append(Paragraph("3. Åbne punkter – kræver afklaring", h1_style))
     story.append(Paragraph(
-        "To fund er identificeret men ikke implementeret, da de kræver en "
-        "designbeslutning om systemets rollestruktur. De er ikke umiddelbart "
-        "udnyttelige udefra, men bør afklares inden systemet tages i fuld drift.",
+        "Punkt 3.1 herunder er løst siden denne rapport blev skrevet (verificeret 2026-09). "
+        "Punkt 3.2 kræver fortsat en designbeslutning om systemets rollestruktur og er "
+        "ikke umiddelbart udnyttelig udefra, men bør afklares inden systemet tages i fuld drift.",
         body_style))
     story.append(Spacer(1, 4 * mm))
 
     # ── Punkt A ──
-    story.append(Paragraph("3.1  Manglende rettighedsguard på medarbejder- og køretøjsendepunkter", h2_style))
+    story.append(Paragraph("3.1  Manglende rettighedsguard på medarbejder- og køretøjsendepunkter — LØST", h2_style))
 
     open1_data = [
         [Paragraph("Detalje", label_bold), Paragraph("Beskrivelse", label_bold)],
-        [Paragraph("Fund", label_cell),
+        [Paragraph("Status", label_cell),
+         Paragraph("LØST (verificeret 2026-09) – routers/employees.py og routers/vehicles.py "
+                   "bruger nu Depends(require_permission(\"manage_employees\"))/"
+                   "(\"manage_vehicles\")\" på skriveendepunkterne. Fundet nedenfor beskriver "
+                   "den oprindelige tilstand.", label_cell)],
+        [Paragraph("Oprindeligt fund", label_cell),
          Paragraph("Endepunkterne <i>POST /api/employees</i> (opret medarbejder), "
                    "<i>PATCH /api/employees/{id}</i> (rediger medarbejder) og tilsvarende "
                    "for køretøjer kræver kun at brugeren er logget ind (get_current_user). "

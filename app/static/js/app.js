@@ -647,7 +647,7 @@ function renderCellActivity(a, role = "full") {
   const k = a.is_manual ? "(K) " : "";
   const warn = a.status === "approved" ? "" : (a.is_under_4h ? " ❗" : (a.is_over_12h ? " ⚠️" : ""));
   const incomplete = a.is_likely_incomplete
-    ? `<span class="incomplete-mark" title="Filen ser ud til at være hentet midt i vagten (0 km registreret og dagen slutter ikke i hvil) – resten af dagen mangler formentlig. Hent en ny fil senere og importér igen.">✕</span>`
+    ? `<span class="incomplete-mark" title="Filen ser ud til at være hentet midt i vagten (0 km registreret eller unormalt kort vagt, og dagen slutter ikke i hvil) – resten af dagen mangler formentlig. Hent en ny fil senere og importér igen.">✕</span>`
     : "";
   if (a.activity_type !== "normal") {
     return `<div class="badge-group">

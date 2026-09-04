@@ -8,24 +8,21 @@ Formål: beskrive hvordan en danløn-CSV skal være opbygget, så den strukturel
 - **Fejl at undgå:** hvis filen gemmes som "UTF-8 med BOM", vil de tre bytes `EF BB BF` blive indsat forrest i filen, hvilket kan gøre at det første tegn i filen fejltolkes af systemer, der ikke fjerner BOM automatisk.
 - **Handling ved konvertering:** gem/eksportér filen med encoding "UTF-8" (uden BOM) eller "ANSI" i stedet for "UTF-8 med BOM".
 
-## 2. Afsluttende semikolon på hver linje
+## 2. Afsluttende semikolon på hver linje – KUN når totalkolonnen er tom
 
-- **Krav:** hver linje skal ende med et afsluttende `;` efter det sidste felt, før linjeskift.
-- **Format:**
+- **Opdateret 2026-09 efter bekræftelse fra bruger: dette er IKKE et fast krav.** Den nuværende, korrekte eksport (`app/routers/payroll_router.py`) skriver et afsluttende `;` kun når linjens sidste felt (total-kolonnen) er tomt for den pågældende løntype – ellers slutter linjen direkte efter beløbet, uden ekstra semikolon. Eksporten skal IKKE ændres til altid at tilføje et afsluttende semikolon.
+- **Eksempel, total tom** (fx type der kun viser sats, ikke total):
   ```
-  medarbejder-id;løn-id;kode;beløb;lønart;
+  cvr;medarbejdernr;kode;antal;sats;
   ```
-- **Fejl at undgå:** linjer uden afsluttende semikolon, f.eks.:
+- **Eksempel, total udfyldt:**
   ```
-  medarbejder-id;løn-id;kode;beløb;lønart
+  cvr;medarbejdernr;kode;antal;sats;25000
   ```
-- **Handling ved konvertering:** tilføj `;` til slutningen af hver linje, hvis den ikke allerede er der.
 
-## 3. Fast antal felter pr. linje
+## 3. Antal felter pr. linje – 6, ikke 5
 
-- **Krav:** hver linje skal indeholde de samme 5 datafelter (medarbejder-id, løn-id, kode, beløb, lønart) — ingen linjer må have færre felter.
-- **Fejl at undgå:** linjer hvor et felt er tomt, f.eks. `...;kode;beløb;;` (manglende lønart) eller hvor der er sat semikolon direkte efter et felt, uden at værdien er udfyldt.
-- **Handling ved konvertering:** valider at alle 5 felter er udfyldte på hver linje, inden filen bruges. Linjer med manglende feltværdier skal rettes manuelt, da værdien ikke kan udledes automatisk fra resten af rækken.
+- **Opdateret 2026-09:** den nuværende, korrekte eksport skriver altid 6 felter pr. linje: CVR-nummer, medarbejdernummer, Danløn-kode, antal/timer, sats (tom streng hvis løntypen ikke skal vise sats) og total (tom streng hvis løntypen ikke skal vise total). Om sats/total er udfyldt eller tomt styres pr. løntype i Stamdata → Løntypekoder (`csv_include_rate`/`csv_include_total`) – det er tilsigtet, ikke en fejl, og skal ikke rettes til 5 felter.
 
 ## 4. Linjeskift
 
@@ -35,6 +32,5 @@ Formål: beskrive hvordan en danløn-CSV skal være opbygget, så den strukturel
 ## Tjekliste ved konvertering af en danløn-fil
 
 - [ ] Gem filen uden UTF-8 BOM
-- [ ] Tilføj afsluttende `;` på alle linjer
-- [ ] Kontroller at alle linjer har 5 udfyldte datafelter
+- [ ] Kontroller at hver linje har 6 felter (afsluttende `;` er kun til stede når totalkolonnen er tom – ikke et generelt krav)
 - [ ] Kontroller at linjeskift er CRLF

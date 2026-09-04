@@ -22,7 +22,7 @@ En aktivitet auto-godkendes, hvis alle fire betingelser er opfyldt:
 |---|---|
 | Minimum datagrundlag | ≥ 5 registreringer for den pågældende ugedag |
 | Varighed – afvigelse | Maks. ±2,5 × std (eller ±30 % af mean, hvis std er lille) |
-| Starttidspunkt – afvigelse | Maks. ±1,5 time fra gennemsnitlig starttid |
+| Starttidspunkt – afvigelse | Maks. ±2,5 × std (dog mindst ±1,5 time) fra gennemsnitlig starttid |
 | Aktivitetstype | Kun `normal` tachograf |
 
 Hvis én betingelse ikke er opfyldt, sættes aktiviteten til `pending` og flagges med en eller flere årsager til manuel gennemgang.

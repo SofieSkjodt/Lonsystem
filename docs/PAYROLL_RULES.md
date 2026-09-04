@@ -32,7 +32,7 @@ Undtagelse: Pålæsning og aflæsning (manuelt tastet fra dagssedler) medregnes 
 Kilde: Chaufføroverenskomst §3, stk. 1 / §5 afløser
 
 - En vagt må **ikke** aflønnes for **under 4 timer** uden særlig begrundelse
-- Systemet markerer automatisk vagter under 4 timer med rød status
+- Systemet markerer automatisk vagter under 4 timer med et ❗-ikon (aktiviteten forbliver `pending`, ikke deaktiveret)
 - Kræver **manuel godkendelse** med initialer og begrundelse
 - Ved godkendelse under 4 timer: den faktiske tid bruges i lønberegningen
 
@@ -42,10 +42,10 @@ Kilde: Chaufføroverenskomst §3, stk. 1 / §5 afløser
 
 Se `OVERTIME_RULES.md` for detaljerede regler.
 
-**Opsummering:**
-- Tidlig tid (05:00–06:00): +44,54 kr./time
-- Normal overarbejde (time 7,4–10,4): +44,54 kr./time
-- Ekstra overarbejde (over 10,4 timer): +109,40 kr./time
+**Opsummering** (tidsrumsbaseret, ikke akkumulerede timer – normaltids-loftet forbruges kun i kl. 06-18, se `OVERTIME_RULES.md`):
+- Kl. 05-06: +44,54 kr./time
+- Kl. 18-21, samt timer ud over normaltidsloftet i kl. 06-18 (de første 3 sådanne timer): +44,54 kr./time
+- Kl. 21-05, samt overtidstimer ud over de første 3: +109,40 kr./time
 - Søn- og helligdage: +109,40 kr./time (al arbejde)
 
 ---

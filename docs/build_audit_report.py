@@ -21,19 +21,19 @@ ISSUE_STATUS = {
     3:  ("LØST",       "Koder hentes fra Stamdata → Løntypekoder. Separate konstanter tilføjet for §56 og barn 1.sygedag."),
     4:  ("LØST",       "Rettet."),
     5:  ("LØST",       "Rettet."),
-    6:  ("LØST",       "Rettet."),
+    6:  ("ACCEPTERET", "Delvist – de øvrige felter (loading_minutes, vehicle_registration m.fl.) kopieres nu til begge dele. trip_number kopieres stadig ikke, men er harmløst: feltet bruges ingen steder i kodebasen (hverken sat af .ddd-import, eksponeret i noget API-skema eller vist i UI) – 'Turnummer' er en åben, ufærdig funktion, så der er intet at miste i praksis."),
     7:  ("LØST",       "Rettet."),
-    8:  ("AFVENTER",   "Lad denne være for nu."),
+    8:  ("LØST",       "Verificeret 2026-09: _safe_save_dir bruger nu is_under_allowed_root() (app/utils/safe_paths.py) som hvidliste."),
     9:  ("LØST",       "CODEREF.md opdateret: app.js-linjeantal, admin-login, manglende filer tilføjet."),
     10: ("LØST",       "Rettet."),
     11: ("LØST",       "Rettet."),
     12: ("LØST",       "Rettet."),
-    13: ("LØST",       "Rettet."),
+    13: ("AFVENTER",   "Verificeret 2026-09: ActivityType-enumen har stadig kun de samme 5 typer (models.py:33-38) – hverken udvidet eller fjernet."),
     14: ("ACCEPTERET", "Det er korrekt."),
     15: ("LØST",       "Rettet – --reload fjernet fra produktionskommando i dokumentation."),
     16: ("LØST",       "Ja, tilføjet."),
     17: ("BEHOLDER",   "Nej, lad denne være som den er."),
-    18: ("LØST",       "CVR-nummer læses altid fra Stamdata → CVR-nummer."),
+    18: ("AFVENTER",   "Delvist – CVR læses fra Stamdata i den normale flow, men pay_rates.CVR_NUMBER bruges stadig som runtime-default i timeseddel_router.py:_build_pdf()."),
     19: ("ACCEPTERET", "Korrekt."),
     20: ("LØST",       "Rettet."),
     21: ("AFVENTER",   "Løses af eksterne. Ingen systemmæssig ændring nu."),
@@ -352,7 +352,7 @@ def build_story():
         "standardkode – ingen advarsel ved første login om at skifte den.",
         "Kræv adgangskodeskift ved første login (flag must_change_password i AppUser), eller "
         "generer en tilfældig adgangskode ved seeding. Ret CODEREF.md straks.",
-        "app/database/session.py:127",
+        "app/database/session.py:297",
     ))
 
     story.append(issue_block(

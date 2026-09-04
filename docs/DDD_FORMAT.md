@@ -160,10 +160,11 @@ I dette tilfælde markeres aktiviteten automatisk som 🔴 Rød (deaktiveret).
 **Split-funktionalitet:**
 1. Bruger klikker på en aktivitet og vælger "Split"
 2. Bruger angiver splitpunktet (dato/tid)
-3. Aktiviteten opdeles i to:
-   - **Del 1** (før split): sættes til `deactivated` – regnes ikke med
-   - **Del 2** (efter split): kan godkendes normalt
-4. Begge dele gemmes med reference til den originale aktivitet
+3. Den originale aktivitet sættes til `deactivated` – regnes ikke med
+4. Aktiviteten opdeles i to nye, begge med status `pending` og skal godkendes hver for sig:
+   - **Del 1** (før split)
+   - **Del 2** (efter split)
+5. Begge dele gemmes med reference til den originale aktivitet
 
 ## Åbne punkter
 

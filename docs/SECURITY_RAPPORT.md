@@ -23,7 +23,7 @@
 ### K1 – SESSION_SECRET ikke konfigureret
 **Fil:** `app/main.py`  
 **Problem:** `SessionMiddleware` brugte en hardkodet, forudsigelig nøgle direkte i kildekoden. En angriber med adgang til kildekoden kunne forfalske session-cookies og logge ind som enhver bruger.  
-**Rettelse:** `SESSION_SECRET` hentes nu fra `.env` med `os.getenv()`. Stærk tilfældig nøgle genereret og gemt i `.env`. Logging-advarsel ved opstart hvis nøglen mangler.  
+**Rettelse:** `SESSION_SECRET` hentes nu fra `.env` med `os.getenv()`. Stærk tilfældig nøgle genereret og gemt i `.env`. Hærdet yderligere efter denne rapport: appen rejser nu en `RuntimeError` og starter slet ikke, hvis nøglen mangler (`app/main.py:30-34`) – ikke blot en logging-advarsel.  
 **Status:** ✅ Rettet
 
 ### K2 – Ingen security headers (CSP, clickjacking, MIME-sniffing)
@@ -32,7 +32,7 @@
 **Rettelse:** `_SecurityHeaders`-middleware tilføjet med:
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
-- `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:;`
+- `Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://login.microsoftonline.com; frame-src https://login.microsoftonline.com;` (de to sidste direktiver tilføjet senere for Entra ID SSO – se `app/main.py:42-49` for den aktuelle streng)
 
 Note: `'unsafe-inline'` er nødvendigt fordi appen bruger mange inline `onclick="..."` handlere. XSS-beskyttelse håndteres i stedet af escapeHtml() i JavaScript.  
 **Status:** ✅ Rettet
@@ -161,7 +161,7 @@ Note: `'unsafe-inline'` er nødvendigt fordi appen bruger mange inline `onclick=
 - [ ] Aktivér HTTPS (L3) inden netværkseksponering
 - [ ] Opdater Danløn-koder (L2) med korrekte koder fra lønafdelingen
 - [ ] Skift `localStorage` → `sessionStorage` for anciennitet-flag (L1)
-- [ ] Test SMTP-afsendelse af timesedler (afventer Exchange admin aktivering af Authenticated SMTP for `skj@poulschou.dk`)
+- [x] Test SMTP-afsendelse af timesedler — løst 2026-08-29: Authenticated SMTP genaktiveret og i produktion (`app/.env`: `SMTP_USER`/`SMTP_PASSWORD` sat)
 
 ---
 

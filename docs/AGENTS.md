@@ -28,9 +28,9 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 ## Vigtige regler
 
 ### Lønperioder
-- Altid præcis **14 dage**
+- Altid præcis **14 dage**, mandag-søndag
 - Starter ikke nødvendigvis d. 1. i måneden
-- Næste periode starter på **næste hverdag** efter forrige periods slutdag
+- Beregnes fra et fast anker (mandag 1/6-2026) med 14-dages modulo – IKKE "næste hverdag efter forrige periode"
 - Systemet udleder automatisk lønperiode fra valgt dato
 
 ### Effektiv arbejdstid
@@ -39,7 +39,7 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 - Inkluderer manuelt tastede pålæsnings-/aflæsningstider
 
 ### Minimum 4-timer regel
-- Vagter under 4 timer → automatisk 🔴 Rød, kræver manuel godkendelse
+- Vagter under 4 timer → forbliver `pending` (🔵 Blå) med advarselsikon, kræver manuel godkendelse
 - Godkendelse kræver initialer og begrundelse
 
 ### Overtime (se `OVERTIME_RULES.md` – opdateret 2026-07-02)
@@ -49,9 +49,10 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 - Registreret normaltid (7/7,5/8 t) kan kun forbruges i tidsrummet 06-18; loftet deles pr. dag på tværs af flere aktiviteter, og hører til vagten (kan krydse midnat) medmindre vagten starter på en søndag/helligdag
 - Søndage/helligdage: al kørt tid → kode 1 + kode 9, uanset tidspunkt. Lørdag har INGEN særregel – regnes altid som en normal hverdag med lørdagens eget (typisk 0) loft
 
-### Ubekvem tid
-- Kl. 18:00–23:00: +46,93 kr./time
-- Kl. 23:00–06:00: +52,65 kr./time
+### Ubekvem tid – UDGÅET (erstattet 10/6-2026)
+Var oprindeligt +46,93 kr./time (18-23) og +52,65 kr./time (23-06), men er fuldstændigt
+erstattet af de tre overtidstillæg beskrevet ovenfor under "Overtime". Findes IKKE i den
+nuværende kode.
 
 ### Anciennitet
 - Automatisk tæller fra ansættelsesdato
@@ -67,7 +68,7 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 | 🟢 Grøn | `approved` | Godkendt af medarbejder med initialer |
 | 🔵 Blå | `pending` | Ikke godkendt endnu, men data OK |
 
-Alle bjælker skal være 🟢 grønne før "Kør løn" er aktiv.
+Alle bjælker skal være 🟢 grønne eller 🔴 røde (ikke 🔵 blå/`pending`) før "Kør løn" er aktiv.
 
 ---
 
@@ -75,7 +76,7 @@ Alle bjælker skal være 🟢 grønne før "Kør løn" er aktiv.
 
 - `source`: `tachograph` eller `manual` – manuelle vises med `(K)` prefix
 - `parent_activity_id` + `split_part`: bruges ved split af aktivitet
-- Split del 1 = deaktiveret, del 2 = kan godkendes
+- Split: den oprindelige aktivitet deaktiveres; del 1 og del 2 oprettes som nye, begge afventende (skal godkendes hver for sig)
 
 ---
 
@@ -89,35 +90,36 @@ Kolonner: A=CVR (13246505), B=medarbejdernr, C=Danløn-kode, D=timer, E=sats, F=
 
 ## Medarbejdertyper
 
-| Kode | Beskrivelse | Timeløn |
-|------|-------------|---------|
-| `trainee` | Under oplæring | 159,65 kr. |
-| `driver` | Nyansættelse | 174,15 kr. |
-| `driver_senior` | Efter 9 måneder | 182,30 kr. |
-| `driver_qualified` | Faglært | 186,30 kr. |
-| + `qualification_allowance` | Kvalifikationstillæg | +3,80 kr. |
+Der er ikke længere en fast type-enum (`trainee`/`driver`/`driver_senior`/`driver_qualified` +
+`qualification_allowance` findes ikke i koden). I stedet har `Employee` en Stamdata-styret
+`agreement_kind` (systemnøgler `hourly_fixed`/`hourly_flexible`, de eneste to overtidsberegningen
+kender) samt en fritekst `agreement_type` med tilhørende timesats fra Excel/Stamdata
+("Overenskomsttyper og timesatser.xlsx"). Nye aftaletyper kan tilføjes via Stamdata → "Aftale".
 
 ---
 
 ## Filstruktur
 
 ```
-lønsystem/
-├── AGENTS.md               ← dette dokument
-├── REQUIREMENTS.md         ← fuld kravspecifikation
-├── ARCHITECTURE.md         ← teknisk arkitektur
-├── DATA_MODEL.md           ← databasemodel
-├── PAYROLL_RULES.md        ← lønberegningsregler
-├── OVERTIME_RULES.md       ← overtidsregler
-├── DDD_FORMAT.md           ← .ddd filformat
-├── main.py                 ← FastAPI app
-├── database/
-├── parsers/
-├── calculators/
-├── exporters/
-├── routers/
-├── static/
-└── templates/
+Lønsystem/
+├── CODEREF.md               ← kode-referenceguide (rodmappen)
+├── docs/
+│   ├── AGENTS.md            ← dette dokument
+│   ├── REQUIREMENTS.md      ← fuld kravspecifikation
+│   ├── ARCHITECTURE.md      ← teknisk arkitektur
+│   ├── DATA_MODEL.md        ← databasemodel
+│   ├── PAYROLL_RULES.md     ← lønberegningsregler
+│   ├── OVERTIME_RULES.md    ← overtidsregler
+│   └── DDD_FORMAT.md        ← .ddd filformat
+└── app/
+    ├── main.py               ← FastAPI app
+    ├── database/
+    ├── parsers/
+    ├── calculators/
+    ├── exporters/
+    ├── routers/
+    ├── static/
+    └── templates/
 ```
 
 ---

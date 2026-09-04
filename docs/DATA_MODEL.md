@@ -10,24 +10,34 @@
 |------|------|-------------|
 | id | INTEGER PK | Intern ID |
 | employee_number | TEXT UNIQUE NOT NULL | Medarbejdernummer (Danløn) |
-| tachograph_card_number | TEXT UNIQUE | Tachografkortnummer (fra .ddd-fil) |
-| name | TEXT NOT NULL | Fulde navn |
+| tachograph_card_number | TEXT UNIQUE NULL | Tachografkortnummer (fra .ddd-fil) |
+| first_name | TEXT NOT NULL | Fornavn |
+| last_name | TEXT NOT NULL | Efternavn (`name`-property = fornavn + efternavn, ikke en egen kolonne) |
+| address, postal_code, email, phone, mobile | TEXT NULL | Kontaktoplysninger |
+| initials | VARCHAR(10) NULL | Skal matche `app_users.initials` for "egen linje"-rettighed i Vagtplan |
+| agreement_kind | VARCHAR(50) NOT NULL DEFAULT 'hourly_fixed' | Nøgle fra `master_agreement_kinds.key` – se typer nedenfor |
+| agreement_type | TEXT NOT NULL | Overenskomsttype (fra Excel-arket "Overenskomsttyper og timesatser.xlsx") |
+| fuldloennet | BOOLEAN NOT NULL DEFAULT TRUE | Fuldlønnet (relevant for feriefri-beregning) |
+| active | BOOLEAN NOT NULL DEFAULT TRUE | Aktiv medarbejder |
 | hire_date | DATE NOT NULL | Ansættelsesdato |
-| employee_type | TEXT NOT NULL | Se typer nedenfor |
-| is_qualified | BOOLEAN | Faglært (ja/nej) |
-| qualification_allowance | BOOLEAN | Kvalifikationstillæg (hænger+kran) |
-| seniority_override | BOOLEAN | Manuel tilsidesætning af anciennitet (anciennitetstillæg fra dag 1) |
-| active | BOOLEAN DEFAULT TRUE | Aktiv medarbejder |
+| termination_date | DATE NOT NULL DEFAULT 9999-12-31 | Fratrædelsesdato |
+| work_schedule | JSON NOT NULL | Timefordeling over 14 dage: `{"even": [man..søn], "odd": [man..søn]}` i timer |
+| cvr_number | VARCHAR(20) NULL | Tilknyttet CVR-nummer (NULL = standard) |
+| anciennitet_dismissed_at | DATETIME NULL | Tidspunkt for afvist anciennitetsadvarsel |
+| terminsdato | DATE NULL | Seneste terminsdato angivet ved oprettelse af en barsel-aktivitet |
+| paragraf_56, paragraf_56_start_date, paragraf_56_end_date | BOOLEAN / DATE NULL | §56-aftale (fleksjob) |
+| afloeser | BOOLEAN NOT NULL DEFAULT FALSE | Afløser |
+| dispatcher_group_id | INTEGER FK NULL | Reference til disponentgruppe |
 | created_at | DATETIME | Oprettelsestidspunkt |
 | updated_at | DATETIME | Sidst opdateret |
 
-**Medarbejdertyper (`employee_type`):**
-- `trainee` – Chauffør under oplæring (grundtimeløn: 159,65 kr.)
-- `driver` – Chauffør (timeløn nyansættelse: 174,15 kr.)
-- `driver_senior` – Chauffør efter 9 mdr. (timeløn: 182,30 kr.)
-- `driver_qualified` – Faglært chauffør (timeløn: 186,30 kr.)
+**Aftaletyper (`agreement_kind`):** de to systemnøgler overtidsberegningen kender:
+- `hourly_fixed` – Timelønnet, fast arbejdstid
+- `hourly_flexible` – Timelønnet, ikke fastlagt arbejdstid
 
-Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `seniority_override = false` og type ikke allerede er senior/faglært.
+Nye aftaletyper kan tilføjes via Stamdata (`master_agreement_kinds`-tabellen); timesatser kommer ikke længere fra en hårdkodet type-enum, men fra Excel-arket ("Overenskomsttyper og timesatser.xlsx") pr. `agreement_type`.
+
+Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `anciennitet_dismissed_at` er tom (se `anciennitet_alert`-tilladelsen).
 
 ---
 
@@ -43,8 +53,8 @@ Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `sen
 | closed_by | TEXT | Initialer på den der lukkede |
 
 **Regler:**
-- En periode er altid præcis 14 dage
-- Næste periode starter på næste hverdag efter forrige periodes slutdato
+- En periode er altid præcis 14 dage, mandag-søndag
+- Perioder beregnes fra et fast anker (mandag 1/6-2026) med 14-dages modulo – ikke "næste hverdag efter forrige periode"
 - Systemet opretter ny periode automatisk ved behov
 
 ---
@@ -84,9 +94,8 @@ Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `sen
 **Manuelle aktiviteter** vises med `(K)` prefix.
 
 **Split-logik:**
-- Original aktivitet splittes i to nye rækker med `parent_activity_id` = original
-- Del 1 (`split_part = 1`): status sættes til `deactivated`, regnes ikke med
-- Del 2 (`split_part = 2`): kan godkendes normalt
+- Original aktivitet sættes til `deactivated` (regnes ikke med) og erstattes af to nye rækker med `parent_activity_id` = original
+- Del 1 (`split_part = 1`) og del 2 (`split_part = 2`): begge sættes til `pending` og skal godkendes hver for sig
 
 ---
 
