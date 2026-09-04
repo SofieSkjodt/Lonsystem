@@ -775,6 +775,20 @@ function _findLoadedActivity(id) {
 
 // ── Activity detail modal ──────────────────────────────────────────────────
 function openActivityDetail(id) {
+  const modalEl = document.getElementById("modal-activity");
+  const reopeningSameActivity = modalEl.classList.contains("open") && state.selectedActivityId === id;
+  let preservedEdits = null;
+  if (reopeningSameActivity) {
+    preservedEdits = {
+      start: readDatetimePicker("edit-start"),
+      end: readDatetimePicker("edit-end"),
+      vehicle: document.getElementById("edit-vehicle")?.value,
+      kmStart: document.getElementById("edit-km-start")?.value,
+      kmEnd: document.getElementById("edit-km-end")?.value,
+      salt: document.getElementById("edit-salt")?.checked,
+      dob: document.getElementById("edit-dob")?.checked,
+    };
+  }
   state.selectedActivityId = id;
   const a = _findLoadedActivity(id);
   if (!a) return;
@@ -898,6 +912,21 @@ function openActivityDetail(id) {
   // Byg datetime-pickers efter innerHTML er sat
   buildDatetimePicker("edit-start", a.start_time.slice(0, 16));
   buildDatetimePicker("edit-end",   a.end_time.slice(0, 16));
+
+  if (preservedEdits) {
+    if (preservedEdits.start) setDatetimePicker("edit-start", preservedEdits.start);
+    if (preservedEdits.end)   setDatetimePicker("edit-end", preservedEdits.end);
+    const vehicleEl = document.getElementById("edit-vehicle");
+    if (vehicleEl && preservedEdits.vehicle != null) vehicleEl.value = preservedEdits.vehicle;
+    const kmStartEl = document.getElementById("edit-km-start");
+    if (kmStartEl && preservedEdits.kmStart != null) kmStartEl.value = preservedEdits.kmStart;
+    const kmEndEl = document.getElementById("edit-km-end");
+    if (kmEndEl && preservedEdits.kmEnd != null) kmEndEl.value = preservedEdits.kmEnd;
+    const saltEl = document.getElementById("edit-salt");
+    if (saltEl && preservedEdits.salt != null) saltEl.checked = preservedEdits.salt;
+    const dobEl = document.getElementById("edit-dob");
+    if (dobEl && preservedEdits.dob != null) dobEl.checked = preservedEdits.dob;
+  }
 
   const footer = document.getElementById("modal-activity-footer");
   footer.innerHTML = "";
