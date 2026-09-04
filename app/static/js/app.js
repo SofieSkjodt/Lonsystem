@@ -3328,10 +3328,56 @@ async function confirmExportCsv() {
 }
 
 // ── Lønafregning ─────────────────────────────────────────────────────────
+function fillSettlementDispatcherGroupFilter() {
+  const sel = document.getElementById("settlement-filter-dispatcher-group");
+  if (!sel) return;
+  const cur = sel.value;
+  const visibleGroups = (state.dispatcherGroups || []).filter(g => g.visible_in_activity_overview);
+  sel.innerHTML = `<option value="">Alle disponentgrupper</option>` +
+    visibleGroups.map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
+  if (visibleGroups.find(g => String(g.id) === cur)) sel.value = cur;
+}
+
+function fillSettlementEmployeeFilter() {
+  const sel = document.getElementById("settlement-filter-employee");
+  if (!sel) return;
+  const cur = sel.value;
+  const groupFilter = document.getElementById("settlement-filter-dispatcher-group")?.value || "";
+  let visible = (state.employees || []).filter(_empHasVisibleGroup);
+  if (groupFilter) visible = visible.filter(e => _empInGroup(e, groupFilter));
+  const placeholder = groupFilter ? "Alle i disponentgruppen" : "Alle medarbejdere";
+  sel.innerHTML = `<option value="">${placeholder}</option>` +
+    visible.slice().sort((a, b) => a.name.localeCompare(b.name, "da"))
+      .map(e => `<option value="${e.id}">${h(e.name)} (${h(e.employee_number)})</option>`).join("");
+  if (visible.find(e => String(e.id) === cur)) sel.value = cur;
+}
+
+function settlementDispatcherGroupFilterChanged() {
+  fillSettlementEmployeeFilter();
+  loadPayrollSettlement();
+}
+
 async function loadPayrollSettlement() {
+  // Default Fra/Til til den lønperiode aktivitetsoversigten viser – ligesom
+  // Fraværsoversigt (bekræftet af bruger 2026-09-04). Ændres kun hvis felterne
+  // er tomme, så brugerens eget valgte interval ikke overskrives ved "Opdater".
+  if (!readDatePicker("settlement-from-dp") && state.periodInfo) {
+    setDatePicker("settlement-from-dp", state.periodInfo.period.start_date);
+    setDatePicker("settlement-to-dp",   state.periodInfo.period.end_date);
+  }
   setLoading(true);
   try {
-    const qs = state.currentPeriodStart ? `?period_start=${state.currentPeriodStart}` : "";
+    fillSettlementDispatcherGroupFilter();
+    fillSettlementEmployeeFilter();
+    const p = new URLSearchParams();
+    const from = readDatePicker("settlement-from-dp");
+    const to   = readDatePicker("settlement-to-dp");
+    if (from && to) { p.set("date_from", from); p.set("date_to", to); }
+    const employeeId = document.getElementById("settlement-filter-employee")?.value;
+    const groupId = document.getElementById("settlement-filter-dispatcher-group")?.value;
+    if (employeeId) p.set("employee_id", employeeId);
+    else if (groupId) p.set("dispatcher_group_id", groupId);
+    const qs = p.toString() ? `?${p.toString()}` : "";
     const data = await GET(`/api/payroll-settlement/preview${qs}`);
     renderPayrollSettlement(data);
   } catch (e) { toast(e.message, "error"); }
@@ -3349,17 +3395,23 @@ function fmtDecimalComma(v) {
 }
 
 function renderPayrollSettlement(data) {
-  state.settlementPeriodClosed = data.period_status === "closed";
-  document.getElementById("settlement-period-label").textContent =
-    `${formatDateShort(data.period_start)} – ${formatDateShort(data.period_end)}`;
+  // period_status er "closed"/"open" når det viste interval matcher en hel
+  // lønperiode præcist, ellers null (frit interval – altid eksporterbart,
+  // bekræftet af bruger 2026-09-04).
+  state.settlementPeriodStatus = data.period_status;
 
   const container = document.getElementById("settlement-preview-container");
   container.innerHTML = "";
 
-  if (!state.settlementPeriodClosed) {
+  if (data.period_status === "open") {
     const info = document.createElement("div");
     info.className = "alert-banner mb-16";
     info.innerHTML = `<span class="icon">ℹ️</span><div class="text"><h4>Perioden er ikke låst endnu</h4>Eksport kræver, at lønnen er kørt for perioden under Lønkørsel (administratorer kan eksportere alligevel).</div>`;
+    container.appendChild(info);
+  } else if (data.period_status === null) {
+    const info = document.createElement("div");
+    info.className = "alert-banner mb-16";
+    info.innerHTML = `<span class="icon">ℹ️</span><div class="text"><h4>Frit datointerval</h4>Intervallet matcher ikke en hel lønperiode – eksport er altid tilladt for netop dette interval.</div>`;
     container.appendChild(info);
   }
 
@@ -3457,7 +3509,10 @@ function renderPayrollSettlement(data) {
 
 async function exportSettlementCsv() {
   const isAdmin = state.currentUser?.role === "admin";
-  if (state.settlementPeriodClosed === false && !isAdmin) {
+  // Et frit interval uden eksakt periodematch (period_status === null) er
+  // altid eksporterbart – kun en eksakt matchet, ULÅST periode blokerer
+  // ikke-admin (bekræftet af bruger 2026-09-04).
+  if (state.settlementPeriodStatus === "open" && !isAdmin) {
     toast("Lønperioden skal være låst, før den kan eksporteres. Kør løn under Lønkørsel-fanen først.", "error");
     return;
   }
@@ -3474,10 +3529,15 @@ async function confirmExportSettlementCsv() {
   if (!folder) { toast("Angiv en mappe at gemme CSV-filen i", "error"); return; }
   setLoading(true);
   try {
-    const result = await POST("/api/payroll-settlement/export-csv", {
-      period_start: state.currentPeriodStart || null,
-      output_folder: folder,
-    });
+    const body = { output_folder: folder };
+    const from = readDatePicker("settlement-from-dp");
+    const to   = readDatePicker("settlement-to-dp");
+    if (from && to) { body.date_from = from; body.date_to = to; }
+    const employeeId = document.getElementById("settlement-filter-employee")?.value;
+    const groupId = document.getElementById("settlement-filter-dispatcher-group")?.value;
+    if (employeeId) body.employee_id = parseInt(employeeId);
+    else if (groupId) body.dispatcher_group_id = parseInt(groupId);
+    const result = await POST("/api/payroll-settlement/export-csv", body);
     toast(`Lønafregning eksporteret: ${result.filename}`, "success");
     closeModal("modal-settlement-csv");
   } catch (e) { toast(e.message, "error"); }
@@ -5394,9 +5454,13 @@ async function init() {
   document.getElementById("period-date-picker").querySelector(".dp-val").addEventListener("change", e => jumpToDate(e.target.value));
   buildDatePicker("absence-from-dp", "");
   buildDatePicker("absence-to-dp", "");
+  buildDatePicker("settlement-from-dp", "");
+  buildDatePicker("settlement-to-dp", "");
   document.getElementById("filter-status").addEventListener("change", () => { updateStatChipActive(); renderActivitiesTable(); });
   document.getElementById("filter-employee").addEventListener("change", renderActivitiesTable);
   document.getElementById("filter-dispatcher-group").addEventListener("change", () => { fillEmployeeFilter(); renderActivitiesTable(); });
+  document.getElementById("settlement-filter-dispatcher-group")?.addEventListener("change", settlementDispatcherGroupFilterChanged);
+  document.getElementById("settlement-filter-employee")?.addEventListener("change", loadPayrollSettlement);
   document.getElementById("stat-pending") ?.addEventListener("click", () => toggleStatFilter("pending"));
   document.getElementById("stat-approved")?.addEventListener("click", () => toggleStatFilter("approved"));
   document.getElementById("stat-deact")   ?.addEventListener("click", () => toggleStatFilter("deactivated"));

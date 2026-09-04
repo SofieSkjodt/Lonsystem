@@ -734,10 +734,13 @@ def _resolve_period(period_start: Optional[str], db: Session):
     return get_or_create_period_for_date(d, db)
 
 
-def _active_employees(db: Session, employee_id: Optional[int] = None):
+def _active_employees(db: Session, employee_id: Optional[int] = None,
+                      dispatcher_group_id: Optional[int] = None):
     q = db.query(Employee).filter(Employee.active == True)
     if employee_id:
         q = q.filter(Employee.id == employee_id)
+    if dispatcher_group_id:
+        q = q.filter(Employee.dispatcher_group_id == dispatcher_group_id)
     employees = q.order_by(Employee.first_name, Employee.last_name).all()
     return [e for e in employees if e.dispatcher_group and e.dispatcher_group.visible_in_activity_overview]
 

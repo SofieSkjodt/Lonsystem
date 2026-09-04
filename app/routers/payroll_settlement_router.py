@@ -19,7 +19,7 @@ from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
 from auth import log_action, require_permission
-from database.models import AppUser, PayPeriodStatus
+from database.models import AppUser, PayPeriod, PayPeriodStatus
 from database.session import get_db
 
 from calculators.overtime import OT_13_KEY, OT_BEFORE_KEY, OT_EXTRA_KEY
@@ -161,21 +161,57 @@ def _resolve_period(period_start: Optional[str], db: Session):
     return get_or_create_period_for_date(d, db)
 
 
+def _resolve_range(date_from: Optional[str], date_to: Optional[str],
+                   period_start: Optional[str], db: Session):
+    """Bestemmer datointervallet siden skal vise/eksportere for. Et frit
+    Fra/Til-interval (date_from/date_to, som i Fraværsoversigt) har forrang og
+    bruges råt uden at oprette/slå en lønperiode op – falder ellers tilbage til
+    den faste periode via period_start (bagudkompatibel), og uden nogen af
+    delene dagens periode. Bekræftet af bruger 2026-09-04."""
+    if date_from and date_to:
+        return date.fromisoformat(date_from), date.fromisoformat(date_to)
+    if bool(date_from) != bool(date_to):
+        raise HTTPException(400, "Angiv både fra- og til-dato, eller ingen af dem")
+    period = _resolve_period(period_start, db)
+    return period.start_date, period.end_date
+
+
+def _period_for_range(start: date, end: date, db: Session) -> Optional[PayPeriod]:
+    """Den lønperiode der PRÆCIST matcher intervallet, hvis nogen – bruges til
+    at afgøre låsestatus og til revisionslog ved CSV-eksport."""
+    return db.query(PayPeriod).filter(
+        PayPeriod.start_date == start, PayPeriod.end_date == end,
+    ).first()
+
+
+def _period_status_for_range(start: date, end: date, db: Session) -> Optional[PayPeriodStatus]:
+    """Låsestatus for CSV-eksport gælder KUN når det valgte interval matcher en
+    hel lønperiode præcist – et frit interval uden eksakt match er altid
+    eksporterbart, uanset om det overlapper en åben periode (bekræftet af
+    bruger 2026-09-04: 'kun låst ved eksakt periodematch')."""
+    period = _period_for_range(start, end, db)
+    return period.status if period else None
+
+
 @router.get("/preview")
-def payroll_settlement_preview(period_start: Optional[str] = None,
+def payroll_settlement_preview(date_from: Optional[str] = None, date_to: Optional[str] = None,
+                               period_start: Optional[str] = None,
+                               employee_id: Optional[int] = None,
+                               dispatcher_group_id: Optional[int] = None,
                                current_user: AppUser = Depends(_view_access),
                                db: Session = Depends(get_db)):
-    period = _resolve_period(period_start, db)
-    employees = _active_employees(db)
-    employees_data = [_employee_settlement_data(e, period.start_date, period.end_date, db) for e in employees]
+    start, end = _resolve_range(date_from, date_to, period_start, db)
+    employees = _active_employees(db, employee_id=employee_id, dispatcher_group_id=dispatcher_group_id)
+    employees_data = [_employee_settlement_data(e, start, end, db) for e in employees]
     # Kun medarbejdere med data (mindst én godkendt aktivitet) for perioden
     # skal vises – bekræftet af bruger 2026-09-03.
     employees_data = [e for e in employees_data if e["activity_count"] > 0]
     employees_data.sort(key=lambda e: e["employee_name"] or "")
+    exact_status = _period_status_for_range(start, end, db)
     return {
-        "period_start": period.start_date.isoformat(),
-        "period_end": period.end_date.isoformat(),
-        "period_status": period.status.value,
+        "period_start": start.isoformat(),
+        "period_end": end.isoformat(),
+        "period_status": exact_status.value if exact_status else None,
         "page_totals": _page_totals(employees_data),
         "employees": employees_data,
     }
@@ -206,6 +242,10 @@ def get_downloads_folder(current_user: AppUser = Depends(_export_access)):
 
 class ExportSettlementCsvRequest(BaseModel):
     period_start: Optional[str] = None
+    date_from: Optional[str] = None
+    date_to: Optional[str] = None
+    employee_id: Optional[int] = None
+    dispatcher_group_id: Optional[int] = None
     output_folder: str
 
 
@@ -234,27 +274,30 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
                           current_user: AppUser = Depends(_export_access),
                           db: Session = Depends(get_db)):
     """
-    Eksporterer Lønafregning som CSV: én række pr. dag pr. medarbejder (alle 14
-    dage), med lønnummer tilføjet – ingen 'Total løn for'-rækker og ingen
-    topsummering. Kræver at den valgte periode er låst – administratorer kan
-    altid eksportere.
+    Eksporterer Lønafregning som CSV: én række pr. dag pr. medarbejder (alle
+    dage i det valgte interval), med lønnummer tilføjet – ingen 'Total løn
+    for'-rækker og ingen topsummering. Kræver at det valgte interval matcher
+    en låst lønperiode PRÆCIST – administratorer kan altid eksportere, og et
+    frit interval uden eksakt periodematch er altid eksporterbart (bekræftet
+    af bruger 2026-09-04).
     """
-    period = _resolve_period(body.period_start, db)
+    start, end = _resolve_range(body.date_from, body.date_to, body.period_start, db)
     is_admin = current_user.role == "admin"
-    if period.status != PayPeriodStatus.closed and not is_admin:
+    exact_period = _period_for_range(start, end, db)
+    if exact_period is not None and exact_period.status != PayPeriodStatus.closed and not is_admin:
         raise HTTPException(
             400,
             "Lønperioden skal være låst, før den kan eksporteres. Kør løn under Lønkørsel-fanen først.",
         )
 
-    employees = _active_employees(db)
+    employees = _active_employees(db, employee_id=body.employee_id, dispatcher_group_id=body.dispatcher_group_id)
     # Kun medarbejdere med data (mindst én godkendt aktivitet) for perioden
     # skal med i eksporten – bekræftet af bruger 2026-09-03.
     employee_pairs = sorted(
         (
             (e, data)
             for e in employees
-            for data in [_employee_settlement_data(e, period.start_date, period.end_date, db)]
+            for data in [_employee_settlement_data(e, start, end, db)]
             if data["activity_count"] > 0
         ),
         key=lambda pair: pair[1]["employee_name"] or "",
@@ -277,7 +320,7 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
                 vognnummer, _fmt_kr_da(day["total_kr"]),
             ])
 
-    filename = f"lonafregning_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
+    filename = f"lonafregning_{start.isoformat()}_{end.isoformat()}.csv"
     save_dir = _safe_save_dir(body.output_folder)
     try:
         save_dir.mkdir(parents=True, exist_ok=True)
@@ -292,8 +335,9 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
             f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
         )
 
-    log_action(db, current_user, "payroll_settlement_export", "pay_period", period.id,
-               f"Lønafregning eksporteret for periode {period.start_date} – {period.end_date}")
+    log_action(db, current_user, "payroll_settlement_export", "pay_period",
+               exact_period.id if exact_period else None,
+               f"Lønafregning eksporteret for periode {start} – {end}")
     db.commit()
 
     return {"filename": filename, "path": str(save_dir / filename)}

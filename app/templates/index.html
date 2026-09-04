@@ -190,10 +190,22 @@
 
     <!-- ══════════════ PAYROLL SETTLEMENT VIEW ══════════════ -->
     <div class="view hidden" data-view="payroll-settlement">
-      <div class="toolbar" style="flex-wrap:nowrap">
-        <h2 style="font-size:16px;font-weight:600;white-space:nowrap">Lønafregning –
-          <span id="settlement-period-label" style="font-weight:400;color:var(--text-light)">indlæser...</span>
-        </h2>
+      <div class="toolbar" style="flex-wrap:wrap;gap:8px;align-items:center">
+        <h2 style="font-size:16px;font-weight:600;white-space:nowrap">Lønafregning</h2>
+        <div style="display:flex;align-items:center;gap:10px;font-size:13px">
+          <label style="display:flex;align-items:center;gap:5px">Fra:
+            <div id="settlement-from-dp" style="width:150px"></div>
+          </label>
+          <label style="display:flex;align-items:center;gap:5px">Til:
+            <div id="settlement-to-dp" style="width:150px"></div>
+          </label>
+        </div>
+        <select id="settlement-filter-dispatcher-group" style="width:180px">
+          <option value="">Alle disponentgrupper</option>
+        </select>
+        <select id="settlement-filter-employee" style="width:200px">
+          <option value="">Alle medarbejdere</option>
+        </select>
         <div class="spacer"></div>
         <button class="btn btn-secondary" onclick="loadPayrollSettlement()">&#128260; Opdater</button>
         <button id="btn-settlement-export" class="btn btn-success" onclick="exportSettlementCsv()"

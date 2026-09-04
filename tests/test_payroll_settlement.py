@@ -331,6 +331,257 @@ def test_payroll_settlement_preview_follows_explicit_period_start(db, employee):
     assert result["employees"][0]["normal_hours"] == pytest.approx(8.0)
 
 
+def test_payroll_settlement_preview_uses_free_date_range(db, employee):
+    """Frit Fra/Til-interval (som i Fraværsoversigt) har forrang og bruges
+    råt – bekræftet af bruger 2026-09-04."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    result = payroll_settlement_preview(date_from="2026-01-03", date_to="2026-01-10",
+                                         current_user=_dummy_user(), db=db)
+
+    assert result["period_start"] == "2026-01-03"
+    assert result["period_end"] == "2026-01-10"
+    assert len(result["employees"][0]["days"]) == 8  # 3.-10. januar inkl.
+
+
+def test_payroll_settlement_preview_period_status_is_none_for_non_matching_range(db, employee):
+    """Låse-status vises KUN når intervallet matcher en hel lønperiode
+    præcist – ellers None, selvom intervallet overlapper en låst periode."""
+    from calculators.pay_period import get_or_create_period_for_date
+    from database.models import PayPeriodStatus
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    period.status = PayPeriodStatus.closed
+    db.commit()
+
+    result = payroll_settlement_preview(date_from="2026-01-02", date_to="2026-01-09",
+                                         current_user=_dummy_user(), db=db)
+
+    assert result["period_status"] is None
+
+
+def test_payroll_settlement_preview_period_status_matches_exact_period(db, employee):
+    from calculators.pay_period import get_or_create_period_for_date
+    from database.models import PayPeriodStatus
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    period.status = PayPeriodStatus.closed
+    db.commit()
+
+    result = payroll_settlement_preview(date_from=period.start_date.isoformat(),
+                                         date_to=period.end_date.isoformat(),
+                                         current_user=_dummy_user(), db=db)
+
+    assert result["period_status"] == "closed"
+
+
+def test_payroll_settlement_preview_rejects_partial_date_range(db, employee):
+    from fastapi import HTTPException
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+
+    with pytest.raises(HTTPException) as exc:
+        payroll_settlement_preview(date_from="2026-01-03", current_user=_dummy_user(), db=db)
+    assert exc.value.status_code == 400
+
+
+def test_export_settlement_csv_allows_free_range_that_overlaps_open_period_for_non_admin(db, employee, tmp_path):
+    """Et frit interval der IKKE matcher en hel lønperiode præcist er altid
+    eksporterbart, også for ikke-admin, selvom det overlapper en åben periode
+    – bekræftet af bruger 2026-09-04 ('kun låst ved eksakt periodematch')."""
+    from datetime import datetime
+    from database.models import ActivityStatus, AppUser
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+    get_or_create_period_for_date(date(2026, 1, 1), db)  # forbliver 'open'
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+    non_admin = AppUser(name="Test", initials="LB1", role="lonbogholder", password_hash="x")
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(date_from="2026-01-02", date_to="2026-01-09", output_folder=str(tmp_path)),
+        current_user=non_admin, db=db)
+
+    assert (tmp_path / result["filename"]).exists()
+
+
+def test_export_settlement_csv_uses_date_range_in_filename(db, employee, tmp_path):
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    _assign_visible_dispatcher_group(db, employee)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(date_from="2026-01-02", date_to="2026-01-09", output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    assert result["filename"] == "lonafregning_2026-01-02_2026-01-09.csv"
+
+
+def _make_employee(db, employee_number, group=None, hourly=Decimal("150.00")):
+    """Opretter en ANDEN medarbejder end 'employee'-fixturen, med egen
+    overenskomstsats, til brug i filtreringstests der kræver flere medarbejdere."""
+    from database.models import Employee, AgreementKind, MasterAgreementType
+    agreement_type = f"Overenskomst{employee_number}"
+    emp = Employee(
+        employee_number=employee_number,
+        first_name="Anden",
+        last_name="Chauffør",
+        agreement_kind=AgreementKind.hourly_fixed,
+        agreement_type=agreement_type,
+        hire_date=date(2020, 1, 1),
+        work_schedule={"even": [8, 8, 8, 8, 8, 0, 0], "odd": [8, 8, 8, 8, 8, 0, 0]},
+    )
+    if group is not None:
+        emp.dispatcher_group = group
+    db.add(emp)
+    db.add(MasterAgreementType(name=agreement_type, hourly_rate=hourly))
+    db.commit()
+    db.refresh(emp)
+    return emp
+
+
+def _make_two_groups(db):
+    from database.models import DispatcherGroup
+    group_a = DispatcherGroup(name="Gruppe A", visible_in_activity_overview=True)
+    group_b = DispatcherGroup(name="Gruppe B", visible_in_activity_overview=True)
+    db.add_all([group_a, group_b])
+    db.commit()
+    db.refresh(group_a)
+    db.refresh(group_b)
+    return group_a, group_b
+
+
+def test_active_employees_filters_by_dispatcher_group_id(db, employee):
+    """Filteret på lønafregningssidens toolbar (Alle medarbejdere / Disponentgruppe
+    / Medarbejder) genbruger _active_employees() – bekræftet af bruger 2026-09-03."""
+    from routers.payroll_router import _active_employees
+    group_a, group_b = _make_two_groups(db)
+    employee.dispatcher_group = group_a
+    other = _make_employee(db, "2002", group=group_b)
+    db.commit()
+
+    result = _active_employees(db, dispatcher_group_id=group_a.id)
+
+    assert [e.id for e in result] == [employee.id]
+
+
+def test_payroll_settlement_preview_filters_by_dispatcher_group_id(db, employee):
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    group_a, group_b = _make_two_groups(db)
+    employee.dispatcher_group = group_a
+    other = _make_employee(db, "2002", group=group_b)
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+    make_activity(db, other, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    result = payroll_settlement_preview(period_start=period.start_date.isoformat(),
+                                         dispatcher_group_id=group_a.id,
+                                         current_user=_dummy_user(), db=db)
+
+    assert [e["employee_number"] for e in result["employees"]] == [employee.employee_number]
+
+
+def test_payroll_settlement_preview_filters_by_employee_id(db, employee):
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import payroll_settlement_preview
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    group_a, group_b = _make_two_groups(db)
+    employee.dispatcher_group = group_a
+    other = _make_employee(db, "2002", group=group_b)
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+    make_activity(db, other, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    result = payroll_settlement_preview(period_start=period.start_date.isoformat(),
+                                         employee_id=other.id,
+                                         current_user=_dummy_user(), db=db)
+
+    assert [e["employee_number"] for e in result["employees"]] == [other.employee_number]
+
+
+def test_export_settlement_csv_filters_by_dispatcher_group_id(db, employee, tmp_path):
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    group_a, group_b = _make_two_groups(db)
+    employee.dispatcher_group = group_a
+    other = _make_employee(db, "2002", group=group_b)
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+    make_activity(db, other, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(),
+                                    dispatcher_group_id=group_a.id, output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    assert employee.employee_number in content
+    assert other.employee_number not in content
+
+
+def test_export_settlement_csv_filters_by_employee_id(db, employee, tmp_path):
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import export_settlement_csv, ExportSettlementCsvRequest
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    group_a, group_b = _make_two_groups(db)
+    employee.dispatcher_group = group_a
+    other = _make_employee(db, "2002", group=group_b)
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+    make_activity(db, other, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    result = export_settlement_csv(
+        ExportSettlementCsvRequest(period_start=period.start_date.isoformat(),
+                                    employee_id=other.id, output_folder=str(tmp_path)),
+        current_user=_dummy_user(), db=db)
+
+    content = (tmp_path / result["filename"]).read_text(encoding="utf-8-sig")
+    assert other.employee_number in content
+    assert employee.employee_number not in content
+
+
 def _dummy_user():
     from database.models import AppUser
     return AppUser(name="Test", initials="TST", role="admin", password_hash="x")
