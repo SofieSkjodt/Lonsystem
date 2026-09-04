@@ -351,15 +351,35 @@ def test_delete_activity_allows_absence_regardless_of_source(db, employee):
     assert db.query(Activity).filter(Activity.id == a.id).first() is None
 
 
-def test_delete_activity_rejects_normal_activity_type(db, employee):
+def test_delete_activity_allows_manually_created_normal_activity(db, employee):
     from routers.activities import create_manual_activity, delete_activity
     from database.schemas import ActivityCreate
+    from database.models import Activity
     from datetime import datetime as _dt
     body = ActivityCreate(
         employee_id=employee.id, activity_type="normal",
         start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+        vehicle_number="2321",
     )
     a = create_manual_activity(body, current_user=_dummy_user(), db=db)
+    assert a.source == ActivitySource.manual
+    delete_activity(a.id, current_user=_dummy_user(), db=db)
+    assert db.query(Activity).filter(Activity.id == a.id).first() is None
+
+
+def test_delete_activity_rejects_tachograph_normal_activity(db, employee):
+    from routers.activities import delete_activity
+    from calculators.pay_period import get_or_create_period_for_date
+    from database.models import Activity
+    from datetime import datetime as _dt
+    period = get_or_create_period_for_date(_dt(2026, 1, 5).date(), db)
+    a = Activity(
+        employee_id=employee.id, pay_period_id=period.id, source=ActivitySource.tachograph,
+        activity_type="normal", start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+        status=ActivityStatus.pending, pause_intervals=[], segments=[],
+    )
+    db.add(a)
+    db.commit()
     with pytest.raises(HTTPException) as exc:
         delete_activity(a.id, current_user=_dummy_user(), db=db)
     assert exc.value.status_code == 400

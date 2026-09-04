@@ -721,16 +721,16 @@ def hide_from_vagtplan(activity_id: int, body: VagtplanHideBody,
 def delete_activity(activity_id: int,
                     current_user: AppUser = Depends(get_current_user),
                     db: Session = Depends(get_db)):
-    """Sletter aktiviteten permanent (ikke bare deaktiverer/skjuler). Kun tilladt for
-    fraværsaktiviteter (activity_type != 'normal') – uanset om de er oprettet via
-    Vagtplan eller manuelt via Aktivitetsoversigten. Brugt af 'slet aktiviteten
-    helt'-checkboksen i deaktiver-modalen, som fjerner aktiviteten fra både
-    Vagtplan og Aktivitetsoversigt."""
+    """Sletter aktiviteten permanent (ikke bare deaktiverer/skjuler). Tilladt for alle
+    fraværstyper (uanset kilde), samt for normal tid der er oprettet manuelt via
+    Aktivitetsoversigten. Takograf-importeret normal tid kan IKKE slettes helt – kun
+    deaktiveres – da det er kørselsdata fra kortet. Brugt af 'slet aktiviteten
+    helt'-checkboksen i deaktiver-modalen."""
     a = db.query(Activity).filter(Activity.id == activity_id).first()
     if not a:
         raise HTTPException(404, "Aktivitet ikke fundet")
-    if a.activity_type == "normal":
-        raise HTTPException(400, "Kun fraværsaktiviteter kan slettes helt")
+    if a.activity_type == "normal" and a.source != ActivitySource.manual:
+        raise HTTPException(400, "Kun manuelt oprettede aktiviteter med normal tid kan slettes helt")
     if a.split_children:
         raise HTTPException(400, "Aktiviteten er splittet og kan ikke slettes – fortryd splittet først")
     log_action(db, current_user, "delete_activity", "activity", a.id,

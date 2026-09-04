@@ -1268,8 +1268,13 @@ function openDeactivateModal() {
   document.getElementById("deactivate-comment").value = "";
   document.getElementById("deactivate-hide-vagtplan").checked = false;
   const a = _findLoadedActivity(state.selectedActivityId);
-  document.getElementById("deactivate-hide-vagtplan-group").style.display =
-    (a && a.activity_type !== "normal") ? "" : "none";
+  const canDeleteEntirely = a && (a.activity_type !== "normal" || a.is_manual);
+  document.getElementById("deactivate-hide-vagtplan-group").style.display = canDeleteEntirely ? "" : "none";
+  if (canDeleteEntirely) {
+    document.getElementById("deactivate-delete-label-text").textContent = a.activity_type === "normal"
+      ? "Slet aktiviteten helt (fjernes permanent fra Aktivitetsoversigt)"
+      : "Slet aktiviteten helt (fjernes permanent fra både Vagtplan og Aktivitetsoversigt)";
+  }
   const lbl = document.getElementById("deactivate-user-label");
   if (lbl) lbl.textContent = state.currentUser ? `Deaktiveres af: ${state.currentUser.name} (${state.currentUser.initials})` : "";
   openModal("modal-deactivate");
