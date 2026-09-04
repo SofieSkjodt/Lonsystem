@@ -324,176 +324,171 @@ def _import_activity(
         .first()
     )
     if existing:
-        # Opdater km-data hvis parseren fandt værdier og aktiviteten mangler dem
-        changed = False
-        if act.km_start is not None and existing.km_start is None:
-            existing.km_start = act.km_start
-            changed = True
-        if act.km_end is not None and existing.km_end is None:
-            existing.km_end = act.km_end
-            changed = True
+        # HELE denne blok køres i én SAVEPOINT (nested transaktion), åbnet
+        # FØR noget som helst røres på `existing` – ikke kun omkring det
+        # afsluttende flush(). Begrundelse (bekræftet ved fejlsøgning
+        # 2026-09-04): Session.begin_nested() tager selv en "snapshot" ved
+        # åbning, hvilket automatisk flusher ALLEREDE beskidte (ændrede, men
+        # endnu ikke flushede) attributter FØR selve SAVEPOINT'et sættes –
+        # rammer DEN flush et unikt-indeks-brud, sker det uden for
+        # SAVEPOINT'ets beskyttelse, og en efterfølgende
+        # `except IntegrityError` fanger ganske vist selve fejlen, men
+        # sessionens tilstand er alligevel ødelagt (en senere
+        # attributtilgang på samme objekt fejler med PendingRollbackError).
+        # Åbnes SAVEPOINT'et derimod FØR nogen mutation, er der intet
+        # "beskidt" at flushe ved åbningen, og et efterfølgende flush-brud
+        # INDENFOR blokken rulles korrekt tilbage af SAVEPOINT'et alene –
+        # resten af batch-importens transaktion (andre allerede flushede,
+        # gyldige aktiviteter) berøres ikke.
+        try:
+            with db.begin_nested():
+                # Opdater km-data hvis parseren fandt værdier og aktiviteten mangler dem
+                changed = False
+                if act.km_start is not None and existing.km_start is None:
+                    existing.km_start = act.km_start
+                    changed = True
+                if act.km_end is not None and existing.km_end is None:
+                    existing.km_end = act.km_end
+                    changed = True
 
-        # Ret registreringsnummeret uafhængigt af tid/segment-ændringerne
-        # nedenfor – en tidligere fejlbehæftet parser-version kunne gemme et
-        # forkert registreringsnummer for en dag der ellers ikke ændrer sig
-        # ved genimport, og genimporten skal stadig kunne korrigere det. Feltet
-        # er metadata uden betydning for løn/godkendelse, så det rettes
-        # uanset aktivitetens status.
-        if act.vehicle_registration and act.vehicle_registration != existing.vehicle_registration:
-            existing.vehicle_registration = act.vehicle_registration
-            v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
-            existing.vehicle_number = v.vehicle_number if v else None
-            changed = True
+                # Ret registreringsnummeret uafhængigt af tid/segment-ændringerne
+                # nedenfor – en tidligere fejlbehæftet parser-version kunne gemme et
+                # forkert registreringsnummer for en dag der ellers ikke ændrer sig
+                # ved genimport, og genimporten skal stadig kunne korrigere det. Feltet
+                # er metadata uden betydning for løn/godkendelse, så det rettes
+                # uanset aktivitetens status.
+                if act.vehicle_registration and act.vehicle_registration != existing.vehicle_registration:
+                    existing.vehicle_registration = act.vehicle_registration
+                    v = db.query(Vehicle).filter(Vehicle.registration_number == act.vehicle_registration).first()
+                    existing.vehicle_number = v.vehicle_number if v else None
+                    changed = True
 
-        new_segments = [
-            [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
-        ]
-        new_pause_intervals = [
-            [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
-        ]
+                new_segments = [
+                    [s.isoformat(), e.isoformat(), name] for s, e, name in (act.segments or [])
+                ]
+                new_pause_intervals = [
+                    [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
+                ]
 
-        def _reopen_for_review():
-            if existing.status != ActivityStatus.pending:
-                existing.status = ActivityStatus.pending
-                existing.approved_by = None
-                existing.approved_at = None
-                existing.deactivated_by = None
-                existing.auto_approved = False
-                existing.auto_approval_flags = []
+                def _reopen_for_review():
+                    if existing.status != ActivityStatus.pending:
+                        existing.status = ActivityStatus.pending
+                        existing.approved_by = None
+                        existing.approved_at = None
+                        existing.deactivated_by = None
+                        existing.auto_approved = False
+                        existing.auto_approval_flags = []
 
-        # En aktivitet der stadig er 'pending' og ikke en del af et split (er
-        # hverken selv splittet op, eller en af de to dele et split skabte)
-        # er endnu ikke taget stilling til – trygt at synkronisere den FULDT
-        # ind fra den nyeste parsing, i begge retninger. Det dækker bl.a. en
-        # rettelse i parseren der afslører en kortere, korrekt vagt end den
-        # tidligere gemte (bekræftet 2026-09-04: en .ddd-fil kan indeholde to
-        # modstridende dags-records for samme dato, og en parser-rettelse kan
-        # derfor gøre både start senere og slut tidligere – se
-        # ddd_parser._find_all_daily_records). Er aktiviteten derimod
-        # godkendt, deaktiveret eller en del af et split, er den allerede
-        # taget stilling til (eller dens tid er bevidst omfordelt af en
-        # bruger), og må IKKE gøres kortere af en genimport – kun evt.
-        # udvides, som hidtil (se de to grene nedenfor).
-        #
-        # Er den NYE udlæsning selv markeret ufuldstændig (kortet læst midt i
-        # vagten), må den ALDRIG lægges fuldt ind, uanset status – ellers vil
-        # en ældre, ufuldstændig fil (importeret efter den komplette, fx pga.
-        # mappenavne der sorteres alfabetisk og ikke efter udlæsningsdato)
-        # kunne slette allerede kendte, korrekte pauser/segmenter (bekræftet
-        # 2026-08-10: Alexander B. Knudsen 3/8).
-        can_resync_fully = (
-            existing.status == ActivityStatus.pending
-            and existing.parent_activity_id is None
-            and not act.is_likely_incomplete
-        )
+                # En aktivitet der stadig er 'pending' og ikke en del af et split (er
+                # hverken selv splittet op, eller en af de to dele et split skabte)
+                # er endnu ikke taget stilling til – trygt at synkronisere den FULDT
+                # ind fra den nyeste parsing, i begge retninger. Det dækker bl.a. en
+                # rettelse i parseren der afslører en kortere, korrekt vagt end den
+                # tidligere gemte (bekræftet 2026-09-04: en .ddd-fil kan indeholde to
+                # modstridende dags-records for samme dato, og en parser-rettelse kan
+                # derfor gøre både start senere og slut tidligere – se
+                # ddd_parser._find_all_daily_records). Er aktiviteten derimod
+                # godkendt, deaktiveret eller en del af et split, er den allerede
+                # taget stilling til (eller dens tid er bevidst omfordelt af en
+                # bruger), og må IKKE gøres kortere af en genimport – kun evt.
+                # udvides, som hidtil (se de to grene nedenfor).
+                #
+                # Er den NYE udlæsning selv markeret ufuldstændig (kortet læst midt i
+                # vagten), må den ALDRIG lægges fuldt ind, uanset status – ellers vil
+                # en ældre, ufuldstændig fil (importeret efter den komplette, fx pga.
+                # mappenavne der sorteres alfabetisk og ikke efter udlæsningsdato)
+                # kunne slette allerede kendte, korrekte pauser/segmenter (bekræftet
+                # 2026-08-10: Alexander B. Knudsen 3/8).
+                can_resync_fully = (
+                    existing.status == ActivityStatus.pending
+                    and existing.parent_activity_id is None
+                    and not act.is_likely_incomplete
+                )
 
-        if can_resync_fully:
-            if (
-                act.start_time != existing.start_time
-                or act.end_time != existing.end_time
-                or new_segments != (existing.segments or [])
-                or new_pause_intervals != (existing.pause_intervals or [])
-            ):
-                existing.start_time = act.start_time
-                existing.end_time = act.end_time
-                existing.segments = new_segments
-                existing.pause_intervals = new_pause_intervals
-                existing.availability_time_pct = act.availability_time_pct
-                existing.rest_pause_pct = act.rest_pause_pct
-                existing.other_work_pct = act.other_work_pct
-                existing.driving_pct = act.driving_pct
-                existing.is_likely_incomplete = act.is_likely_incomplete
-                changed = True
+                if can_resync_fully:
+                    if (
+                        act.start_time != existing.start_time
+                        or act.end_time != existing.end_time
+                        or new_segments != (existing.segments or [])
+                        or new_pause_intervals != (existing.pause_intervals or [])
+                    ):
+                        existing.start_time = act.start_time
+                        existing.end_time = act.end_time
+                        existing.segments = new_segments
+                        existing.pause_intervals = new_pause_intervals
+                        existing.availability_time_pct = act.availability_time_pct
+                        existing.rest_pause_pct = act.rest_pause_pct
+                        existing.other_work_pct = act.other_work_pct
+                        existing.driving_pct = act.driving_pct
+                        existing.is_likely_incomplete = act.is_likely_incomplete
+                        changed = True
+                else:
+                    if act.start_time < existing.start_time:
+                        # Analogt med udvidelse ved et senere sluttidspunkt herunder: en
+                        # ny fil (eller en rettet parser) kan afsløre et TIDLIGERE reelt
+                        # starttidspunkt end det hidtil gemte. Tilføj kun de nye
+                        # segmenter/pauser der ligger FØR det hidtidige starttidspunkt –
+                        # rør ikke ved det der allerede er gemt fra og med det gamle
+                        # starttidspunkt, af samme grund som ved sluttidspunktet nedenfor
+                        # (mulige manuelle rettelser må ikke gå tabt).
+                        cutoff = existing.start_time
+                        existing.segments = [
+                            s for s in new_segments if _dt_now.fromisoformat(s[1]) <= cutoff
+                        ] + (existing.segments or [])
+                        existing.pause_intervals = [
+                            p for p in new_pause_intervals if _dt_now.fromisoformat(p[1]) <= cutoff
+                        ] + (existing.pause_intervals or [])
+                        existing.start_time = act.start_time
+                        _recalculate_pcts(existing)
+                        # Godkendt/deaktiveret aktivitet dækker nu en længere periode end
+                        # det, der blev taget stilling til – genåbnes til afventende.
+                        _reopen_for_review()
+                        changed = True
 
-            if changed:
-                # Nested transaktion (SAVEPOINT): der findes desværre ældre,
-                # overlappende duplikat-aktiviteter for nogle medarbejdere
-                # (fra før tidsoverlap-matchningen ovenfor blev indført) –
-                # synkroniseres denne aktivitets start/sluttid til en tid en
-                # ANDEN allerede gemt aktivitet (samme medarbejder) allerede
-                # har, rammer det det unikke index (employee_id, start_time).
-                # Uden SAVEPOINT ville det fejle HELE batch-importens
-                # transaktion (alle andre allerede flushede, gyldige
-                # aktiviteter i samme kørsel) i stedet for kun denne ene
-                # (bekræftet 2026-09-04 ved genimport for Finn Thor Eriksen).
-                try:
-                    with db.begin_nested():
-                        db.flush()
-                except IntegrityError:
-                    return "skipped_conflict", {
-                        "employee_id": existing.employee_id,
-                        "activity_id": existing.id,
-                        "start_time": act.start_time.isoformat(),
-                        "end_time": act.end_time.isoformat(),
-                    }
-                return "updated", None
-            return "skipped_duplicate", None
+                    if act.end_time > existing.end_time:
+                        # En senere kortudlæsning kan dække en mere komplet dag (senere
+                        # sluttidspunkt) end den tidligere importerede. Tilføj kun den NYE
+                        # tid efter det hidtidige sluttidspunkt – allerede gemte segmenter
+                        # røres ikke, da en bruger kan have rettet/tilpasset dem manuelt
+                        # (fx via "Ret linje" eller "Tilpas pause"), og den slags må ikke
+                        # gå tabt ved en simpel genimport.
+                        cutoff = existing.end_time
+                        existing.segments = (existing.segments or []) + [
+                            s for s in new_segments if _dt_now.fromisoformat(s[0]) >= cutoff
+                        ]
+                        existing.pause_intervals = (existing.pause_intervals or []) + [
+                            p for p in new_pause_intervals if _dt_now.fromisoformat(p[0]) >= cutoff
+                        ]
+                        existing.end_time = act.end_time
+                        _recalculate_pcts(existing)
+                        # Opdater ufuldstændig-flaget efter den nye, mere komplette fil –
+                        # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
+                        # den nye fil stadig ser ufuldstændig ud.
+                        existing.is_likely_incomplete = act.is_likely_incomplete
+                        # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der
+                        # blev taget stilling til – genåbnes til afventende, så tiden skal
+                        # godkendes igen.
+                        _reopen_for_review()
+                        changed = True
+                    # (Ingen gren for act.end_time <= existing.end_time her: en
+                    # godkendt/deaktiveret/split aktivitet må kun UDVIDES ved genimport,
+                    # aldrig gøres kortere eller få sine segmenter overskrevet.)
 
-        if act.start_time < existing.start_time:
-            # Analogt med udvidelse ved et senere sluttidspunkt herunder: en
-            # ny fil (eller en rettet parser) kan afsløre et TIDLIGERE reelt
-            # starttidspunkt end det hidtil gemte. Tilføj kun de nye
-            # segmenter/pauser der ligger FØR det hidtidige starttidspunkt –
-            # rør ikke ved det der allerede er gemt fra og med det gamle
-            # starttidspunkt, af samme grund som ved sluttidspunktet nedenfor
-            # (mulige manuelle rettelser må ikke gå tabt).
-            cutoff = existing.start_time
-            existing.segments = [
-                s for s in new_segments if _dt_now.fromisoformat(s[1]) <= cutoff
-            ] + (existing.segments or [])
-            existing.pause_intervals = [
-                p for p in new_pause_intervals if _dt_now.fromisoformat(p[1]) <= cutoff
-            ] + (existing.pause_intervals or [])
-            existing.start_time = act.start_time
-            _recalculate_pcts(existing)
-            # Godkendt/deaktiveret aktivitet dækker nu en længere periode end
-            # det, der blev taget stilling til – genåbnes til afventende.
-            _reopen_for_review()
-            changed = True
-
-        if act.end_time > existing.end_time:
-            # En senere kortudlæsning kan dække en mere komplet dag (senere
-            # sluttidspunkt) end den tidligere importerede. Tilføj kun den NYE
-            # tid efter det hidtidige sluttidspunkt – allerede gemte segmenter
-            # røres ikke, da en bruger kan have rettet/tilpasset dem manuelt
-            # (fx via "Ret linje" eller "Tilpas pause"), og den slags må ikke
-            # gå tabt ved en simpel genimport.
-            cutoff = existing.end_time
-            existing.segments = (existing.segments or []) + [
-                s for s in new_segments if _dt_now.fromisoformat(s[0]) >= cutoff
-            ]
-            existing.pause_intervals = (existing.pause_intervals or []) + [
-                p for p in new_pause_intervals if _dt_now.fromisoformat(p[0]) >= cutoff
-            ]
-            existing.end_time = act.end_time
-            _recalculate_pcts(existing)
-            # Opdater ufuldstændig-flaget efter den nye, mere komplette fil –
-            # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
-            # den nye fil stadig ser ufuldstændig ud.
-            existing.is_likely_incomplete = act.is_likely_incomplete
-            # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der
-            # blev taget stilling til – genåbnes til afventende, så tiden skal
-            # godkendes igen.
-            _reopen_for_review()
-            changed = True
-        # (Ingen gren for act.end_time <= existing.end_time her: en
-        # godkendt/deaktiveret/split aktivitet må kun UDVIDES ved genimport,
-        # aldrig gøres kortere eller få sine segmenter overskrevet – se
-        # can_resync_fully ovenfor, som allerede har håndteret og returneret
-        # for det trygge tilfælde (pending, ikke split).)
+                if changed:
+                    db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
+        except IntegrityError:
+            # existing.id/employee_id er trygge at læse her – SAVEPOINT'et blev
+            # åbnet FØR eksisterende blev rørt, så rollback-to-savepoint
+            # gendanner objektet fuldt ud (ikke bare markerer det "expired"
+            # midt i en ødelagt session).
+            return "skipped_conflict", {
+                "employee_id": existing.employee_id,
+                "activity_id": existing.id,
+                "start_time": act.start_time.isoformat(),
+                "end_time": act.end_time.isoformat(),
+            }
 
         if changed:
-            # Samme SAVEPOINT-begrundelse som i can_resync_fully-grenen ovenfor.
-            try:
-                with db.begin_nested():
-                    db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
-            except IntegrityError:
-                return "skipped_conflict", {
-                    "employee_id": existing.employee_id,
-                    "activity_id": existing.id,
-                    "start_time": act.start_time.isoformat(),
-                    "end_time": act.end_time.isoformat(),
-                }
             return "updated", None
         return "skipped_duplicate", None
 

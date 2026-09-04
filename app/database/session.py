@@ -15,6 +15,19 @@ engine = create_engine(
 
 @event.listens_for(engine, "connect")
 def set_wal_mode(dbapi_connection, connection_record):
+    # pysqlite's eget implicitte transaktions-styring (den "legacy"
+    # autocommit-lignende adfærd der selv udsteder BEGIN ved skrivning)
+    # forhindrer SQLAlchemys SAVEPOINT (Session.begin_nested()) i at virke
+    # pålideligt – en ændring lavet inde i en begin_nested()-blok kan blive
+    # skrevet til databasefilen selvom den efterfølgende rulles tilbage med
+    # Session.rollback() (bekræftet 2026-09-04 ved en direkte reproduktion:
+    # et enkelt felt ændret i en begin_nested()-blok og derefter rullet
+    # tilbage forblev ændret i en helt frisk session bagefter). Dette er den
+    # velkendte, dokumenterede SQLAlchemy+pysqlite-adfærd ift. savepoints –
+    # løsningen er at slå pysqlites egen transaktionsstyring fra
+    # (isolation_level=None) og lade SQLAlchemy selv udstede BEGIN (se
+    # "begin"-eventet nedenfor).
+    dbapi_connection.isolation_level = None
     try:
         cursor = dbapi_connection.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
@@ -22,6 +35,11 @@ def set_wal_mode(dbapi_connection, connection_record):
         cursor.close()
     except Exception as e:
         logging.error(f"WAL-mode opsætning fejlede: {e}")
+
+
+@event.listens_for(engine, "begin")
+def do_begin(conn):
+    conn.exec_driver_sql("BEGIN")
 
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

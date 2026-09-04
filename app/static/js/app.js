@@ -3041,6 +3041,12 @@ function _showImportResult(result) {
     if (result.skipped_declined) {
       rows.push(`<div style="${rowStyle}"><b>Sprunget over – tidligere afvist (lukket periode):</b> ${result.skipped_declined}</div>`);
     }
+    if (result.skipped_conflict) {
+      rows.push(`<div style="${rowStyle};color:var(--danger)">
+        <b>Kunne IKKE rettes – kolliderer med en anden aktivitet (${result.skipped_conflict}):</b><br>
+        <span style="font-weight:400">Der findes en anden, allerede gemt aktivitet for samme medarbejder på nøjagtig samme starttidspunkt – formentlig en ældre duplikat-aktivitet, der skal ryddes op manuelt. Se detaljer i hændelsesloggen.</span>
+      </div>`);
+    }
     if (result.declined_closed_period) {
       rows.push(`<div style="${rowStyle}"><b>Ikke importeret – lukket lønperiode (afvist):</b> ${result.declined_closed_period}</div>`);
     }

@@ -16,6 +16,15 @@ def _pack(changes):
                      for minute, activity in changes)
 
 
+def _pack_full(changes):
+    """Som _pack, men changes: list af (minut, aktivitet, cardPresent) –
+    cardPresent er bit 13 (0=isat, 1=ikke isat, jf. spec)."""
+    return b"".join(
+        struct.pack(">H", (card & 0x1) << 13 | (activity & 0x3) << 11 | (minute & 0x7FF))
+        for minute, activity, card in changes
+    )
+
+
 def test_short_mid_shift_readout_flagged_incomplete_even_with_nonzero_km():
     """
     Reproducerer Anders Jersild Nielsen 31/7: kortet udlæses midt i vagten
@@ -163,6 +172,77 @@ def test_short_leading_rest_not_at_midnight_kept_as_shift_start():
 
     assert len(acts) == 1
     assert acts[0].start_time == _utc_to_local(day + timedelta(minutes=294))
+
+
+def test_card_inserted_during_leading_rest_anchors_day_start():
+    """
+    Reproducerer Finn Thor Eriksen 31/8 og 1/9-2026: minut 0 viderefører en
+    hvil-status uden isat kort (cardPresent=1) fra i går. Kortet SÆTTES I
+    (cardPresent skifter til 0) ved minut 262 – stadig registreret som
+    "hvil" – og aktiviteten skifter først væk fra hvil to minutter senere
+    (minut 264). Dagens reelle start er isætnings-tidspunktet (262), ikke
+    det senere aktivitetsskift.
+    """
+    day = datetime(2026, 8, 31)
+    changes = [
+        (0, ACTIVITY_REST, 1),
+        (262, ACTIVITY_REST, 0),
+        (264, ACTIVITY_WORK, 0),
+        (600, ACTIVITY_DRIVING, 0),
+    ]
+    daily_records = [(day, 150, _pack_full(changes))]
+
+    acts = _build_activities("X", None, {}, daily_records, "test.ddd")
+
+    assert len(acts) == 1
+    assert acts[0].start_time == _utc_to_local(day + timedelta(minutes=262))
+
+
+def test_card_removed_during_leading_rest_does_not_anchor_day_start():
+    """
+    Reproducerer Anders Jersild Nielsen 1/6-2026: minut 0 viderefører en
+    hvil-status MED isat kort (cardPresent=0, en reelt fortsat vagt/hvile
+    fra i går). Kortet TAGES UD midt i den indledende hvileperiode
+    (cardPresent skifter til 1 ved minut 514), og sættes i igen inden næste
+    rigtige registrering (minut 589). Uden retningstjek (kun "isat" (1) ->
+    "ikke isat" (0) tæller som en indsættelse, ikke omvendt) ville
+    udtagnings-tidspunktet (514) fejlagtigt blive brugt som dagsstart –
+    her skal den i stedet falde tilbage til første ikke-hvil-registrering.
+    """
+    day = datetime(2026, 6, 1)
+    changes = [
+        (0, ACTIVITY_REST, 0),
+        (514, ACTIVITY_REST, 1),
+        (589, ACTIVITY_DRIVING, 0),
+        (700, ACTIVITY_WORK, 0),
+    ]
+    daily_records = [(day, 200, _pack_full(changes))]
+
+    acts = _build_activities("X", None, {}, daily_records, "test.ddd")
+
+    assert len(acts) == 1
+    assert acts[0].start_time == _utc_to_local(day + timedelta(minutes=589))
+
+
+def test_decode_activity_changes_dedupes_on_minute_and_activity_only():
+    """
+    To rå ord kan dele (minut, aktivitet) men have forskellig cardPresent-bit
+    (set i praksis, fx Finn Thor Eriksen 28/5 og Jesper Frederiksen 31/8) –
+    _decode_activity_changes skal stadig kun returnere ÉT element for et
+    sådant par, ligesom før cardPresent-bitten blev tilføjet.
+    """
+    from parsers.ddd_parser import _decode_activity_changes
+
+    raw = _pack_full([
+        (0, ACTIVITY_REST, 0),
+        (300, ACTIVITY_WORK, 0),
+        (300, ACTIVITY_WORK, 1),  # samme (minut, aktivitet), anden cardPresent
+        (400, ACTIVITY_DRIVING, 0),
+    ])
+
+    result = _decode_activity_changes(raw)
+
+    assert result == [(0, ACTIVITY_REST), (300, ACTIVITY_WORK), (400, ACTIVITY_DRIVING)]
 
 
 def test_scan_ddd_folder_excludes_files_older_than_max_age(tmp_path):

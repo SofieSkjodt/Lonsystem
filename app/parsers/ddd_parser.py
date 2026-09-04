@@ -457,26 +457,48 @@ def _find_all_daily_records(
 def _decode_activity_changes(activity_bytes: bytes) -> list[tuple[int, int]]:
     """
     Decode 2-byte ActivityChangeInfo records.
-    Returns sorted list of (minutes_from_midnight, activity) for driver slot only.
+    Returns sorted, deduplicated list of (minutes_from_midnight, activity) for
+    driver slot only – dedupliceret på selve (minut, aktivitet)-parret, IKKE
+    på cardPresent-bitten (som _decode_activity_changes_full bevarer). To rå
+    ord med samme (minut, aktivitet) men forskellig cardPresent-bit (set i
+    praksis, fx Finn Thor Eriksen 28/5 og Jesper Frederiksen 31/8) skal
+    stadig kun give ÉT element her, som før denne bit blev tilføjet.
+    """
+    seen: set[tuple[int, int]] = set()
+    result = []
+    for m, a, _card in _decode_activity_changes_full(activity_bytes):
+        if (m, a) not in seen:
+            seen.add((m, a))
+            result.append((m, a))
+    return result
+
+
+def _decode_activity_changes_full(activity_bytes: bytes) -> list[tuple[int, int, int]]:
+    """
+    Som _decode_activity_changes, men bevarer også bit 13 ("cardPresent" – 0
+    når kortet er ISAT, 1 når det IKKE er isat, jf. spec). Bruges til at finde
+    det præcise minut kortet blev sat i, uafhængigt af aktivitets-typen (se
+    day_start_minute i _build_activities).
     """
     changes = []
     for i in range(0, len(activity_bytes) - 1, 2):
         word = struct.unpack_from(">H", activity_bytes, i)[0]
-        slot     = (word >> 15) & 0x1
-        activity = (word >> 11) & 0x3   # bits 12-11
-        minutes  = word & 0x7FF          # bits 10-0
+        slot         = (word >> 15) & 0x1
+        card_present = (word >> 13) & 0x1
+        activity     = (word >> 11) & 0x3   # bits 12-11
+        minutes      = word & 0x7FF          # bits 10-0
         if slot != 0:
             continue
         if minutes > 1439:
             continue
-        changes.append((minutes, activity))
+        changes.append((minutes, activity, card_present))
     # Sort by time and deduplicate
-    seen: set[tuple[int, int]] = set()
+    seen: set[tuple[int, int, int]] = set()
     result = []
-    for m, a in sorted(changes):
-        if (m, a) not in seen:
-            seen.add((m, a))
-            result.append((m, a))
+    for m, a, c in sorted(changes):
+        if (m, a, c) not in seen:
+            seen.add((m, a, c))
+            result.append((m, a, c))
     return result
 
 
@@ -635,7 +657,18 @@ def _build_activities(
             finalize_pending()
             continue
 
-        changes = _decode_activity_changes(activity_bytes)
+        changes_full = _decode_activity_changes_full(activity_bytes)
+        # Deduplicer på selve (minut, aktivitet)-parret, ikke på cardPresent-
+        # bitten – to rå ord kan dele (minut, aktivitet) men have forskellig
+        # cardPresent (se _decode_activity_changes), og skal stadig kun tælle
+        # som ét element her (samme kontrakt som før cardPresent-bitten blev
+        # tilføjet i changes_full).
+        seen_ma: set[tuple[int, int]] = set()
+        changes = []
+        for m, a, _card in changes_full:
+            if (m, a) not in seen_ma:
+                seen_ma.add((m, a))
+                changes.append((m, a))
         if not changes:
             finalize_pending()
             continue
@@ -683,11 +716,42 @@ def _build_activities(
                 day_start_minute = changes[0][0]
             else:
                 # Minut 0 er en videreført hvil-status fra dagen inden – det
-                # er ikke muligt at skelne fra rå data alene om det er en
-                # ægte kort hvil eller bare "hængende" midnatsstatus, så vi
-                # springer den over og lader vagten starte ved næste
-                # rigtige (ikke-hvil) registrering.
-                day_start_minute = first_nonrest_minute
+                # er som udgangspunkt ikke muligt at skelne fra rå data alene
+                # om det er en ægte kort hvil eller bare "hængende"
+                # midnatsstatus, så vi springer den over og lader vagten
+                # starte ved næste rigtige (ikke-hvil) registrering.
+                #
+                # UNDTAGELSE: skifter "cardPresent"-bitten undervejs i denne
+                # indledende hvileperiode fra "IKKE isat" til "isat" (kortet
+                # SÆTTES I, uafhængigt af at aktiviteten stadig viser "hvil"
+                # et par minutter endnu), er DET tidspunktet chaufførens dag
+                # reelt begynder – ikke det senere tidspunkt hvor aktiviteten
+                # skifter væk fra "hvil". Bekræftet 2026-09-04: Finn Thor
+                # Eriksen 31/8 og 1/9 – minut 0 videreførte "intet kort isat,
+                # crew" fra i går, kortet blev sat i 2 minutter FØR den næste
+                # aktivitetsregistrering (som stadig var "hvil"), og
+                # CardVehicleRecords' vehicleFirstUse (den uafhængige, langt
+                # mere pålidelige køretøjsbrug-tabel) bekræftede present til
+                # minuttet.
+                #
+                # Retningen er afgørende – kun 1 ("ikke isat") -> 0 ("isat")
+                # er en indsættelse. Et skift den anden vej (0 -> 1, kortet
+                # TAGES UD midt i den indledende hvileperiode) er IKKE
+                # dagsstart, og skal fortsat falde tilbage til
+                # first_nonrest_minute (bekræftet 2026-09-04: Anders Jersild
+                # Nielsen 1/6 – kortet var isat videreført fra i går, blev
+                # taget ud kl. minut 514, sat i igen inden kørsel begyndte
+                # minut 589 – uden retningstjek ville minut 514 (udtagningen)
+                # fejlagtigt være blevet brugt som dagsstart).
+                card_insert_minute = None
+                if changes_full[0][2] == 1:  # 1 = intet kort isat ved minut 0
+                    card_insert_minute = next(
+                        (m for m, a, c in changes_full[1:] if c == 0), None,
+                    )
+                if card_insert_minute is not None and card_insert_minute <= first_nonrest_minute:
+                    day_start_minute = card_insert_minute
+                else:
+                    day_start_minute = first_nonrest_minute
 
         last_minute = changes[-1][0]
         if last_minute <= day_start_minute:
