@@ -1269,7 +1269,7 @@ function openDeactivateModal() {
   document.getElementById("deactivate-hide-vagtplan").checked = false;
   const a = _findLoadedActivity(state.selectedActivityId);
   document.getElementById("deactivate-hide-vagtplan-group").style.display =
-    (a && a.source === "vagtplan") ? "" : "none";
+    (a && a.activity_type !== "normal") ? "" : "none";
   const lbl = document.getElementById("deactivate-user-label");
   if (lbl) lbl.textContent = state.currentUser ? `Deaktiveres af: ${state.currentUser.name} (${state.currentUser.initials})` : "";
   openModal("modal-deactivate");
@@ -1277,17 +1277,25 @@ function openDeactivateModal() {
 
 async function confirmDeactivate() {
   const comment = document.getElementById("deactivate-comment").value.trim();
-  const hideFromVagtplan = document.getElementById("deactivate-hide-vagtplan").checked;
+  const deleteEntirely = document.getElementById("deactivate-hide-vagtplan").checked;
   try {
+    if (deleteEntirely) {
+      const id = state.selectedActivityId;
+      await DEL(`/api/activities/${id}`);
+      const idx = state.activities.findIndex(x => x.id === id);
+      if (idx !== -1) state.activities.splice(idx, 1);
+      const vIdx = state.vagtplan.activities.findIndex(x => x.id === id);
+      if (vIdx !== -1) state.vagtplan.activities.splice(vIdx, 1);
+      toast("Aktivitet slettet");
+      closeAllModals();
+      if (state.currentView === "vagtplan") renderVagtplanTable();
+      else renderActivitiesTable();
+      refreshActivities().catch(() => {});
+      return;
+    }
     const updated = await POST(`/api/activities/${state.selectedActivityId}/deactivate`,
       { comment: comment || null });
     applyActivityLocally(updated);
-    if (hideFromVagtplan) {
-      await POST(`/api/activities/${state.selectedActivityId}/hide-from-vagtplan`, { hidden: true });
-      const vIdx = state.vagtplan.activities.findIndex(x => x.id === state.selectedActivityId);
-      if (vIdx !== -1) state.vagtplan.activities.splice(vIdx, 1);
-      if (state.currentView === "vagtplan") renderVagtplanTable();
-    }
     toast("Aktivitet deaktiveret");
     closeAllModals();
     refreshActivities().catch(() => {});

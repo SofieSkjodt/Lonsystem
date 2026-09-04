@@ -312,3 +312,81 @@ def test_delete_comment_requires_edit_permission(db, employee):
     delete_comment(comment.id, current_user=admin, db=db)
     from database.models import VagtplanComment
     assert db.query(VagtplanComment).count() == 0
+
+
+def test_delete_activity_removes_row_permanently(db, employee):
+    from routers.activities import create_manual_activity, delete_activity
+    from database.schemas import ActivityCreate
+    from database.models import Role, Activity
+    from datetime import datetime as _dt
+    db.add(Role(name="admin", display_name="Administrator", is_system=True, permissions=[]))
+    db.commit()
+    admin = _dummy_user(role="admin")
+    body = ActivityCreate(
+        employee_id=employee.id, activity_type="ferie",
+        start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+        source="vagtplan",
+    )
+    a = create_manual_activity(body, current_user=admin, db=db)
+    activity_id = a.id
+    delete_activity(activity_id, current_user=admin, db=db)
+    assert db.query(Activity).filter(Activity.id == activity_id).first() is None
+
+
+def test_delete_activity_allows_absence_regardless_of_source(db, employee):
+    """Sletning skal virke for enhver fraværstype, uanset om den er oprettet manuelt
+    via Aktivitetsoversigten (source=manual) eller via Vagtplan – bekræftet af bruger
+    2026-09-04, som udvidede den oprindelige vagtplan-kun-begrænsning."""
+    from routers.activities import create_manual_activity, delete_activity
+    from database.schemas import ActivityCreate
+    from database.models import Activity
+    from datetime import datetime as _dt
+    body = ActivityCreate(
+        employee_id=employee.id, activity_type="ferie",
+        start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+    )
+    a = create_manual_activity(body, current_user=_dummy_user(), db=db)
+    assert a.source == "manual"
+    delete_activity(a.id, current_user=_dummy_user(), db=db)
+    assert db.query(Activity).filter(Activity.id == a.id).first() is None
+
+
+def test_delete_activity_rejects_normal_activity_type(db, employee):
+    from routers.activities import create_manual_activity, delete_activity
+    from database.schemas import ActivityCreate
+    from datetime import datetime as _dt
+    body = ActivityCreate(
+        employee_id=employee.id, activity_type="normal",
+        start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+    )
+    a = create_manual_activity(body, current_user=_dummy_user(), db=db)
+    with pytest.raises(HTTPException) as exc:
+        delete_activity(a.id, current_user=_dummy_user(), db=db)
+    assert exc.value.status_code == 400
+
+
+def test_delete_activity_rejects_unknown_id(db):
+    from routers.activities import delete_activity
+    with pytest.raises(HTTPException) as exc:
+        delete_activity(999999, current_user=_dummy_user(), db=db)
+    assert exc.value.status_code == 404
+
+
+def test_delete_activity_rejects_split_activity(db, employee):
+    from routers.activities import create_manual_activity, split_activity, delete_activity
+    from database.schemas import ActivityCreate, ActivitySplit
+    from database.models import Role
+    from datetime import datetime as _dt
+    db.add(Role(name="admin", display_name="Administrator", is_system=True, permissions=[]))
+    db.commit()
+    admin = _dummy_user(role="admin")
+    body = ActivityCreate(
+        employee_id=employee.id, activity_type="ferie",
+        start_time=_dt(2026, 1, 5, 6, 0), end_time=_dt(2026, 1, 5, 14, 0),
+        source="vagtplan",
+    )
+    a = create_manual_activity(body, current_user=admin, db=db)
+    split_activity(a.id, ActivitySplit(split_at=_dt(2026, 1, 5, 10, 0)), current_user=admin, db=db)
+    with pytest.raises(HTTPException) as exc:
+        delete_activity(a.id, current_user=admin, db=db)
+    assert exc.value.status_code == 400

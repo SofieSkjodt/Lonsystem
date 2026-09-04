@@ -717,6 +717,28 @@ def hide_from_vagtplan(activity_id: int, body: VagtplanHideBody,
     return _to_response(a)
 
 
+@router.delete("/{activity_id}", status_code=204)
+def delete_activity(activity_id: int,
+                    current_user: AppUser = Depends(get_current_user),
+                    db: Session = Depends(get_db)):
+    """Sletter aktiviteten permanent (ikke bare deaktiverer/skjuler). Kun tilladt for
+    fraværsaktiviteter (activity_type != 'normal') – uanset om de er oprettet via
+    Vagtplan eller manuelt via Aktivitetsoversigten. Brugt af 'slet aktiviteten
+    helt'-checkboksen i deaktiver-modalen, som fjerner aktiviteten fra både
+    Vagtplan og Aktivitetsoversigt."""
+    a = db.query(Activity).filter(Activity.id == activity_id).first()
+    if not a:
+        raise HTTPException(404, "Aktivitet ikke fundet")
+    if a.activity_type == "normal":
+        raise HTTPException(400, "Kun fraværsaktiviteter kan slettes helt")
+    if a.split_children:
+        raise HTTPException(400, "Aktiviteten er splittet og kan ikke slettes – fortryd splittet først")
+    log_action(db, current_user, "delete_activity", "activity", a.id,
+               f"Slettet permanent for {a.employee.name} ({a.start_time.strftime('%d-%m-%Y')}, {a.activity_type})")
+    db.delete(a)
+    db.commit()
+
+
 @router.post("/{activity_id}/correct-segment", response_model=ActivityResponse)
 def correct_segment(
     activity_id: int,
