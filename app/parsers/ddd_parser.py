@@ -86,7 +86,7 @@ def parse_ddd_file(file_path: Path) -> list[ParsedActivity]:
     card_number = _extract_card_number(data)
     vehicle_records = _extract_vehicle_usage_records(data)
     daily_odometer = _extract_daily_odometer(data)
-    daily_records = _find_all_daily_records(data)
+    daily_records = _find_all_daily_records(data, vehicle_records)
 
     if not daily_records:
         return []
@@ -349,7 +349,25 @@ def _walk_daily_chain(data: bytes, start: int) -> list[tuple[datetime, int, byte
     return records
 
 
-def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
+def _last_activity_change_end_utc(day_dt: datetime, activity_bytes: bytes) -> datetime | None:
+    """Tidspunktet (UTC, naiv) for dagsrecordets allersidste aktivitetsregistrering."""
+    changes = _decode_activity_changes(activity_bytes)
+    if not changes:
+        return None
+    return day_dt + timedelta(minutes=changes[-1][0])
+
+
+def _lookup_last_vehicle_use_for_date(
+    date, vehicle_records: list[tuple[datetime, datetime, str]],
+) -> datetime | None:
+    """Seneste `vehicleLastUse` blandt CardVehicleRecords der dækker denne dato."""
+    matches = [last for first, last, _ in vehicle_records if first.date() == date]
+    return max(matches) if matches else None
+
+
+def _find_all_daily_records(
+    data: bytes, vehicle_records: list[tuple[datetime, datetime, str]] | None = None,
+) -> list[tuple[datetime, int, bytes]]:
     """
     Find ALLE dags-records i filen, ikke kun den første sammenhængende kæde.
 
@@ -369,8 +387,23 @@ def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
     ikke er – bekræftet ved byte-analyse 2026-07-29: to overlappende kæder
     kan give samme dato med hhv. en gyldig midnatspost og en fejlfortolket
     post (forkert tidsstempel og urealistisk stor distance), og "flest
-    aktivitetsbytes" alene kan fejlagtigt foretrække den forkerte. Er begge
-    (eller ingen af dem) ved midnat, afgøres det stadig af flest bytes.
+    aktivitetsbytes" alene kan fejlagtigt foretrække den forkerte.
+
+    Er begge (eller ingen af dem) ved midnat, kan de to poster stadig være
+    reelt forskellige (samme dato optræder i to forskellige kort-downloads i
+    filen, og den ene kæde slutter netop denne dato – dvs. kortet blev
+    formentlig udlæst midt i vagten ved dét download – mens den anden kæde
+    fortsætter med flere efterfølgende dage og derfor stammer fra et senere,
+    mere komplet download). Bekræftet ved byte-analyse 2026-09-04 (Jesper
+    Frederiksen 24/8: én post viste kørsel uafbrudt til 21:24 UTC, en anden
+    samme dato sluttede korrekt 14:10 UTC): CardVehicleRecords (en langt
+    mere robust, fast-struktureret tabel, se `_extract_vehicle_usage_records`)
+    viste køretøjets `vehicleLastUse` til 14:10:28 UTC – kun 28 sekunder fra
+    den korte posts sluttidspunkt, mod 7¼ time fra den lange. Findes der en
+    CardVehicleRecords-post for datoen, afgøres konflikten derfor ud fra
+    hvilken kandidat der ligger tættest på dens `vehicleLastUse`. Er der
+    ingen vehicleLastUse at sammenligne med (eller er de lige tætte),
+    afgøres det stadig af flest bytes.
 
     En gyldig kæde starter typisk ved hvert record i kæden (ikke kun ved
     kædens første record), så uden optimering ville samme kæde blive
@@ -379,6 +412,7 @@ def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
     kun gennemgås én gang (O(filstørrelse)) – samme teknik som i
     `_extract_daily_odometer`.
     """
+    vehicle_records = vehicle_records or []
     merged: dict = {}
     visited: set[int] = set()
     n = len(data)
@@ -398,7 +432,23 @@ def _find_all_daily_records(data: bytes) -> list[tuple[datetime, int, bytes]]:
                 existing_is_midnight = existing[0].time() == time(0, 0, 0)
                 if new_is_midnight and not existing_is_midnight:
                     merged[key] = (dt, distance, activity_bytes)
-                elif new_is_midnight == existing_is_midnight and len(activity_bytes) > len(existing[2]):
+                    continue
+                if new_is_midnight != existing_is_midnight:
+                    continue  # existing er allerede midnatsposten
+
+                vehicle_last_use = _lookup_last_vehicle_use_for_date(key, vehicle_records)
+                if vehicle_last_use is not None:
+                    new_end = _last_activity_change_end_utc(dt, activity_bytes)
+                    existing_end = _last_activity_change_end_utc(existing[0], existing[2])
+                    if new_end is not None and existing_end is not None:
+                        new_diff = abs((new_end - vehicle_last_use).total_seconds())
+                        existing_diff = abs((existing_end - vehicle_last_use).total_seconds())
+                        if new_diff != existing_diff:
+                            if new_diff < existing_diff:
+                                merged[key] = (dt, distance, activity_bytes)
+                            continue
+
+                if len(activity_bytes) > len(existing[2]):
                     merged[key] = (dt, distance, activity_bytes)
         pos += 1
     return [merged[k] for k in sorted(merged)]

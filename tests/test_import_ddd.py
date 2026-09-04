@@ -19,7 +19,7 @@ from routers.import_ddd import _import_activity, _process_import_results, declin
 from conftest import make_activity
 
 
-def _parsed(start, end, segments, pauses):
+def _parsed(start, end, segments, pauses, is_likely_incomplete=False):
     return ParsedActivity(
         tachograph_card_number="X",
         start_time=start,
@@ -31,7 +31,7 @@ def _parsed(start, end, segments, pauses):
         source_file="test.ddd",
         pause_intervals=pauses,
         segments=segments,
-        is_likely_incomplete=False,
+        is_likely_incomplete=is_likely_incomplete,
     )
 
 
@@ -60,6 +60,7 @@ def test_older_incomplete_readout_does_not_erase_already_complete_shift(db, empl
         start, incomplete_end,
         segments=[(start, incomplete_end, "work")],
         pauses=[],
+        is_likely_incomplete=True,
     )
 
     _import_activity(incomplete, db, employee)
@@ -135,6 +136,88 @@ def test_corrected_earlier_start_time_extends_existing_activity_not_duplicates(d
     assert act.pause_intervals == [[corrected_start.isoformat(), old_start.isoformat()]]
     assert len(act.segments) == 2
     assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
+
+
+def test_corrected_shorter_end_time_shrinks_pending_activity(db, employee):
+    """
+    Reproducerer Jesper Frederiksen 24/8-2026: en .ddd-fil indeholdt to
+    modstridende dags-records for samme dato (se
+    ddd_parser._find_all_daily_records), og den forkerte (kørsel uafbrudt til
+    23:24) blev oprindeligt importeret. Efter parser-rettelsen beregnes samme
+    vagt nu korrekt til at slutte 16:10. En genimport skal kunne RETTE den
+    stadig afventende aktivitet til den kortere, korrekte tid – ikke kun
+    udvide den.
+    """
+    start = datetime(2026, 8, 24, 5, 49)
+    wrong_end = datetime(2026, 8, 24, 23, 24)
+    act = make_activity(db, employee, start=start, end=wrong_end, status=ActivityStatus.pending)
+    act.segments = [[start.isoformat(), wrong_end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    correct_end = datetime(2026, 8, 24, 16, 10)
+    corrected = _parsed(
+        start, correct_end,
+        segments=[(start, correct_end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(corrected, db, employee)
+    db.refresh(act)
+
+    assert result == "updated"
+    assert act.end_time == correct_end
+    assert act.segments == [[start.isoformat(), correct_end.isoformat(), "driving"]]
+
+
+def test_corrected_shorter_end_time_does_not_shrink_approved_activity(db, employee):
+    """En allerede godkendt aktivitet må ikke gøres kortere af en genimport –
+    brugeren har taget stilling til netop den (længere) periode."""
+    start = datetime(2026, 8, 24, 5, 49)
+    wrong_end = datetime(2026, 8, 24, 23, 24)
+    act = make_activity(db, employee, start=start, end=wrong_end, status=ActivityStatus.approved)
+    act.segments = [[start.isoformat(), wrong_end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    correct_end = datetime(2026, 8, 24, 16, 10)
+    corrected = _parsed(
+        start, correct_end,
+        segments=[(start, correct_end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(corrected, db, employee)
+    db.refresh(act)
+
+    assert act.end_time == wrong_end
+    assert act.status == ActivityStatus.approved
+
+
+def test_corrected_shorter_end_time_does_not_shrink_split_activity(db, employee):
+    """En aktivitet der er en af de to dele af et split må ikke gøres kortere
+    af en genimport – brugeren har bevidst omfordelt tiden mellem de to
+    dele."""
+    start = datetime(2026, 8, 24, 5, 49)
+    wrong_end = datetime(2026, 8, 24, 23, 24)
+    act = make_activity(db, employee, start=start, end=wrong_end, status=ActivityStatus.pending)
+    act.segments = [[start.isoformat(), wrong_end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    act.parent_activity_id = 999
+    act.split_part = 2
+    db.commit()
+
+    correct_end = datetime(2026, 8, 24, 16, 10)
+    corrected = _parsed(
+        start, correct_end,
+        segments=[(start, correct_end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(corrected, db, employee)
+    db.refresh(act)
+
+    assert act.end_time == wrong_end
 
 
 def _test_user():

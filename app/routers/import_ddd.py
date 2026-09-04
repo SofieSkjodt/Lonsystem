@@ -336,6 +336,55 @@ def _import_activity(
                 existing.auto_approved = False
                 existing.auto_approval_flags = []
 
+        # En aktivitet der stadig er 'pending' og ikke en del af et split (er
+        # hverken selv splittet op, eller en af de to dele et split skabte)
+        # er endnu ikke taget stilling til – trygt at synkronisere den FULDT
+        # ind fra den nyeste parsing, i begge retninger. Det dækker bl.a. en
+        # rettelse i parseren der afslører en kortere, korrekt vagt end den
+        # tidligere gemte (bekræftet 2026-09-04: en .ddd-fil kan indeholde to
+        # modstridende dags-records for samme dato, og en parser-rettelse kan
+        # derfor gøre både start senere og slut tidligere – se
+        # ddd_parser._find_all_daily_records). Er aktiviteten derimod
+        # godkendt, deaktiveret eller en del af et split, er den allerede
+        # taget stilling til (eller dens tid er bevidst omfordelt af en
+        # bruger), og må IKKE gøres kortere af en genimport – kun evt.
+        # udvides, som hidtil (se de to grene nedenfor).
+        #
+        # Er den NYE udlæsning selv markeret ufuldstændig (kortet læst midt i
+        # vagten), må den ALDRIG lægges fuldt ind, uanset status – ellers vil
+        # en ældre, ufuldstændig fil (importeret efter den komplette, fx pga.
+        # mappenavne der sorteres alfabetisk og ikke efter udlæsningsdato)
+        # kunne slette allerede kendte, korrekte pauser/segmenter (bekræftet
+        # 2026-08-10: Alexander B. Knudsen 3/8).
+        can_resync_fully = (
+            existing.status == ActivityStatus.pending
+            and existing.parent_activity_id is None
+            and not act.is_likely_incomplete
+        )
+
+        if can_resync_fully:
+            if (
+                act.start_time != existing.start_time
+                or act.end_time != existing.end_time
+                or new_segments != (existing.segments or [])
+                or new_pause_intervals != (existing.pause_intervals or [])
+            ):
+                existing.start_time = act.start_time
+                existing.end_time = act.end_time
+                existing.segments = new_segments
+                existing.pause_intervals = new_pause_intervals
+                existing.availability_time_pct = act.availability_time_pct
+                existing.rest_pause_pct = act.rest_pause_pct
+                existing.other_work_pct = act.other_work_pct
+                existing.driving_pct = act.driving_pct
+                existing.is_likely_incomplete = act.is_likely_incomplete
+                changed = True
+
+            if changed:
+                db.flush()
+                return "updated", None
+            return "skipped_duplicate", None
+
         if act.start_time < existing.start_time:
             # Analogt med udvidelse ved et senere sluttidspunkt herunder: en
             # ny fil (eller en rettet parser) kan afsløre et TIDLIGERE reelt
@@ -383,36 +432,11 @@ def _import_activity(
             # godkendes igen.
             _reopen_for_review()
             changed = True
-        elif act.end_time >= existing.end_time and existing.status == ActivityStatus.pending and (
-            new_segments != (existing.segments or [])
-            or new_pause_intervals != (existing.pause_intervals or [])
-        ):
-            # Aktiviteten er endnu ikke godkendt/gennemgået af en bruger, så det
-            # er trygt at synkronisere fuldt ind, hvis en rettelse i parseren
-            # giver andet segment-indhold end sidst (fx en pause der fejlagtigt
-            # var registreret som kørsel). Er aktiviteten allerede godkendt
-            # eller deaktiveret, rører vi den IKKE her – den kan indeholde
-            # manuelle rettelser en bruger har lavet, som ikke må overskrives
-            # stille og roligt af en genimport.
-            #
-            # act.end_time >= existing.end_time: filer importeres ikke
-            # nødvendigvis i kronologisk kortudlæsnings-orden (mappenavne
-            # sorteres alfabetisk, ikke efter udlæsningsdato) – en SENERE
-            # importeret fil kan derfor være en ÆLDRE, mere ufuldstændig
-            # kortudlæsning end den vi allerede har gemt. Uden dette tjek vil
-            # den ufuldstændige fils (kortere) segmenter/pauser overskrive de
-            # allerede korrekte, fulde data, selvom sluttidspunktet ikke ændres
-            # (bekræftet 2026-08-10: Alexander B. Knudsen 3/8 – rigtig
-            # start/sluttid, men pauser forsvandt fordi en tidligere
-            # kortudlæsning blev importeret efter den komplette).
-            existing.segments = new_segments
-            existing.pause_intervals = new_pause_intervals
-            existing.availability_time_pct = act.availability_time_pct
-            existing.rest_pause_pct = act.rest_pause_pct
-            existing.other_work_pct = act.other_work_pct
-            existing.driving_pct = act.driving_pct
-            existing.is_likely_incomplete = act.is_likely_incomplete
-            changed = True
+        # (Ingen gren for act.end_time <= existing.end_time her: en
+        # godkendt/deaktiveret/split aktivitet må kun UDVIDES ved genimport,
+        # aldrig gøres kortere eller få sine segmenter overskrevet – se
+        # can_resync_fully ovenfor, som allerede har håndteret og returneret
+        # for det trygge tilfælde (pending, ikke split).)
 
         if changed:
             db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
