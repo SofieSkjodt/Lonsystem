@@ -256,7 +256,7 @@ def build_teknisk():
         ["database/schemas.py",       "Pydantic-skemaer til validering af API-input og -output."],
         ["parsers/ddd_parser.py",     "Binær parser for EU-tachografdata (.ddd-format)."],
         ["templates/index.html",      "Hele frontend-applikationen (ét HTML-dokument)."],
-        ["static/js/app.js",          "JavaScript-applikationslogik (~1700 linjer)."],
+        ["static/js/app.js",          "JavaScript-applikationslogik (~5540 linjer)."],
     ])
 
     # ── 2. Databasemodel ──────────────────────────────────────────────────
@@ -651,7 +651,7 @@ def build_teknisk():
     heading(doc, "Stamdata-modulet i brugerfladen", 2, "6.2")
     body(doc, (
         "Stamdata-menupunktet (⚙️ Stamdata) i venstre menu giver administratorer adgang til "
-        "ni faner med CRUD-funktionalitet for alle masterdatatabeller:"
+        "ti faner med CRUD-funktionalitet for alle masterdatatabeller:"
     ))
     header_table(doc,
         ["Fane", "Indhold", "CRUD-muligheder"],
@@ -665,6 +665,7 @@ def build_teknisk():
             ["Helligdage",        "holidays",               "Auto-generer for år, opret manuelt, slet. Kræver 'manage_holidays'-rettighed."],
             ["Disponentgrupper",  "dispatcher_groups",      "Opret, omdøb/rediger beskrivelse, slet (fjerner automatisk tilknytning hos medlemmer)"],
             ["Aftale",            "master_agreement_kinds", "Opret nye, rediger label/aktiv/kræver overenskomsttype. De to systemtyper (hourly_fixed/hourly_flexible) kan ikke slettes; nye typer kan slettes hvis ingen medarbejder bruger dem."],
+            ["Auto-godkendelse",  "(indstilling, ingen egen tabel)", "Slå den statistiske baseline-auto-godkendelse til/fra globalt (GET/POST /api/auto-approval/settings). Kræver desuden 'manage_auto_approval'-rettigheden ud over 'stamdata'."],
         ]
     )
     note_box(doc,
@@ -964,11 +965,11 @@ def build_teknisk():
     heading(doc, "Stamdata-view", 2, "9.6")
     body(doc, (
         "Stamdata-view aktiveres fra menupunktet '⚙️ Stamdata' i venstre menu (kræver 'stamdata'-rettighed). "
-        "View'et indeholder en tab-navigator med ni faner – kun én pane er synlig ad gangen:"
+        "View'et indeholder en tab-navigator med ti faner – kun én pane er synlig ad gangen:"
     ))
     two_col_table(doc, [
         ["switchStamdataTab(tab)", "Skifter aktiv pane og opdaterer fane-styling (border, farve, vægt)."],
-        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle ni faner parallelt."],
+        ["loadStamdata()",         "Kaldes fra setView('stamdata') og indlæser data til alle ti faner parallelt."],
         ["btn-stamdata-add-*",     "'+Tilføj'-knap i toolbar vises kun for den aktive fane."],
     ])
     body(doc, (
@@ -1428,9 +1429,9 @@ def build_bruger():
     header_table(doc,
         ["Chip", "Farve", "Betydning"],
         [
-            ["Afventer",     "Rød",   "Antal aktiviteter der venter på godkendelse."],
+            ["Afventer",     "Blå",   "Antal aktiviteter der venter på godkendelse."],
             ["Godkendt",     "Grøn",  "Antal godkendte aktiviteter."],
-            ["Deaktiveret",  "Grå",   "Antal deaktiverede (inaktive) aktiviteter."],
+            ["Deaktiveret",  "Rød",   "Antal deaktiverede (inaktive) aktiviteter."],
         ]
     )
     body(doc, "Du kan klikke på en chip for hurtigt at filtrere tabellen til den pågældende status.")
@@ -1519,10 +1520,10 @@ def build_bruger():
     header_table(doc,
         ["Farve", "Betydning"],
         [
-            ["Rød/mørk",   "Afventer godkendelse (pending)."],
+            ["Mørkeblå/grå (#44546a)", "Afventer godkendelse (pending)."],
             ["Grøn",       "Godkendt aktivitet."],
-            ["Orange",     "Deaktiveret aktivitet."],
-            ["Blå/neutral","Manuel aktivitet (ikke fra tachograf) eller korrigeret aktivitet."],
+            ["Rød",        "Deaktiveret aktivitet."],
+            ["(K)-præfiks","Manuel aktivitet (ikke fra tachograf) vises med samme statusfarve som ovenfor, men med et '(K) '-præfiks i teksten – ingen separat farve."],
             ["FERIE/FRI",  "Fraværstype – vises med tekst i grøn boks."],
             ["Mørkegrøn kolonne (#056a10)", "Helligdag – søjleoverskriften fremhæves med mørk grøn baggrund. Halvdagshelligdage vises med '½ fra HH:MM'-badge og navn som tooltip."],
         ]
@@ -2055,7 +2056,7 @@ def build_bruger():
             ["Medarbejder har nået 9 måneder",
              "Systemet viser et varsel. Opdater overenskomsttypen for medarbejderen."],
             ["Lønkørslen viser ikke nye lønposter (fx overnatning)",
-             "Genstart serveren: stop og start igen via Preview-panelet i Claude Code. Systemet indlæser ny beregningslogik ved opstart."],
+             "Genstart serveren: tryk Ctrl+C i terminalvinduet hvor den kører (eller luk python.exe via Jobliste) og start den igen. Systemet indlæser ny beregningslogik ved opstart – se kapitel 10.2 i Teknisk dokumentation."],
         ]
     )
 
@@ -2107,6 +2108,14 @@ def build_bruger():
         ]
     )
     note_box(doc,
+        "'Administrér baselines' er ikke en selvstændig, tildelbar rettighed som de øvrige i "
+        "rettighedsoversigten (afsnit 11.3) – kun Administrator-rollen har adgang til baseline-genopbygning "
+        "(POST /api/auto-approval/rebuild-baselines), fordi systemroller altid har fuld adgang. Den kan IKKE "
+        "tildeles en anden rolle via afkrydsningsboksene i Roller-fanen. 'Slå auto-godkendelse til/fra' "
+        "(manage_auto_approval) er derimod en almindelig, tildelbar rettighed – se afsnit 11.3.",
+        "TEKNISK NOTE"
+    )
+    note_box(doc,
         "Kun 'Administrator' er en beskyttet systemrolle. De øvrige roller – herunder "
         "'Lønbogholder' og 'Disponent' – kan en administrator frit redigere (rettigheder og "
         "visningsnavn) eller slette, og der kan oprettes helt nye, skræddersyede roller efter "
@@ -2125,7 +2134,7 @@ def build_bruger():
             ["import_ddd",                  "Importer .ddd",                      "Menupunktet 'Importer .ddd' – import af tachografdata."],
             ["user_management",             "Brugerstyring",                     "Menupunktet '🔑 Brugere' – denne side (brugere, roller, hændelseslog)."],
             ["reopen_period",               "Åbn låst lønperiode",                "Mulighed for at genåbne en periode hvor der allerede er kørt løn."],
-            ["stamdata",                     "Stamdata",                          "Menupunktet '⚙️ Stamdata' – alle ni faner (se kapitel 7)."],
+            ["stamdata",                     "Stamdata",                          "Menupunktet '⚙️ Stamdata' – alle ti faner (se kapitel 7). Auto-godkendelse-fanen kræver desuden 'manage_auto_approval'."],
             ["view_employees",              "Se medarbejdere",                   "Menupunktet 'Medarbejdere' (læse-adgang)."],
             ["manage_employees",            "Tilføj medarbejdere",               "Opret/rediger medarbejdere under 'Medarbejdere'."],
             ["view_vehicles",               "Se vognpark",                       "Menupunktet 'Vognpark' (læse-adgang)."],
@@ -2135,6 +2144,8 @@ def build_bruger():
             ["anciennitet_alert",           "Anciennitetsvarsel",                "Modtag pop-up-varsler om medarbejdere med 9 måneders anciennitet."],
             ["paragraf_56_alert",           "§56-advarsel",                      "Modtag pop-up-varsler når en medarbejders §56-aftale nærmer sig udløb, og besked når den automatisk deaktiveres (se afsnit 7.6)."],
             ["approve_activities",          "Godkend aktiviteter",               "Godkend/deaktiver/ret/opdel aktiviteter i aktivitetstabellen."],
+            ["auto_approve_manual_activities", "Auto-godkend ved oprettelse",     "Manuelt oprettede aktiviteter godkendes automatisk ved oprettelse, uden separat godkendelsestrin."],
+            ["manage_auto_approval",        "Slå auto-godkendelse til/fra",       "Slå den statistiske baseline-auto-godkendelse til/fra globalt, og genopbyg baselines."],
             ["view_calendar",               "Se aktivitetskalender",             "Se aktivitetstabellen (kalendervisningen på forsiden)."],
             ["toggle_springer",             "Sæt springertillæg",                "Afkryds springertillæg-fluebenet i aktivitetsoversigten."],
             ["vagtplan_view",               "Se vagtplan",                       "Menupunktet 'Vagtplan' (læse-adgang)."],
