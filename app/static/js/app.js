@@ -1236,8 +1236,8 @@ async function saveActivityTimes() {
   try {
     const updated = await PATCH(`/api/activities/${state.selectedActivityId}`, payload);
     toast("Ændringer gemt", "success");
-    closeAllModals();
     applyActivityLocally(updated);
+    openActivityDetail(state.selectedActivityId);
     refreshActivities().catch(() => {});
   } catch (e) { toast(e.message, "error"); }
 }
