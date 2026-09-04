@@ -163,6 +163,8 @@ def _process_import_results(
     skipped_unknown_card = 0
     skipped_duplicate = 0
     skipped_declined = 0
+    skipped_conflict = 0
+    conflicts: list[dict] = []
     unknown_cards: set[str] = set()
     zero_activity_files: list[str] = []
     # Samme vagt findes ofte i flere .ddd-filer (nye kortudlæsninger dækker
@@ -193,6 +195,17 @@ def _process_import_results(
                     act, db, employee_cache[card], allow_closed_period
                 )
             except Exception as e:
+                # Uventet fejl (ikke den kendte SAVEPOINT-håndterede
+                # unik-indeks-konflikt i _import_activity) – rul hele
+                # sessionen tilbage, så den ikke efterlades i en "pending
+                # rollback"-tilstand hvor ALLE efterfølgende aktiviteter i
+                # denne kørsel ville fejle med en kryptisk følgefejl
+                # (bekræftet 2026-09-04 ved genimport for Finn Thor Eriksen –
+                # manglende rollback her lod én fejl vælte resten af
+                # importen). Det koster de allerede flushede (men endnu ikke
+                # committede) ændringer tidligere i denne kørsel, men det er
+                # trygt: ingenting er committet til databasen endnu.
+                db.rollback()
                 errors.append(f"{file_path.name}: {e}")
                 continue
             if result == "new":
@@ -206,6 +219,10 @@ def _process_import_results(
                 skipped_duplicate += 1
             elif result == "skipped_declined":
                 skipped_declined += 1
+            elif result == "skipped_conflict":
+                skipped_conflict += 1
+                if detail:
+                    conflicts.append(detail)
             elif result == "pending_closed_period":
                 key = (detail["employee_id"], detail["start_time"])
                 existing_candidate = closed_period_candidates_by_key.get(key)
@@ -213,7 +230,7 @@ def _process_import_results(
                     closed_period_candidates_by_key[key] = detail
 
     closed_period_candidates = list(closed_period_candidates_by_key.values())
-    skipped = skipped_unknown_card + skipped_duplicate + skipped_declined
+    skipped = skipped_unknown_card + skipped_duplicate + skipped_declined + skipped_conflict
 
     summary_parts = [
         f"{len(results)} fil(er) behandlet",
@@ -229,6 +246,12 @@ def _process_import_results(
         summary_parts.append(f"{skipped_duplicate} sprunget over (allerede importeret)")
     if skipped_declined:
         summary_parts.append(f"{skipped_declined} sprunget over (tidligere afvist – lukket periode)")
+    if skipped_conflict:
+        summary_parts.append(
+            f"{skipped_conflict} kunne IKKE rettes (kolliderer med en anden, allerede gemt "
+            f"aktivitet for samme medarbejder på samme starttidspunkt – formentlig en ældre "
+            f"duplikat-aktivitet der bør ryddes op manuelt)"
+        )
     if closed_period_candidates:
         summary_parts.append(
             f"{len(closed_period_candidates)} vagt(er) afventer bekræftelse (lukket lønperiode)"
@@ -251,6 +274,8 @@ def _process_import_results(
         "skipped_unknown_card": skipped_unknown_card,
         "skipped_duplicate": skipped_duplicate,
         "skipped_declined": skipped_declined,
+        "skipped_conflict": skipped_conflict,
+        "conflicts": conflicts,
         "unknown_cards": sorted(unknown_cards),
         "zero_activity_files": zero_activity_files,
         "errors": errors,
@@ -265,8 +290,8 @@ def _import_activity(
 ) -> tuple[str, dict | None]:
     """Import a single parsed activity. Returns (status, detail) where status is
     'new', 'updated', 'skipped_unknown_card', 'skipped_duplicate',
-    'skipped_declined' or 'pending_closed_period' (detail is only set for the
-    latter)."""
+    'skipped_declined', 'skipped_conflict' or 'pending_closed_period' (detail
+    is only set for 'skipped_conflict' and 'pending_closed_period')."""
     if not employee:
         return "skipped_unknown_card", None  # Unknown card number – employee must be created first
 
@@ -381,7 +406,26 @@ def _import_activity(
                 changed = True
 
             if changed:
-                db.flush()
+                # Nested transaktion (SAVEPOINT): der findes desværre ældre,
+                # overlappende duplikat-aktiviteter for nogle medarbejdere
+                # (fra før tidsoverlap-matchningen ovenfor blev indført) –
+                # synkroniseres denne aktivitets start/sluttid til en tid en
+                # ANDEN allerede gemt aktivitet (samme medarbejder) allerede
+                # har, rammer det det unikke index (employee_id, start_time).
+                # Uden SAVEPOINT ville det fejle HELE batch-importens
+                # transaktion (alle andre allerede flushede, gyldige
+                # aktiviteter i samme kørsel) i stedet for kun denne ene
+                # (bekræftet 2026-09-04 ved genimport for Finn Thor Eriksen).
+                try:
+                    with db.begin_nested():
+                        db.flush()
+                except IntegrityError:
+                    return "skipped_conflict", {
+                        "employee_id": existing.employee_id,
+                        "activity_id": existing.id,
+                        "start_time": act.start_time.isoformat(),
+                        "end_time": act.end_time.isoformat(),
+                    }
                 return "updated", None
             return "skipped_duplicate", None
 
@@ -439,7 +483,17 @@ def _import_activity(
         # for det trygge tilfælde (pending, ikke split).)
 
         if changed:
-            db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
+            # Samme SAVEPOINT-begrundelse som i can_resync_fully-grenen ovenfor.
+            try:
+                with db.begin_nested():
+                    db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
+            except IntegrityError:
+                return "skipped_conflict", {
+                    "employee_id": existing.employee_id,
+                    "activity_id": existing.id,
+                    "start_time": act.start_time.isoformat(),
+                    "end_time": act.end_time.isoformat(),
+                }
             return "updated", None
         return "skipped_duplicate", None
 
