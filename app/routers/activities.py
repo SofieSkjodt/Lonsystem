@@ -1,4 +1,4 @@
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -12,9 +12,11 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_current_user, log_action, require_permission, user_has_permission
 from calculators.baseline_updater import update_baseline_from_activity, is_auto_approval_enabled
-from calculators.pay_period import get_billing_period, get_or_create_period_for_date
+from calculators.pay_period import get_billing_period, get_or_create_period_for_date, is_even_week
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee, EmployeeSpringerFlag, PayPeriod, PayPeriodStatus
 from database.schemas import (
+    AbsenceGroupDatesUpdate,
+    AbsenceGroupUpdateResponse,
     ActivityApprove,
     ActivityCreate,
     ActivityDeactivate,
@@ -274,6 +276,7 @@ def _to_response(a: Activity) -> ActivityResponse:
         auto_approval_flags=a.auto_approval_flags or [],
         is_likely_incomplete=bool(a.is_likely_incomplete),
         hidden_from_vagtplan=bool(a.hidden_from_vagtplan),
+        absence_group_id=a.absence_group_id,
     )
 
 
@@ -415,6 +418,35 @@ def set_springer_flag(body: SpringerFlagUpdate,
 _EIGHT_WEEKS = 56  # dage
 
 
+def _weekday_dates(start: date, end: date) -> list[date]:
+    """Alle hverdage (mandag-fredag) i [start, end] – mirror af getWeekdayDates() i app.js."""
+    dates = []
+    d = start
+    while d <= end:
+        if d.weekday() < 5:
+            dates.append(d)
+        d += timedelta(days=1)
+    return dates
+
+
+def _range_day_defaults(activity_type: str, d: date, employee: Employee) -> Optional[float]:
+    """Timetal for én dag i en fraværsperiode, eller None hvis dagen skal
+    springes over (afspadsering uden skemalagte timer denne ugedag). Mirror af
+    confirmManualActivity()'s isRange-gren i app.js – hold de to i sync ved
+    ændringer af den ene."""
+    schedule = employee.work_schedule or {}
+    week_key = "even" if is_even_week(d) else "odd"
+    week = schedule.get(week_key) or []
+    idx = d.weekday()
+    scheduled = week[idx] if idx < len(week) else 0
+
+    if activity_type == "afspadsering":
+        return scheduled if scheduled > 0 else None
+    if activity_type == "feriefri":
+        return 7.4
+    return scheduled if scheduled > 0 else 7.4
+
+
 @router.post("", response_model=ActivityResponse, status_code=201)
 def create_manual_activity(body: ActivityCreate,
                             current_user: AppUser = Depends(get_current_user),
@@ -474,6 +506,7 @@ def create_manual_activity(body: ActivityCreate,
         salt_supplement=body.salt_supplement,
         pause_intervals=body.pause_intervals,
         status=ActivityStatus.pending,
+        absence_group_id=body.absence_group_id,
     )
     db.add(activity)
     db.flush()
@@ -493,6 +526,120 @@ def create_manual_activity(body: ActivityCreate,
     db.commit()
     db.refresh(activity)
     return _to_response(activity)
+
+
+@router.get("/absence-group/{group_id}", response_model=list[ActivityResponse])
+def get_absence_group(group_id: str,
+                      current_user: AppUser = Depends(get_current_user),
+                      db: Session = Depends(get_db)):
+    activities = (
+        db.query(Activity)
+        .options(selectinload(Activity.employee), selectinload(Activity.split_children))
+        .filter(Activity.absence_group_id == group_id)
+        .order_by(Activity.start_time)
+        .all()
+    )
+    if not activities:
+        raise HTTPException(404, "Fraværsperiode ikke fundet")
+    return [_to_response(a) for a in activities]
+
+
+@router.patch("/absence-group/{group_id}", response_model=AbsenceGroupUpdateResponse)
+def update_absence_group_dates(group_id: str, body: AbsenceGroupDatesUpdate,
+                               current_user: AppUser = Depends(get_current_user),
+                               db: Session = Depends(get_db)):
+    activities = (
+        db.query(Activity)
+        .filter(Activity.absence_group_id == group_id)
+        .order_by(Activity.start_time)
+        .all()
+    )
+    if not activities:
+        raise HTTPException(404, "Fraværsperiode ikke fundet")
+
+    template = activities[0]
+    employee = db.query(Employee).filter(Employee.id == template.employee_id).first()
+    activity_type = template.activity_type
+
+    if template.source == ActivitySource.vagtplan and not _has_vagtplan_edit_access(db, current_user, employee):
+        raise HTTPException(403, "Ingen redigeringsret til Vagtplan for denne medarbejder")
+
+    new_dates = set(_weekday_dates(body.new_start_date, body.new_end_date))
+    if not new_dates:
+        raise HTTPException(400, "Ingen hverdage i den valgte periode")
+
+    existing_by_date = {a.start_time.date(): a for a in activities}
+    existing_dates = set(existing_by_date)
+
+    to_remove_dates = existing_dates - new_dates
+    to_add_dates = sorted(new_dates - existing_dates)
+
+    # Trin 1: validér ALLE fjernelser FØR nogen ændring foretages (alt-eller-intet)
+    for d in to_remove_dates:
+        act = existing_by_date[d]
+        if act.pay_period.status == PayPeriodStatus.closed:
+            raise HTTPException(
+                400,
+                f"Kan ikke fjerne {d.strftime('%d-%m-%Y')} – lønperioden er allerede afsluttet",
+            )
+        if act.split_children:
+            raise HTTPException(
+                400,
+                f"Kan ikke fjerne {d.strftime('%d-%m-%Y')} – aktiviteten er splittet, fortryd splittet først",
+            )
+
+    # Trin 2: fjern
+    for d in to_remove_dates:
+        act = existing_by_date[d]
+        log_action(db, current_user, "delete_activity", "activity", act.id,
+                  f"Slettet permanent for {act.employee.name} ({act.start_time.strftime('%d-%m-%Y')}, "
+                  f"{act.activity_type}) – periode-redigering")
+        db.delete(act)
+
+    # Trin 3: tilføj
+    skipped: list[str] = []
+    for d in to_add_dates:
+        hours = _range_day_defaults(activity_type, d, employee)
+        if hours is None:
+            skipped.append(d.isoformat())
+            continue
+        start_dt = datetime.combine(d, time(6, 0))
+        end_dt = start_dt + timedelta(minutes=round(hours * 60))
+        period = get_billing_period(d, db)
+        db.add(Activity(
+            employee_id=template.employee_id,
+            pay_period_id=period.id,
+            source=template.source,
+            created_by=current_user.initials,
+            activity_type=activity_type,
+            start_time=start_dt,
+            end_time=end_dt,
+            vehicle_number=template.vehicle_number,
+            pause_intervals=[],
+            segments=[],
+            status=ActivityStatus.approved,
+            approved_by=current_user.initials,
+            approved_at=datetime.utcnow(),
+            absence_group_id=group_id,
+        ))
+
+    log_action(db, current_user, "update_absence_group_dates", "activity", template.id,
+              f"{employee.name}: periode ændret til {body.new_start_date.strftime('%d-%m-%Y')}–"
+              f"{body.new_end_date.strftime('%d-%m-%Y')} ({len(to_remove_dates)} fjernet, "
+              f"{len(to_add_dates) - len(skipped)} tilføjet)")
+    db.commit()
+
+    result = (
+        db.query(Activity)
+        .options(selectinload(Activity.employee), selectinload(Activity.split_children))
+        .filter(Activity.absence_group_id == group_id)
+        .order_by(Activity.start_time)
+        .all()
+    )
+    return AbsenceGroupUpdateResponse(
+        activities=[_to_response(a) for a in result],
+        skipped=skipped,
+    )
 
 
 @router.get("/{activity_id}", response_model=ActivityResponse)

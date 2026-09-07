@@ -166,6 +166,9 @@ def _migrate():
         if "hidden_from_vagtplan" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN hidden_from_vagtplan BOOLEAN NOT NULL DEFAULT 0")
             conn.commit()
+        if "absence_group_id" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN absence_group_id VARCHAR(36)")
+            conn.commit()
         existing_indexes = {row[1] for row in conn.execute("PRAGMA index_list(activities)")}
         if "ix_activities_employee_start_source" not in existing_indexes:
             conn.execute(
@@ -190,6 +193,11 @@ def _migrate():
         if "ix_activities_period_status" not in existing_indexes:
             conn.execute(
                 "CREATE INDEX ix_activities_period_status ON activities(pay_period_id, status)"
+            )
+            conn.commit()
+        if "ix_activities_absence_group" not in existing_indexes:
+            conn.execute(
+                "CREATE INDEX ix_activities_absence_group ON activities(absence_group_id)"
             )
             conn.commit()
         baseline_indexes = {row[1] for row in conn.execute("PRAGMA index_list(employee_baselines)")}

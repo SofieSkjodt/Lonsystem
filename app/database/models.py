@@ -174,6 +174,11 @@ class Activity(Base):
     hidden_from_vagtplan = Column(Boolean, default=False, nullable=False, server_default="0")
     baseline_duration_minutes = Column(Numeric(10, 4), nullable=True)
     baseline_start_hour = Column(Numeric(8, 4), nullable=True)
+    # Sættes KUN når en flerdags-fraværsperiode oprettes (samme værdi på alle
+    # dagenes Activity-rækker) – bruges til at redigere periodens fra/til-dato
+    # samlet. Null for enkeltdags-aktiviteter og for perioder oprettet før
+    # denne kolonne fandtes (ingen tilbagevirkende migrering).
+    absence_group_id = Column(String(36), nullable=True)
 
     employee = relationship("Employee", back_populates="activities")
     pay_period = relationship("PayPeriod", back_populates="activities")
@@ -198,6 +203,7 @@ class Activity(Base):
         # det et fuldt tabel-scan for hver forespørgsel, efterhånden som
         # activities-tabellen vokser over måneder/år.
         Index("ix_activities_period_status", "pay_period_id", "status"),
+        Index("ix_activities_absence_group", "absence_group_id"),
     )
 
 

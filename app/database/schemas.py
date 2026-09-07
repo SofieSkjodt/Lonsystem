@@ -156,6 +156,7 @@ class ActivityResponse(BaseModel):
     auto_approval_flags: list[str] = []
     is_likely_incomplete: bool = False
     hidden_from_vagtplan: bool = False
+    absence_group_id: Optional[str] = None
 
 
 class ActivityCreate(BaseModel):
@@ -173,6 +174,7 @@ class ActivityCreate(BaseModel):
     terminsdato: Optional[date] = None
     pause_intervals: list = Field(default_factory=list)
     source: Optional[str] = None
+    absence_group_id: Optional[str] = Field(default=None, max_length=36)
 
     @model_validator(mode="after")
     def end_after_start(self):
@@ -243,6 +245,22 @@ class VagtplanHideBody(BaseModel):
 
 class ActivitySplit(BaseModel):
     split_at: datetime
+
+
+class AbsenceGroupDatesUpdate(BaseModel):
+    new_start_date: date
+    new_end_date: date
+
+    @model_validator(mode="after")
+    def end_after_start(self):
+        if self.new_end_date < self.new_start_date:
+            raise ValueError("Til dato skal være på eller efter fra dato")
+        return self
+
+
+class AbsenceGroupUpdateResponse(BaseModel):
+    activities: list[ActivityResponse]
+    skipped: list[str] = []
 
 
 class AnciennitetsAlert(BaseModel):

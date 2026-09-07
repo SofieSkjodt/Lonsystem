@@ -774,7 +774,7 @@ function _findLoadedActivity(id) {
 }
 
 // ── Activity detail modal ──────────────────────────────────────────────────
-function openActivityDetail(id) {
+async function openActivityDetail(id) {
   const modalEl = document.getElementById("modal-activity");
   const reopeningSameActivity = modalEl.classList.contains("open") && state.selectedActivityId === id;
   let preservedEdits = null;
@@ -792,6 +792,19 @@ function openActivityDetail(id) {
   state.selectedActivityId = id;
   const a = _findLoadedActivity(id);
   if (!a) return;
+
+  let absencePeriod = null;
+  if (a.absence_group_id) {
+    try {
+      const group = await GET(`/api/activities/absence-group/${a.absence_group_id}`);
+      const groupDates = group.map(g => g.start_time.slice(0, 10)).sort();
+      absencePeriod = {
+        groupId: a.absence_group_id,
+        start: groupDates[0],
+        end: groupDates[groupDates.length - 1],
+      };
+    } catch (e) { /* gruppen kunne ikke hentes – periode-sektionen udelades, enkeltdags-redigering virker stadig */ }
+  }
 
   document.getElementById("modal-activity-title").textContent =
     `${a.employee_name} – ${formatDate(a.start_time)}`;
@@ -815,6 +828,21 @@ function openActivityDetail(id) {
   }
 
   document.getElementById("modal-activity-body").innerHTML = `
+    ${absencePeriod ? `
+    <div class="form-group" id="absence-period-section" style="margin-bottom:14px;padding:10px;background:var(--bg);border-radius:var(--radius)">
+      <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light);margin-bottom:6px;display:block">Fraværsperiode</label>
+      <div class="form-row" style="margin-bottom:8px">
+        <div class="form-group" style="min-width:0">
+          <label>Fra dato</label>
+          <input type="date" id="edit-period-start" value="${absencePeriod.start}">
+        </div>
+        <div class="form-group" style="min-width:0">
+          <label>Til dato</label>
+          <input type="date" id="edit-period-end" value="${absencePeriod.end}">
+        </div>
+      </div>
+      <button type="button" class="btn btn-secondary" onclick="saveAbsencePeriodDates('${absencePeriod.groupId}')" style="font-size:13px;padding:5px 14px">Gem periodedatoer</button>
+    </div>` : ""}
     <div class="detail-grid">
       <div class="detail-item"><label>Vogn nr.</label><span>${a.vehicle_number || "–"}</span></div>
       <div class="detail-item"><label>KM start</label><span>${a.km_start != null ? a.km_start + " km" : "–"}</span></div>
@@ -1199,6 +1227,62 @@ async function undoSplit() {
     toast("Split fortrudt – original aktivitet gendannet", "success");
     closeAllModals();
     await refreshActivities();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function saveAbsencePeriodDates(groupId) {
+  const newStart = document.getElementById("edit-period-start").value;
+  const newEnd   = document.getElementById("edit-period-end").value;
+  if (!newStart || !newEnd) { toast("Angiv fra- og til-dato", "error"); return; }
+  if (newEnd < newStart) { toast("Til dato skal være på eller efter fra dato", "error"); return; }
+
+  let group;
+  try {
+    group = await GET(`/api/activities/absence-group/${groupId}`);
+  } catch (e) { toast(e.message, "error"); return; }
+
+  const empId = group[0].employee_id;
+  const existingDates = group.map(g => g.start_time.slice(0, 10));
+  const newDates = getWeekdayDates(newStart, newEnd);
+  const toRemove = existingDates.filter(d => !newDates.includes(d));
+  const toAdd    = newDates.filter(d => !existingDates.includes(d));
+
+  if (toRemove.length === 0 && toAdd.length === 0) { toast("Ingen ændringer i perioden", "warning"); return; }
+
+  if (toAdd.length > 0) {
+    const conflicts = toAdd.filter(iso =>
+      state.activities.some(a =>
+        a.employee_id === empId &&
+        a.activity_type === "normal" &&
+        a.start_time.slice(0, 10) === iso &&
+        a.status !== "deactivated"
+      )
+    );
+    if (conflicts.length > 0) {
+      const dateList = conflicts.map(d => { const [y,m,day]=d.split("-"); return `${day}-${m}-${y}`; }).join(", ");
+      if (!window.confirm(`Der er allerede registreret kørsel på følgende dag${conflicts.length>1?"e":""}:\n${dateList}\n\nVil du alligevel udvide fraværsperioden til at inkludere den/dem?`)) return;
+    }
+  }
+
+  const fmt = d => { const [y,m,day]=d.split("-"); return `${day}-${m}-${y}`; };
+  const parts = [
+    toRemove.length > 0 ? `${toRemove.length} dag${toRemove.length>1?"e":""} slettes permanent: ${toRemove.map(fmt).join(", ")}` : null,
+    toAdd.length > 0 ? `${toAdd.length} dag${toAdd.length>1?"e":""} oprettes: ${toAdd.map(fmt).join(", ")}` : null,
+  ].filter(Boolean).join("\n");
+  if (!window.confirm(`${parts}\n\nFortsæt?`)) return;
+
+  try {
+    const result = await PATCH(`/api/activities/absence-group/${groupId}`, {
+      new_start_date: newStart,
+      new_end_date: newEnd,
+    });
+    toast("Fraværsperiode opdateret", "success");
+    if (result.skipped && result.skipped.length > 0) {
+      toast(`${result.skipped.length} dag${result.skipped.length>1?"e":""} sprunget over – ingen garanterede timer: ${result.skipped.map(fmt).join(", ")}`, "warning");
+    }
+    closeAllModals();
+    await refreshActivities();
+    if (state.currentView === "vagtplan") await loadVagtplan();
   } catch (e) { toast(e.message, "error"); }
 }
 
@@ -1738,7 +1822,7 @@ function updateManualTypeVisibility() {
 // Overskriver ikke et allerede udfyldt felt.
 function applyDispatcherGroupVehicleDefault() {
   const type = document.getElementById("manual-type").value;
-  if (!ABSENCE_TYPES.has(type)) return;
+  if (type === "overnatning" || !ABSENCE_TYPES.has(type)) return;
   const regField = document.getElementById("manual-reg");
   if (regField.value.trim()) return;
   const empId = parseInt(document.getElementById("manual-employee").value);
@@ -2152,6 +2236,20 @@ function confirmAbsenceConflict() {
   confirmManualActivity();
 }
 
+function _genGroupId() {
+  if (window.crypto && typeof window.crypto.randomUUID === "function") {
+    return crypto.randomUUID();
+  }
+  // Fallback for ikke-sikre kontekster (fx almindelig http:// på LAN, hvor
+  // crypto.randomUUID() ikke er tilgængelig) – kun brugt til at gruppere
+  // aktiviteter oprettet i samme kald, ikke som kryptografisk nøgle.
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    const v = c === "x" ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 function getWeekdayDates(from, to) {
   const dates = [];
   const d = new Date(from + "T12:00:00");
@@ -2334,6 +2432,7 @@ async function confirmManualActivity() {
     const emp = state.employees.find(e => e.id === empId);
     let created = 0;
     const skippedNoHours = [];
+    const absenceGroupId = _genGroupId();
     try {
       for (const iso of dates) {
         let hours = 7.4;
@@ -2360,6 +2459,7 @@ async function confirmManualActivity() {
           end_time:     iso + "T" + endH + ":" + endM + ":00",
           terminsdato:  terminsdato,
           vehicle_number: foundVehicle?.vehicle_number || null,
+          absence_group_id: absenceGroupId,
           source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
         });
         created++;
