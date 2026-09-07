@@ -340,6 +340,7 @@ def _import_activity(
         # INDENFOR blokken rulles korrekt tilbage af SAVEPOINT'et alene –
         # resten af batch-importens transaktion (andre allerede flushede,
         # gyldige aktiviteter) berøres ikke.
+        needs_new_line = False
         try:
             with db.begin_nested():
                 # Opdater km-data hvis parseren fandt værdier og aktiviteten mangler dem
@@ -370,15 +371,6 @@ def _import_activity(
                     [s.isoformat(), e.isoformat()] for s, e in (act.pause_intervals or [])
                 ]
 
-                def _reopen_for_review():
-                    if existing.status != ActivityStatus.pending:
-                        existing.status = ActivityStatus.pending
-                        existing.approved_by = None
-                        existing.approved_at = None
-                        existing.deactivated_by = None
-                        existing.auto_approved = False
-                        existing.auto_approval_flags = []
-
                 # En aktivitet der stadig er 'pending' og ikke en del af et split (er
                 # hverken selv splittet op, eller en af de to dele et split skabte)
                 # er endnu ikke taget stilling til – trygt at synkronisere den FULDT
@@ -387,11 +379,7 @@ def _import_activity(
                 # tidligere gemte (bekræftet 2026-09-04: en .ddd-fil kan indeholde to
                 # modstridende dags-records for samme dato, og en parser-rettelse kan
                 # derfor gøre både start senere og slut tidligere – se
-                # ddd_parser._find_all_daily_records). Er aktiviteten derimod
-                # godkendt, deaktiveret eller en del af et split, er den allerede
-                # taget stilling til (eller dens tid er bevidst omfordelt af en
-                # bruger), og må IKKE gøres kortere af en genimport – kun evt.
-                # udvides, som hidtil (se de to grene nedenfor).
+                # ddd_parser._find_all_daily_records).
                 #
                 # Er den NYE udlæsning selv markeret ufuldstændig (kortet læst midt i
                 # vagten), må den ALDRIG lægges fuldt ind, uanset status – ellers vil
@@ -422,15 +410,13 @@ def _import_activity(
                         existing.driving_pct = act.driving_pct
                         existing.is_likely_incomplete = act.is_likely_incomplete
                         changed = True
-                else:
+                elif existing.status == ActivityStatus.pending:
+                    # Stadig pending, men enten en del af et split eller den nye
+                    # udlæsning er ufuldstændig – tidsrummet er allerede bevidst
+                    # omfordelt (split) eller for usikkert til fuld overskrivning
+                    # (ufuldstændig fil), så kun UDVID, aldrig forkort eller
+                    # overskriv segmenter.
                     if act.start_time < existing.start_time:
-                        # Analogt med udvidelse ved et senere sluttidspunkt herunder: en
-                        # ny fil (eller en rettet parser) kan afsløre et TIDLIGERE reelt
-                        # starttidspunkt end det hidtil gemte. Tilføj kun de nye
-                        # segmenter/pauser der ligger FØR det hidtidige starttidspunkt –
-                        # rør ikke ved det der allerede er gemt fra og med det gamle
-                        # starttidspunkt, af samme grund som ved sluttidspunktet nedenfor
-                        # (mulige manuelle rettelser må ikke gå tabt).
                         cutoff = existing.start_time
                         existing.segments = [
                             s for s in new_segments if _dt_now.fromisoformat(s[1]) <= cutoff
@@ -440,18 +426,9 @@ def _import_activity(
                         ] + (existing.pause_intervals or [])
                         existing.start_time = act.start_time
                         _recalculate_pcts(existing)
-                        # Godkendt/deaktiveret aktivitet dækker nu en længere periode end
-                        # det, der blev taget stilling til – genåbnes til afventende.
-                        _reopen_for_review()
                         changed = True
 
                     if act.end_time > existing.end_time:
-                        # En senere kortudlæsning kan dække en mere komplet dag (senere
-                        # sluttidspunkt) end den tidligere importerede. Tilføj kun den NYE
-                        # tid efter det hidtidige sluttidspunkt – allerede gemte segmenter
-                        # røres ikke, da en bruger kan have rettet/tilpasset dem manuelt
-                        # (fx via "Ret linje" eller "Tilpas pause"), og den slags må ikke
-                        # gå tabt ved en simpel genimport.
                         cutoff = existing.end_time
                         existing.segments = (existing.segments or []) + [
                             s for s in new_segments if _dt_now.fromisoformat(s[0]) >= cutoff
@@ -461,18 +438,29 @@ def _import_activity(
                         ]
                         existing.end_time = act.end_time
                         _recalculate_pcts(existing)
-                        # Opdater ufuldstændig-flaget efter den nye, mere komplette fil –
-                        # rydder flaget hvis dagen nu er komplet, eller sætter det hvis
-                        # den nye fil stadig ser ufuldstændig ud.
                         existing.is_likely_incomplete = act.is_likely_incomplete
-                        # Godkendt/deaktiveret aktivitet er nu blevet længere end det, der
-                        # blev taget stilling til – genåbnes til afventende, så tiden skal
-                        # godkendes igen.
-                        _reopen_for_review()
                         changed = True
-                    # (Ingen gren for act.end_time <= existing.end_time her: en
-                    # godkendt/deaktiveret/split aktivitet må kun UDVIDES ved genimport,
-                    # aldrig gøres kortere eller få sine segmenter overskrevet.)
+                else:
+                    # Godkendt eller deaktiveret – allerede taget endelig stilling
+                    # til, og må ALDRIG ændres, udvides eller genåbnes af en
+                    # genimport (bekræftet 2026-09-07: en tidligere "udvid og
+                    # genåbn"-regel her fortrød manuel oprydning, fordi den ikke
+                    # kunne skelne "deaktiveret fordi forkert/duplikat" fra
+                    # "deaktiveret af anden grund"). Repræsenterer den nye
+                    # udlæsning en anden eller længere vagt end den, der allerede
+                    # er godkendt/deaktiveret, oprettes i stedet en helt ny,
+                    # separat linje for dagen (pending) med den fulde, opdaterede
+                    # vagt – den eksisterende række røres ikke. Det unikke indeks
+                    # (se models.py::Activity) omfatter kun 'pending'-rækker, så
+                    # den nye linje kan uden problemer have samme starttidspunkt
+                    # som den godkendte/deaktiverede aktivitet.
+                    if (
+                        act.start_time != existing.start_time
+                        or act.end_time != existing.end_time
+                        or new_segments != (existing.segments or [])
+                        or new_pause_intervals != (existing.pause_intervals or [])
+                    ):
+                        needs_new_line = True
 
                 if changed:
                     db.flush()  # gør ændringen synlig i denne transaktion; committes samlet til sidst
@@ -488,9 +476,12 @@ def _import_activity(
                 "end_time": act.end_time.isoformat(),
             }
 
-        if changed:
-            return "updated", None
-        return "skipped_duplicate", None
+        if not needs_new_line:
+            if changed:
+                return "updated", None
+            return "skipped_duplicate", None
+        # needs_new_line: eksisterende (godkendt/deaktiveret) række er urørt –
+        # fald igennem til oprettelse af en ny, separat aktivitet nedenfor.
 
     natural_period = get_or_create_period_for_date(act.start_time.date(), db)
     if natural_period.status == PayPeriodStatus.closed and not allow_closed_period:

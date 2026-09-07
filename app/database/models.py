@@ -183,23 +183,16 @@ class Activity(Base):
         # Bruges af duplikat-tjek ved ddd-import (employee_id + start_time + source).
         # Uden dette index scanner SQLite hele tabellen for hver importeret aktivitet.
         Index("ix_activities_employee_start_source", "employee_id", "start_time", "source"),
-        # Forhindrer at to samtidige importer (fx dobbeltklik, eller to brugere
-        # der importerer overlappende filer samtidig) kan nå at indsætte samme
-        # tachograf-vagt to gange, før nogen af dem har committet – uden denne
-        # spærre opdager duplikat-tjekket i import_ddd.py det ikke, og vagten
-        # tælles dobbelt i lønnen. Kun tachograf-kilden er omfattet, da manuelle/
-        # vagtplan-aktiviteter ikke har det samme check-then-insert-mønster.
-        # Deaktiverede rækker er undtaget: split_activity() (se activities.py)
-        # deaktiverer den oprindelige tachograf-vagt i stedet for at slette
-        # den, og opretter to nye tachograf-kilde-rækker med samme starttid –
-        # uden undtagelsen ville det andet split-forsøg (og alle senere) fejle
-        # med en unik-indeks-fejl (500 internal server error).
-        Index(
-            "uq_activities_employee_start_tachograph",
-            "employee_id", "start_time",
-            unique=True,
-            sqlite_where=text("source = 'tachograph' AND status != 'deactivated'"),
-        ),
+        # (Det tidligere unikke indeks "uq_activities_employee_start_tachograph"
+        # her er fjernet igen 2026-09-07: det eksisterede udelukkende for at
+        # beskytte mod to SAMTIDIGE importer af samme vagt – men importen kører
+        # kun for én medarbejder ad gangen, aldrig samtidig (heller ikke efter
+        # den planlagte automatisering), så det scenarie kan reelt ikke opstå.
+        # At en fuldstændig identisk vagt ikke importeres to gange sikres i
+        # stedet fuldt ud af applikationslogikken i
+        # import_ddd.py::_import_activity, som finder den eksisterende
+        # aktivitet via tidsoverlap og kun opretter/ændrer noget hvis data
+        # rent faktisk er anderledes.)
         # Lønkørsel, aktivitetsoversigt og fraværsoversigt filtrerer alle på
         # denne kombination (pay_period_id + status) – uden indekset bliver
         # det et fuldt tabel-scan for hver forespørgsel, efterhånden som

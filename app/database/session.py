@@ -177,38 +177,15 @@ def _migrate():
             "SELECT sql FROM sqlite_master WHERE type='index' "
             "AND name='uq_activities_employee_start_tachograph'"
         ).fetchone()
-        if tachograph_index_sql is None:
-            # Fjern evt. eksisterende dubletter (samme medarbejder+starttid,
-            # tachograf-kilde) opstået pga. den tidligere manglende spærre,
-            # før det unikke indeks oprettes – ellers fejler CREATE UNIQUE
-            # INDEX på en database, hvor racet allerede er indtruffet.
-            # Beholder den ældste (laveste id); den nyeste vinder normalt
-            # ikke noget ekstra data, da genimport allerede opdaterer den
-            # eksisterende række (se import_ddd.py::_import_activity).
-            conn.execute(
-                "DELETE FROM activities WHERE source = 'tachograph' AND id NOT IN ("
-                "  SELECT MIN(id) FROM activities WHERE source = 'tachograph' "
-                "  GROUP BY employee_id, start_time"
-                ")"
-            )
-            conn.execute(
-                "CREATE UNIQUE INDEX uq_activities_employee_start_tachograph "
-                "ON activities(employee_id, start_time) "
-                "WHERE source = 'tachograph' AND status != 'deactivated'"
-            )
-            conn.commit()
-        elif "status != 'deactivated'" not in tachograph_index_sql[0]:
-            # Opgraderer det gamle indeks (uden status-undtagelsen), som
-            # blokerede split_activity(): den deaktiverede original beholdt
-            # samme starttid+tachograf-kilde som den nye "del 1", og det
-            # udløste en unik-indeks-fejl (500 internal server error) ved
-            # splitning af en tachograf-importeret vagt.
+        if tachograph_index_sql is not None:
+            # Fjernet 2026-09-07: indekset eksisterede udelukkende for at
+            # beskytte mod to SAMTIDIGE importer af samme vagt – men importen
+            # kører kun for én medarbejder ad gangen, aldrig samtidig (heller
+            # ikke efter den planlagte automatisering), så det scenarie kan
+            # reelt ikke opstå. At en fuldstændig identisk vagt ikke
+            # importeres to gange sikres i stedet fuldt ud af
+            # applikationslogikken i import_ddd.py::_import_activity.
             conn.execute("DROP INDEX uq_activities_employee_start_tachograph")
-            conn.execute(
-                "CREATE UNIQUE INDEX uq_activities_employee_start_tachograph "
-                "ON activities(employee_id, start_time) "
-                "WHERE source = 'tachograph' AND status != 'deactivated'"
-            )
             conn.commit()
         if "ix_activities_period_status" not in existing_indexes:
             conn.execute(

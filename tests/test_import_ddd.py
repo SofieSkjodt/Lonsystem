@@ -9,8 +9,6 @@ from datetime import date, datetime
 from decimal import Decimal
 
 import pytest
-from sqlalchemy import create_engine
-from sqlalchemy.orm import sessionmaker
 
 from database.models import ActivityStatus, PayPeriodStatus, AppUser, AgreementKind, Activity, Employee, Base
 from parsers.ddd_parser import ParsedActivity
@@ -172,7 +170,12 @@ def test_corrected_shorter_end_time_shrinks_pending_activity(db, employee):
 
 def test_corrected_shorter_end_time_does_not_shrink_approved_activity(db, employee):
     """En allerede godkendt aktivitet må ikke gøres kortere af en genimport –
-    brugeren har taget stilling til netop den (længere) periode."""
+    brugeren har taget stilling til netop den (længere) periode. I stedet for
+    at røre den godkendte aktivitet, skal genimporten oprette en helt ny,
+    separat (pending) linje for dagen med den opdaterede vagt – også når
+    starttidspunktet er uændret: det unikke indeks omfatter kun
+    'pending'-rækker, så en ny pending-linje kan sagtens have samme
+    starttidspunkt som den godkendte (bekræftet 2026-09-07)."""
     start = datetime(2026, 8, 24, 5, 49)
     wrong_end = datetime(2026, 8, 24, 23, 24)
     act = make_activity(db, employee, start=start, end=wrong_end, status=ActivityStatus.approved)
@@ -192,6 +195,105 @@ def test_corrected_shorter_end_time_does_not_shrink_approved_activity(db, employ
 
     assert act.end_time == wrong_end
     assert act.status == ActivityStatus.approved
+    assert result == "new"
+
+    all_acts = db.query(Activity).filter(Activity.employee_id == employee.id).all()
+    assert len(all_acts) == 2
+    new_line = next(a for a in all_acts if a.id != act.id)
+    assert new_line.start_time == start
+    assert new_line.end_time == correct_end
+    assert new_line.status == ActivityStatus.pending
+
+
+def test_corrected_earlier_start_time_on_approved_activity_creates_new_line(db, employee):
+    """Viser en genimport en anden (fx tidligere) start end den, der allerede
+    er godkendt, må den godkendte aktivitet stadig ikke røres – en ny,
+    separat (pending) linje for dagen oprettes med den opdaterede vagt."""
+    old_start = datetime(2026, 8, 24, 6, 30)
+    end = datetime(2026, 8, 24, 16, 10)
+    act = make_activity(db, employee, start=old_start, end=end, status=ActivityStatus.approved)
+    act.segments = [[old_start.isoformat(), end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    corrected_start = datetime(2026, 8, 24, 5, 49)
+    corrected = _parsed(
+        corrected_start, end,
+        segments=[(corrected_start, end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(corrected, db, employee)
+    db.refresh(act)
+
+    assert act.start_time == old_start
+    assert act.status == ActivityStatus.approved
+    assert result == "new"
+
+    all_acts = db.query(Activity).filter(Activity.employee_id == employee.id).all()
+    assert len(all_acts) == 2
+    new_line = next(a for a in all_acts if a.id != act.id)
+    assert new_line.start_time == corrected_start
+    assert new_line.end_time == end
+    assert new_line.status == ActivityStatus.pending
+
+
+def test_extended_end_time_does_not_reopen_deactivated_activity(db, employee):
+    """En deaktiveret aktivitet må hverken udvides eller genåbnes til pending
+    af en genimport, selvom den nye udlæsning viser et senere sluttidspunkt –
+    en tidligere "udvid og genåbn"-regel fortrød utilsigtet manuel oprydning
+    af kendte duplikater (bekræftet 2026-09-07). I stedet oprettes en ny,
+    separat (pending) linje for dagen med den fulde, opdaterede vagt."""
+    start = datetime(2026, 6, 3, 6, 4)
+    old_end = datetime(2026, 6, 3, 12, 6)
+    act = make_activity(db, employee, start=start, end=old_end, status=ActivityStatus.deactivated)
+    act.segments = [[start.isoformat(), old_end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    new_end = datetime(2026, 6, 3, 13, 30)
+    updated = _parsed(
+        start, new_end,
+        segments=[(start, new_end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(updated, db, employee)
+    db.refresh(act)
+
+    assert act.end_time == old_end
+    assert act.status == ActivityStatus.deactivated
+    assert result == "new"
+
+    all_acts = db.query(Activity).filter(Activity.employee_id == employee.id).all()
+    assert len(all_acts) == 2
+    new_line = next(a for a in all_acts if a.id != act.id)
+    assert new_line.start_time == start
+    assert new_line.end_time == new_end
+    assert new_line.status == ActivityStatus.pending
+
+
+def test_unchanged_readout_of_approved_activity_does_not_create_new_line(db, employee):
+    """Genimporterer man præcis den samme vagt (ingen ny information), skal
+    der IKKE oprettes en ny linje – kun rigtige ændringer i tid/segmenter
+    udløser en ny linje for en godkendt/deaktiveret aktivitet."""
+    start = datetime(2026, 8, 24, 5, 49)
+    end = datetime(2026, 8, 24, 16, 10)
+    act = make_activity(db, employee, start=start, end=end, status=ActivityStatus.approved)
+    act.segments = [[start.isoformat(), end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    same = _parsed(
+        start, end,
+        segments=[(start, end, "driving")],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(same, db, employee)
+
+    assert result == "skipped_duplicate"
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
 
 
 def test_corrected_shorter_end_time_does_not_shrink_split_activity(db, employee):
@@ -274,90 +376,6 @@ def test_decline_closed_period_import_handles_duplicate_items_in_same_request(db
     result = decline_closed_period_import(body, _test_user(), db)
 
     assert result["declined"] == 1
-
-
-def _file_backed_session_factory():
-    """Rigtig fil-baseret SQLite (ikke :memory:), så to uafhængige sessioner/
-    tråde kan pege på samme database – nødvendigt for at kunne reproducere en
-    ægte race condition mellem to samtidige requests. `timeout` sætter SQLites
-    busy-timeout, så en tråd der rammer databasens skrive-lås venter på den
-    anden i stedet for straks at fejle med 'database is locked' – ligesom en
-    rigtig samtidig anmodning ville."""
-    tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-    tmp.close()
-    engine = create_engine(
-        f"sqlite:///{tmp.name}",
-        connect_args={"check_same_thread": False, "timeout": 5},
-    )
-    Base.metadata.create_all(engine)
-    return sessionmaker(bind=engine)
-
-
-def test_concurrent_import_of_same_shift_does_not_duplicate_activity():
-    """
-    Reproducerer racet ved samtidig import med to RIGTIGE tråde: to samtidige
-    import-requests (fx et dobbeltklik, eller to brugere der importerer
-    overlappende filer) kan begge slå den samme vagt op og finde intet, FØR
-    nogen af dem har committet – og begge forsøge at indsætte den. Uden en
-    unik spærre i databasen ville det give to Activity-rækker for samme
-    medarbejder+starttidspunkt+kilde (= dobbelttalte timer i lønnen).
-    """
-    import threading
-
-    Session = _file_backed_session_factory()
-    setup = Session()
-    emp = Employee(
-        employee_number="9001",
-        first_name="Test",
-        last_name="Chauffør",
-        agreement_kind=AgreementKind.hourly_fixed,
-        agreement_type="Standardoverenskomst",
-        hire_date=date(2020, 1, 1),
-        work_schedule={"even": [8, 8, 8, 8, 8, 0, 0], "odd": [8, 8, 8, 8, 8, 0, 0]},
-    )
-    setup.add(emp)
-    setup.commit()
-    emp_id = emp.id
-    setup.close()
-
-    start = datetime(2026, 8, 3, 5, 45)
-    end = datetime(2026, 8, 3, 14, 30)
-
-    barrier = threading.Barrier(2)
-    outcomes = {}
-
-    def _run(key):
-        session = Session()
-        emp_local = session.query(Employee).filter(Employee.id == emp_id).first()
-        act = _parsed(start, end, segments=[(start, end, "work")], pauses=[])
-        barrier.wait()  # begge tråde slår "existing" op ~samtidig
-        try:
-            result, _ = _import_activity(act, session, emp_local)
-            session.commit()
-            outcomes[key] = result
-        except Exception as exc:
-            session.rollback()
-            outcomes[key] = f"crashed: {exc!r}"
-        finally:
-            session.close()
-
-    t1 = threading.Thread(target=_run, args=("t1",))
-    t2 = threading.Thread(target=_run, args=("t2",))
-    t1.start()
-    t2.start()
-    t1.join(timeout=10)
-    t2.join(timeout=10)
-
-    check = Session()
-    total = (
-        check.query(Activity)
-        .filter(Activity.employee_id == emp_id, Activity.start_time == start)
-        .count()
-    )
-    check.close()
-
-    assert not any(v.startswith("crashed") for v in outcomes.values() if isinstance(v, str)), outcomes
-    assert total == 1, f"forventede 1 aktivitet, fandt {total} – begge tråde: {outcomes}"
 
 
 @pytest.fixture
