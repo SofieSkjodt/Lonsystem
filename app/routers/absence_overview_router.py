@@ -213,23 +213,76 @@ def export_per_employee(
     from openpyxl.styles import Font, PatternFill
 
     d_from, d_to = _resolve_dates(date_from, date_to, db)
-    data = _compute_data(d_from, d_to, db)
+    type_labels = _load_type_labels(db)
+    agreement_rates = load_agreement_types_from_db(db)
 
-    # Filter employees
-    employees = data["employees"]
-    group_name = None
+    activities_q = (
+        db.query(Activity)
+        .join(Activity.employee)
+        .filter(
+            Activity.status == ActivityStatus.approved,
+            Activity.activity_type != "normal",
+            Activity.start_time >= d_from.isoformat(),
+            Activity.start_time < (d_to + timedelta(days=1)).isoformat(),
+            Employee.active == True,
+        )
+    )
     if employee_id:
-        employees = [e for e in employees if e["employee_id"] == employee_id]
+        activities_q = activities_q.filter(Activity.employee_id == employee_id)
+    elif dispatcher_group_id:
+        activities_q = activities_q.filter(Employee.dispatcher_group_id == dispatcher_group_id)
+    activities = activities_q.order_by(Employee.first_name, Employee.last_name, Activity.start_time).all()
+
+    group_name = None
+    employee_name = None
+    if employee_id:
+        emp = db.query(Employee).filter(Employee.id == employee_id).first()
+        employee_name = emp.name if emp else None
     elif dispatcher_group_id:
         group = db.query(DispatcherGroup).filter(DispatcherGroup.id == dispatcher_group_id).first()
         group_name = group.name if group else None
-        group_emp_ids = {
-            e.id for e in db.query(Employee).filter(
-                Employee.active == True,
-                Employee.dispatcher_group_id == dispatcher_group_id,
-            ).all()
-        }
-        employees = [e for e in employees if e["employee_id"] in group_emp_ids]
+
+    hourly_rate_cache: dict = {}
+
+    def _hourly_rate(emp) -> float:
+        if emp.id not in hourly_rate_cache:
+            rate = Decimal(str(agreement_rates.get(emp.agreement_type, 0)))
+            supplement = get_active_supplement_for_period(db, emp.id, d_from, d_to)
+            if supplement:
+                rate += supplement.value
+            hourly_rate_cache[emp.id] = float(rate)
+        return hourly_rate_cache[emp.id]
+
+    # Byg én række per kalenderdag med fravær (splitter aktiviteter der spænder over flere dage)
+    rows = []
+    for act in activities:
+        emp = act.employee
+        atype = act.activity_type
+        label = type_labels.get(atype, atype.replace("_", " ").capitalize())
+        if atype in _FIXED_RATE_ABSENCE:
+            rate = _FIXED_RATE_ABSENCE[atype]
+        elif atype in _PAID_ABSENCE_TYPES:
+            rate = _hourly_rate(emp)
+        else:
+            rate = 0.0
+
+        total_minutes = int((act.end_time - act.start_time).total_seconds() // 60)
+        start_day = act.start_time.date()
+        end_day = act.end_time.date()
+        day_count = (end_day - start_day).days + 1
+        minutes_per_day = total_minutes / day_count if day_count else total_minutes
+
+        cur_day = start_day
+        while cur_day <= end_day:
+            rows.append({
+                "employee_name":   emp.name,
+                "employee_number": emp.employee_number,
+                "date":            cur_day,
+                "label":           label,
+                "hours":           round(minutes_per_day / 60, 2),
+                "rate":            rate,
+            })
+            cur_day += timedelta(days=1)
 
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -238,7 +291,7 @@ def export_per_employee(
     header_fill = PatternFill(start_color="317423", end_color="317423", fill_type="solid")
     row_fill    = PatternFill(start_color="D4EDCC", end_color="D4EDCC", fill_type="solid")
 
-    ws.append(["Medarbejder", "Lønnr", "Fraværstype", "Dage", "Timer", "Sats"])
+    ws.append(["Medarbejder", "Lønnr", "Dato", "Fraværstype", "Timer", "Sats"])
     for cell in ws[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = header_fill
@@ -246,28 +299,35 @@ def export_per_employee(
 
     ws.column_dimensions["A"].width = 28
     ws.column_dimensions["B"].width = 12
-    ws.column_dimensions["C"].width = 28
-    ws.column_dimensions["D"].width = 8
+    ws.column_dimensions["C"].width = 12
+    ws.column_dimensions["D"].width = 28
     ws.column_dimensions["E"].width = 10
     ws.column_dimensions["F"].width = 12
 
-    sorted_emps = sorted(employees, key=lambda e: e["employee_name"])
-    for emp_idx, emp in enumerate(sorted_emps):
-        sorted_abs = sorted(emp["absences"].items(), key=lambda x: x[1]["label"])
-        use_fill = (emp_idx % 2 == 0)
-        for i, (_, ainfo) in enumerate(sorted_abs):
-            rate_val = ainfo.get("rate", 0)
-            ws.append([
-                emp["employee_name"] if i == 0 else "",
-                emp["employee_number"] if i == 0 else "",
-                ainfo["label"],
-                ainfo["days"],
-                ainfo["hours"],
-                rate_val if rate_val else "",
-            ])
-            if use_fill:
-                for cell in ws[ws.max_row]:
-                    cell.fill = row_fill
+    rows.sort(key=lambda r: (r["employee_name"], r["date"]))
+
+    emp_seen_order: list = []
+    for r in rows:
+        if not emp_seen_order or emp_seen_order[-1] != r["employee_name"]:
+            emp_seen_order.append(r["employee_name"])
+    emp_fill_idx = {name: i for i, name in enumerate(emp_seen_order)}
+
+    last_emp = None
+    for r in rows:
+        rate_val = r.get("rate", 0)
+        show_emp = r["employee_name"] != last_emp
+        ws.append([
+            r["employee_name"] if show_emp else "",
+            r["employee_number"] if show_emp else "",
+            r["date"].strftime("%d-%m-%Y"),
+            r["label"],
+            r["hours"],
+            rate_val if rate_val else "",
+        ])
+        if emp_fill_idx[r["employee_name"]] % 2 == 0:
+            for cell in ws[ws.max_row]:
+                cell.fill = row_fill
+        last_emp = r["employee_name"]
 
     buf = io.BytesIO()
     wb.save(buf)
@@ -276,8 +336,8 @@ def export_per_employee(
     def _safe(s):
         return s.replace(" ", "_").replace("/", "_")
 
-    if employee_id and employees:
-        suffix = f"_{_safe(employees[0]['employee_name'])}"
+    if employee_id and employee_name:
+        suffix = f"_{_safe(employee_name)}"
     elif group_name:
         suffix = f"_{_safe(group_name)}"
     else:
