@@ -3352,6 +3352,7 @@ function renderPayrollPreview(data) {
       <div class="payroll-col-header">
         <div></div>
         <div>Antal</div>
+        <div>Antal (tt.mm)</div>
         <div>Sats</div>
         <div>DKK</div>
       </div>
@@ -3375,6 +3376,7 @@ function renderPayrollPreview(data) {
         <div class="payroll-row total">
           <div>I alt</div>
           <div>${fmtHours(emp.total_hours)}</div>
+          <div>${fmtHoursHM(emp.total_hours)}</div>
           <div></div>
           <div class="text-right">${fmtKr(emp.total_kr + (emp.overnight_kr || 0) + (emp.dob_overnight_kr || 0))}</div>
         </div>
@@ -3392,6 +3394,7 @@ function payrollRow(label, hours, rate = null) {
   return `<div class="payroll-row">
     <div class="label">${label}</div>
     <div>${fmtHours(hours)}</div>
+    <div>${fmtHoursHM(hours)}</div>
     <div style="color:var(--text-light);font-size:12px">${rate != null ? rate.toFixed(2) + " kr/t" : ""}</div>
     <div class="text-right">${kr != null ? fmtKr(kr) : ""}</div>
   </div>`;
@@ -3402,6 +3405,7 @@ function payrollRowSalt(label, hours, rate, kr) {
   return `<div class="payroll-row">
     <div class="label">${label}</div>
     <div>${fmtHours(hours)}</div>
+    <div>${fmtHoursHM(hours)}</div>
     <div style="color:var(--text-light);font-size:12px">${rate != null ? rate.toFixed(2) + " kr/t" : ""}</div>
     <div class="text-right">${fmtKr(kr)}</div>
   </div>`;
@@ -3412,6 +3416,7 @@ function payrollRowOvernight(label, count, rate, kr) {
   return `<div class="payroll-row">
     <div class="label">${label}</div>
     <div>${count} gang${count !== 1 ? "e" : ""}</div>
+    <div></div>
     <div style="color:var(--text-light);font-size:12px">${rate != null ? rate.toFixed(2) + " kr/gang" : ""}</div>
     <div class="text-right">${fmtKr(kr)}</div>
   </div>`;
@@ -5455,6 +5460,12 @@ function formatDuration(minutes) {
   return `${Math.floor(minutes / 60)}t ${(minutes % 60).toString().padStart(2, "0")}m`;
 }
 function fmtHours(h) { return `${h.toFixed(2)} t`; }
+function fmtHoursHM(h) {
+  const totalMinutes = Math.round(h * 60);
+  const hh = Math.floor(totalMinutes / 60);
+  const mm = totalMinutes % 60;
+  return `${hh}t ${mm.toString().padStart(2, "0")}m`;
+}
 function fmtKr(v) {
   return v.toLocaleString("da-DK", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " kr";
 }

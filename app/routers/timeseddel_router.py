@@ -72,11 +72,21 @@ def _p(text, style):
     return Paragraph(str(text), style)
 
 
-def _v(val):
+def _fmt_hm(hours) -> str:
+    """Timer som decimaltal -> 'Xt YYm' (fx 14.80 -> '14t 48m')."""
+    h = float(hours)
+    total_minutes = round(h * 60)
+    hh = total_minutes // 60
+    mm_ = total_minutes % 60
+    return f'{hh}t {mm_:02d}m'
+
+
+def _hm(val):
     try:
-        return f'{float(val):.2f}'.replace('.', ',') if val and float(val) > 0 else ''
+        h = float(val)
     except (TypeError, ValueError):
         return ''
+    return _fmt_hm(h) if h > 0 else ''
 
 
 def _kr(val) -> str:
@@ -188,12 +198,12 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
 
     def add_row(label, hours, rate_str, dkk_str, absence=False):
         st = s_abs if absence else s_body
-        sum_rows.append([_p(label, st), _p(f'{hours:.2f}'.replace('.', ','), s_right),
+        sum_rows.append([_p(label, st), _p(_fmt_hm(hours), s_right),
                          _p(rate_str, s_right), _p(dkk_str, s_right)])
 
     if calc.get('normal_hours', 0) > 0.001:
         h = float(calc['normal_hours'])
-        add_row('Normal tid', h, f'{_kr(hr)} kr/t', _kr(h * hr))
+        add_row('Timer arbejdet', h, f'{_kr(hr)} kr/t', _kr(h * hr))
     if calc.get('ot_before_hours', 0) > 0.001:
         h = float(calc['ot_before_hours'])
         add_row('Overtid 1 time før', h, f'{_kr(ot_before_rate)} kr/t', _kr(h * ot_before_rate))
@@ -249,7 +259,7 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
     )
     sum_rows.append([
         _p('I alt', s_bold),
-        _p(f"{float(calc.get('total_hours', 0)):.2f}".replace('.', ',') + " t", s_bold_r),
+        _p(_fmt_hm(float(calc.get('total_hours', 0))), s_bold_r),
         _p('', s_body),
         _p(f"{_kr(total_display_kr)} kr", s_bold_r),
     ])
@@ -296,10 +306,10 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
     headers = [
         _p('Dato', s_th),      _p('Dag', s_th),
         _p('Start', s_th_r),   _p('Slut', s_th_r),
-        _p('Normal', s_th_r),      _p('Overtid før', s_th_r),
+        _p('Timer arbejdet', s_th_r), _p('Overtid før', s_th_r),
         _p('Overtid 1–3', s_th_r), _p('Øvrig overtid', s_th_r),
     ]
-    widths_mm = [20, 15, 14, 14, 15, 22, 22, 24]
+    widths_mm = [20, 15, 14, 14, 24, 22, 22, 24]
     if has_salt:
         headers.append(_p('Salt, timer', s_th_r))
         widths_mm.append(20)
@@ -335,15 +345,15 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
             _p(_esc(date_str), cs),        _p(_esc(wday), cs),
             _p(_esc(day.get('start_time') or ''), csr),
             _p(_esc(day.get('end_time') or ''),   csr),
-            _p(_v(_day_normal_hours(day)), csr),
-            _p(_v(day.get('ot_before')),   csr),
-            _p(_v(day.get('ot_13')),       csr),
-            _p(_v(day.get('ot_extra')),    csr),
+            _p(_hm(_day_normal_hours(day)), csr),
+            _p(_hm(day.get('ot_before')),   csr),
+            _p(_hm(day.get('ot_13')),       csr),
+            _p(_hm(day.get('ot_extra')),    csr),
         ]
         if has_salt:
-            row.append(_p(_v(day.get('salt_hours')), csr))
+            row.append(_p(_hm(day.get('salt_hours')), csr))
         row += [
-            _p(_v(day.get('total_hours')), csr),
+            _p(_hm(day.get('total_hours')), csr),
             _p(_vkr(day.get('total_kr')),  csr),
             _p(_esc(note), ca),
         ]

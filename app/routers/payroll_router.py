@@ -886,7 +886,13 @@ def _build_proevekoersel_workbook(employees, period, db):
     # Dansk taltformat (komma som decimal, punktum som tusind-separator ved
     # visning – Excel lokaliserer selv formatkoden efter appens sprogindstilling,
     # jf. samme separatorer som PDF-timesedlen/prøvekørsel-Excel'en skal matche).
-    # Kolonne G/I/J/K/L/M er timer (kun decimal), N/P er beløb (tusind + decimal).
+    # Kolonne G/I/J/K/L/M er timer, N/P er beløb (tusind + decimal).
+    # Timekolonnerne vises som "Xt YYm" via Excels indbyggede klokkeslæt-format
+    # ([h] tillader >24 timer i én celle) – cellerne forbliver rigtige tal, så
+    # SUM/andre formler i Excel stadig virker. Værdien konverteres fra decimal-
+    # timer til døgnbrøk (minutter/1440) og RUNDES til nærmeste minut FØR
+    # konverteringen, så flydende komma-unøjagtighed ikke viser fx 29m i stedet
+    # for 30m i Excel.
     _HOUR_COLS = {7, 9, 10, 11, 12, 13}
     _MONEY_COLS = {14, 16}
     for row in ws.iter_rows(min_row=2, max_row=ws.max_row):
@@ -896,7 +902,8 @@ def _build_proevekoersel_workbook(employees, period, db):
             if idx in _MONEY_COLS:
                 cell.number_format = '#,##0.00'
             elif idx in _HOUR_COLS:
-                cell.number_format = '0.00'
+                cell.value = round(cell.value * 60) / 1440
+                cell.number_format = '[h]"t "mm"m"'
 
     # Bredder tilpasset dataindholdet (ikke de – ofte længere – ombrudte
     # overskrifter), så alle 16 kolonner kan ses uden vandret scroll.
