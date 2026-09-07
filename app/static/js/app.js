@@ -891,9 +891,10 @@ function openActivityDetail(id) {
     </div>
 
     ${renderSegmentTable(a)}
-    ${(!a.segments || !a.segments.length) && (a.pause_intervals && a.pause_intervals.length) ? `
+    ${(!a.segments || !a.segments.length) ? `
     <div class="form-group mt-16">
       <label style="font-weight:500;font-size:12px;text-transform:uppercase;color:var(--text-light)">Pauser (fratrækkes i tidsrummet de afholdes)</label>
+      ${(a.pause_intervals && a.pause_intervals.length) ? `
       <div style="font-size:13px;padding:4px 8px;background:var(--bg);border-radius:4px">
         ${a.pause_intervals.map((p, i) => `
           <div style="display:flex;align-items:center;gap:6px;padding:4px 0;border-bottom:1px solid var(--border,#e5e7eb)">
@@ -902,7 +903,13 @@ function openActivityDetail(id) {
             <button class="act-pause-del-btn" data-idx="${i}" data-id="${a.id}" style="background:none;border:none;color:var(--danger);cursor:pointer;font-size:16px;line-height:1;padding:0 2px">&times;</button>
           </div>
         `).join("")}
-      </div>
+      </div>` : ""}
+      ${a.status === "pending" ? `
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button type="button" class="btn btn-secondary act-pause-add-btn" data-id="${a.id}" style="font-size:13px;padding:5px 14px">+ Tilføj pause</button>
+        <button type="button" class="btn btn-secondary act-pause-suggest-btn" data-id="${a.id}" data-start="12:00" data-end="12:30" style="font-size:13px;padding:5px 14px">12:00–12:30</button>
+        <button type="button" class="btn btn-secondary act-pause-suggest-btn" data-id="${a.id}" data-start="12:00" data-end="12:45" style="font-size:13px;padding:5px 14px">12:00–12:45</button>
+      </div>` : ""}
     </div>` : ""}
     ${a.is_under_4h ? `<div class="alert-banner mt-16"><span class="icon">⚠️</span><div class="text"><h4>Under 4 timer</h4>Angiv begrundelse ved godkendelse (overenskomst: minimum 4 timer medmindre andet er aftalt).</div></div>` : ""}
     ${a.is_over_12h ? `<div class="alert-banner mt-16" style="background:#fef2f2;border-color:#fca5a5"><span class="icon">🔴</span><div class="text"><h4>Over 12 timer</h4>Usædvanlig lang aktivitet – kontroller om korrekt.</div></div>` : ""}
@@ -966,6 +973,12 @@ function openActivityDetail(id) {
   });
   document.querySelectorAll("#modal-activity-body .act-pause-del-btn").forEach(btn => {
     btn.addEventListener("click", () => deleteActivityPause(parseInt(btn.dataset.id), parseInt(btn.dataset.idx)));
+  });
+  document.querySelectorAll("#modal-activity-body .act-pause-add-btn").forEach(btn => {
+    btn.addEventListener("click", () => openActivityPauseAdd(parseInt(btn.dataset.id)));
+  });
+  document.querySelectorAll("#modal-activity-body .act-pause-suggest-btn").forEach(btn => {
+    btn.addEventListener("click", () => addActivityPauseSuggestion(parseInt(btn.dataset.id), btn.dataset.start, btn.dataset.end));
   });
 
   openModal("modal-activity");
@@ -1933,6 +1946,28 @@ function openActivityPauseEdit(actId, idx) {
   openModal("modal-pause");
 }
 
+function openActivityPauseAdd(actId) {
+  const a = state.activities.find(x => x.id === actId);
+  if (!a) return;
+  _pauseEditState = { mode: "activity", activityId: actId, idx: null };
+  const n = (a.pause_intervals ? a.pause_intervals.length : 0) + 1;
+  document.getElementById("pause-modal-title").textContent = "Pause " + n;
+  const dateStr = a.start_time.slice(0, 10);
+  buildDatetimePicker("pause-start", dateStr + "T00:00");
+  buildDatetimePicker("pause-end",   dateStr + "T00:00");
+  _stackDatetimePicker("pause-start");
+  _stackDatetimePicker("pause-end");
+  openModal("modal-pause");
+}
+
+function addActivityPauseSuggestion(actId, startHHMM, endHHMM) {
+  const a = state.activities.find(x => x.id === actId);
+  if (!a) return;
+  const dateStr = a.start_time.slice(0, 10);
+  _pauseEditState = { mode: "activity", activityId: actId, idx: null };
+  _confirmActivityPauseEdit(dateStr + "T" + startHHMM, dateStr + "T" + endHHMM);
+}
+
 async function _confirmActivityPauseEdit(startIso, endIso) {
   const { activityId, idx } = _pauseEditState;
   const a = state.activities.find(x => x.id === activityId);
@@ -1945,9 +1980,9 @@ async function _confirmActivityPauseEdit(startIso, endIso) {
     toast(`Pausen slutter (${endIso.slice(11, 16)}) efter vagten er slut (${a.end_time.slice(11, 16)})`, "error");
     return;
   }
-  const newPauses = a.pause_intervals.map((p, i) =>
-    i === idx ? [startIso + ":00", endIso + ":00"] : p
-  );
+  const newPauses = idx == null
+    ? [...(a.pause_intervals || []), [startIso + ":00", endIso + ":00"]]
+    : a.pause_intervals.map((p, i) => i === idx ? [startIso + ":00", endIso + ":00"] : p);
   try {
     const updated = await PATCH(`/api/activities/${activityId}`, { pause_intervals: newPauses });
     state.activities = state.activities.map(x => x.id === activityId ? updated : x);
@@ -1957,7 +1992,7 @@ async function _confirmActivityPauseEdit(startIso, endIso) {
     openActivityDetail(activityId);
     if (body) body.scrollTop = scrollTop;
     renderActivitiesTable();
-    toast("Pause opdateret", "success");
+    toast(idx == null ? "Pause tilføjet" : "Pause opdateret", "success");
   } catch (e) { toast(e.message || "Fejl ved opdatering af pause", "error"); }
 }
 
