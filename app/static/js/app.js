@@ -264,6 +264,9 @@ async function deleteVagtplanComment() {
 async function openVagtplanTomorrowModal() {
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
+  while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
+    tomorrow.setDate(tomorrow.getDate() + 1);
+  }
   const iso = _isoOfDate(tomorrow);
 
   document.getElementById("vagtplan-tomorrow-title").textContent =
