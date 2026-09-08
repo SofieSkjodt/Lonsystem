@@ -491,6 +491,9 @@ function renderActivitiesTable() {
   const groupFilter = document.getElementById("filter-dispatcher-group")?.value || "";
 
   const activities = state.activities.filter(a => {
+    // Splittede aktiviteter er erstattet af deres to dele – vis kun delene
+    // (gælder også når en del selv splittes yderligere: kun de endelige dele vises).
+    if (a.has_split_children) return false;
     if (statusFilter !== "all" && a.status !== statusFilter) return false;
     if (empFilter && a.employee_id !== parseInt(empFilter)) return false;
     if (groupFilter) {
