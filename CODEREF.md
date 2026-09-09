@@ -183,10 +183,9 @@ Status (Aktiv/Inaktiv) er IKKE lagret – beregnes ved visning ud fra om dags da
 | Method | Sti | Beskrivelse |
 |---|---|---|
 | GET | /preview | JSON til lønkørsel-siden |
-| GET | /proevekoersel | Excel-fil download |
-| POST | /proevekoersel-gem | Gem Excel til mappe |
-| POST | /export-csv | Danløn CSV – afviser (400) hvis perioden allerede er `closed`, eller der er `pending`-aktiviteter i perioden |
-| POST | /pdf-timesedler | Dan PDF'er (A4 landscape) |
+| POST | /proevekoersel-gem | Excel-fil, browser-download (Response, se 2026-09-09) |
+| POST | /export-csv | Danløn CSV, browser-download – afviser (400) hvis perioden allerede er `closed`, eller der er `pending`-aktiviteter i perioden |
+| POST | /pdf-timesedler | Dan PDF'er (A4 landscape), browser-download – én PDF direkte, eller ZIP hvis flere medarbejdere har data |
 
 ---
 
@@ -306,8 +305,9 @@ ABSENCE_TYPES = new Set()  // populeres af loadAbsenceTypes() (linje 103)
 | `renderPayrollPreview(data)` | 3126 | Bygger medarbejder-kort HTML |
 | `payrollRow(label,hours,rate)` | 3206 | Én datatabelrække (4 kolonner: label/timer/sats/DKK) |
 | `payrollRowSalt(label,hours,rate,kr)` | 3217 | Salt-rækken |
-| `proevekoersel(employeeId)` | 3258 | Åbner mappe-modal |
+| `proevekoersel(employeeId)` | 3258 | Åbner prøvekørsel-modal |
 | `exportCsv()` | 3284 | Åbner CSV-modal |
+| `downloadFile(path, body, fallbackFilename)` | 142 | Fælles helper: POST → blob → `<a download>`-browser-download; bruges af Prøvekørsel, Kør løn-CSV, PDF-timesedler og Lønafregning-CSV (se 2026-09-09) |
 | `openPdfModal()` | 5123 | Åbner PDF-modal |
 
 ### Datetime-pickers
@@ -345,9 +345,10 @@ statusLabel(s)       // "Afventer"/"Godkendt"/"Deaktiveret"
 | modal-pause | Tilføj pause til manuel aktivitet (titel: "Pause N") |
 | modal-employee | Opret/rediger medarbejder |
 | modal-anciennitet | Anciennitetspåmindelse |
-| modal-proevekoersel | Mappe-vælger til prøvekørsel |
-| modal-export-csv | Mappe/periode til CSV |
-| modal-pdf | Mappe-vælger til PDF |
+| modal-proevekoersel | Bekræft prøvekørsel (browser-download, intet mappe-felt siden 2026-09-09) |
+| modal-csv | Bekræft/lås periode + Danløn CSV-download |
+| modal-pdf | Fra/til-dato + medarbejder til PDF-timesedler-download |
+| modal-settlement-csv | Bekræft lønafregnings-CSV-download |
 | modal-admin | Genåbn lønperiode |
 
 ### Nøgle-inputs
@@ -498,7 +499,7 @@ dagsløkke kun summerer datoer inden for sit eget interval. Bekræftet med et ko
 efter fix talte forrige periode stadig kun de 5 timer og den nye periode fik de resterende 19
 timer – i alt 24 timer bevaret, ingen dubletter.
 
-**Kør løn – låsning (2026-07-02):** `export_csv_post()` i `payroll_router.py` afviser med 400, hvis (a) perioden allerede har `status == PayPeriodStatus.closed`, eller (b) der findes `pending`-aktiviteter for aktive medarbejdere i perioden – begge dele skal være håndteret (godkendt/deaktiveret) først. Perioden sættes først til `closed` EFTER at CSV-filen er skrevet succesfuldt (ikke før) – en fejlet fil-skrivning (fx filen åben i Excel → `PermissionError`) fanges og giver en klar fejlbesked i stedet for at låse perioden uden gyldig eksport. Samme `PermissionError`-fangst er i `proevekoersel_gem()` (Excel-prøvekørsel).
+**Kør løn – låsning (2026-07-02, opdateret 2026-09-09):** `export_csv_post()` i `payroll_router.py` afviser med 400, hvis (a) perioden allerede har `status == PayPeriodStatus.closed`, eller (b) der findes `pending`-aktiviteter for aktive medarbejdere i perioden – begge dele skal være håndteret (godkendt/deaktiveret) først. CSV-indholdet bygges (`_build_danloen_csv()`) FØR perioden sættes til `closed`, så en fejl under selve beregningen ikke kan låse perioden uden gyldig eksport. Siden 2026-09-09 skrives filen ikke længere til disk på serveren – den returneres direkte som `Response` med `Content-Disposition: attachment` og downloades af browseren i stedet (tidligere krævede alle fire eksport-flows en mappesti, som fejlagtigt blev valideret mod SERVERENS hjemmemappe i stedet for klientens – se `_safe_save_dir()`/`is_under_allowed_root()`, som nu er ubrugte). Der er derfor ingen `PermissionError`-fangst længere, hverken her eller i `proevekoersel_gem()`.
 
 **OBS – to forskellige "hvilken periode hører aktiviteten til"-kilder:** `pay_period_id` (sat ved oprettelse via `get_billing_period()`) styrer hvad Aktiviteter-fanen og tælleren (`period-info`) viser. Den faktiske lønberegning (`_calculate_employee()`, og dermed også pending-tjekket i `export_csv_post()`) bruger derimod `start_time`-datointervallet, UAFHÆNGIGT af `pay_period_id`. De to kan gå ud af sync: `get_billing_period()` ruller en aktivitet frem til NÆSTE åbne periode, hvis dens naturlige periode er `closed` på oprettelsestidspunktet ("sen registrering"). Genåbnes perioden senere, flytter `reopen_period()` (2026-07-02) automatisk sådanne aktiviteter tilbage (matchet på `start_time`), så de ikke bliver usynlige/fanget mellem to perioder.
 

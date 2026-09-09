@@ -769,13 +769,10 @@ def build_teknisk():
     header_table(doc,
         ["Endepunkt", "Metode", "Beskrivelse"],
         [
-            ["/api/payroll/preview",         "POST", "Returnerer JSON med mellemregninger for alle eller én medarbejder."],
-            ["/api/payroll/proevekoersel",   "POST", "Genererer Excel-fil med prøvekørsel og returnerer download-link."],
-            ["/api/payroll/proevekoersel-gem","POST","Gemmer Excel-fil i brugervalgt mappe (tkinter-dialog)."],
-            ["/api/payroll/export-csv",      "POST", "Genererer Danløn CSV-fil og downloader den. Afviser (400) hvis perioden allerede er låst, eller der er afventende aktiviteter i perioden."],
-            ["/api/payroll/pdf-timesedler",  "POST", "Genererer PDF-timesedler og gemmer i valgt mappe."],
-            ["/api/payroll/browse-folder",   "GET",  "Åbner Windows-mappe-dialog (tkinter) og returnerer valgt sti."],
-            ["/api/payroll/downloads-folder","GET",  "Returnerer stien til brugerens Downloads-mappe."],
+            ["/api/payroll/preview",         "GET",  "Returnerer JSON med mellemregninger for alle eller én medarbejder."],
+            ["/api/payroll/proevekoersel-gem","POST","Genererer Excel-fil med prøvekørsel og downloader den til browseren (siden 2026-09-09 – tidligere blev filen gemt i en brugervalgt mappe på serveren)."],
+            ["/api/payroll/export-csv",      "POST", "Genererer Danløn CSV-fil og downloader den til browseren. Afviser (400) hvis perioden allerede er låst, eller der er afventende aktiviteter i perioden."],
+            ["/api/payroll/pdf-timesedler",  "POST", "Genererer PDF-timesedler og downloader dem til browseren – én PDF direkte, eller en ZIP hvis flere medarbejdere har data."],
         ]
     )
 
@@ -1274,13 +1271,11 @@ def build_teknisk():
         ["Endepunkt", "Metode", "Beskrivelse"],
         [
             ["/api/payroll-settlement/preview",          "GET",  "JSON med periodetotaler og pr.-medarbejder headline + 14-dages tabel. Parameter period_start (valgfri, default dagens periode)."],
-            ["/api/payroll-settlement/downloads-folder", "GET",  "Returnerer stien til brugerens Downloads-mappe som forslag."],
-            ["/api/payroll-settlement/browse-folder",    "GET",  "Åbner Windows-mappe-dialog (tkinter) og returnerer valgt sti."],
-            ["/api/payroll-settlement/export-csv",       "POST", "Genererer og gemmer CSV-filen i valgt mappe. Kræver låst periode – se afsnit 13.3."],
+            ["/api/payroll-settlement/export-csv",       "POST", "Genererer CSV-filen og downloader den til browseren (siden 2026-09-09 – tidligere blev filen gemt i en brugervalgt mappe på serveren). Kræver låst periode – se afsnit 13.3."],
         ]
     )
     body(doc, (
-        "Alle fire endepunkter kræver rettigheden payroll_settlement_view; export-csv kræver "
+        "Begge endepunkter kræver rettigheden payroll_settlement_view; export-csv kræver "
         "derudover payroll_settlement_export. Se afsnit 11.3/rettighedsoversigten i Brugervejledningen."
     ))
 
@@ -1890,13 +1885,12 @@ def build_bruger():
 
     heading(doc, "Prøvekørsel", 2, "9.1")
     body(doc, (
-        "Prøvekørslen beregner lønnen og gemmer resultatet som en Excel-fil. "
+        "Prøvekørslen beregner lønnen og downloader resultatet som en Excel-fil til din computer. "
         "Brug denne til at tjekke tallene inden den endelige kørsel."
     ))
     bullet(doc, "Klik 'Prøvekørsel'.")
     bullet(doc, "Vælg evt. en bestemt medarbejder, eller lad feltet stå tomt for alle.")
-    bullet(doc, "Klik 'Gennemse' for at vælge hvilken mappe filen skal gemmes i (foreslår Downloads-mappen).")
-    bullet(doc, "Klik 'Dan Excel'. Filen gemmes og pop-up-vinduet lukker automatisk.")
+    bullet(doc, "Klik 'Dan Excel'. Filen downloades til din computer, og pop-up-vinduet lukker automatisk.")
 
     body(doc, "Excel-filen viser alle 14 dage i perioden for hver medarbejder, med bl.a. disse kolonner:")
     bullet(doc, "Total tid: alle arbejdede timer den dag.")
@@ -1913,10 +1907,14 @@ def build_bruger():
     )
 
     heading(doc, "Dan PDF'er", 2, "9.2")
-    body(doc, "Genererer individuelle timesedler til alle medarbejdere som PDF-filer.")
+    body(doc, (
+        "Genererer individuelle timesedler til alle medarbejdere som PDF-filer og downloader "
+        "dem til din computer – én PDF direkte, hvis kun én medarbejder har data i perioden, "
+        "ellers en samlet ZIP-fil."
+    ))
     bullet(doc, "Klik 'Dan PDF'er'.")
-    bullet(doc, "Vælg mappe at gemme i (brug 'Gennemse').")
-    bullet(doc, "Klik 'Dan PDF'er'. Én PDF pr. medarbejder gemmes i mappen.")
+    bullet(doc, "Vælg fra/til-dato og evt. en bestemt medarbejder.")
+    bullet(doc, "Klik 'Dan PDF'er'. Filen(erne) downloades til din computer.")
 
     heading(doc, "Kør løn (Danløn CSV)", 2, "9.3")
     body(doc, (
@@ -2231,14 +2229,12 @@ def build_bruger():
 
     heading(doc, "Eksportér CSV", 2, "12.4")
     body(doc, (
-        "Knappen '💾 Eksportér CSV' åbner en mappevælger (samme mønster som Lønkørsels "
-        "'Kør løn') og gemmer én CSV-fil for hele den viste periode med data for alle "
-        "medarbejdere – ikke topsummeringen."
+        "Knappen '💾 Eksportér CSV' downloader én CSV-fil til din computer for hele den viste "
+        "periode med data for alle medarbejdere – ikke topsummeringen."
     ))
     bullet(doc, "Naviger til den ønskede periode (se afsnit 12.3).")
     bullet(doc, "Klik '💾 Eksportér CSV'.")
-    bullet(doc, "Vælg en mappe (forslået: din Downloads-mappe), eller klik 'Gennemse' for at vælge en anden.")
-    bullet(doc, "Klik 'Eksportér'.")
+    bullet(doc, "Klik 'Eksportér'. Filen downloades til din computer.")
     body(doc, (
         "CSV-filen (semikolon-separeret) indeholder kolonnerne Dato, Lønnummer, Normal timer, "
         "Overtid 1 time før, Overtid 1-3 timer efter, Øvrig overtid, Total tid, Total i kr., "
