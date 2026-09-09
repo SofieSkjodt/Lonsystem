@@ -2,7 +2,6 @@
 Lønafregning:
 - /api/payroll-settlement/preview           – JSON til Lønafregning-siden (periodetotaler
                                               + pr. medarbejder headline + 14-dages tabel)
-- /api/payroll-settlement/downloads-folder  – forslag til gem-mappe (samme mønster som Lønkørsel)
 - /api/payroll-settlement/export-csv        – CSV med Dato/Lønnummer/timer/kr/vognnummer pr.
                                               dag pr. medarbejder; kræver låst periode (admin altid)
 """
@@ -11,10 +10,10 @@ import io
 import logging
 from datetime import date
 from decimal import Decimal
-from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -26,7 +25,7 @@ from calculators.overtime import OT_13_KEY, OT_BEFORE_KEY, OT_EXTRA_KEY
 from calculators.pay_period import get_or_create_period_for_date
 from calculators.rates_loader import get_active_supplement_for_period, load_agreement_types_from_db
 
-from routers.payroll_router import _active_employees, _calculate_employee, _safe_save_dir
+from routers.payroll_router import _active_employees, _calculate_employee
 
 router = APIRouter(prefix="/api/payroll-settlement", tags=["payroll-settlement"])
 
@@ -336,19 +335,12 @@ def _fmt_kr_da(v: float) -> str:
     return f"{(v or 0):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
 
 
-@router.get("/downloads-folder")
-def get_downloads_folder(current_user: AppUser = Depends(_export_access)):
-    """Returnerer brugerens Downloads-mappe som forslag til gem-placering."""
-    return {"path": str(Path.home() / "Downloads")}
-
-
 class ExportSettlementCsvRequest(BaseModel):
     period_start: Optional[str] = None
     date_from: Optional[str] = None
     date_to: Optional[str] = None
     employee_id: Optional[int] = None
     dispatcher_group_id: Optional[int] = None
-    output_folder: str
 
 
 def _csv_zeroed_absence_types(emp) -> set:
@@ -423,23 +415,15 @@ def export_settlement_csv(body: ExportSettlementCsvRequest,
             ])
 
     filename = f"lonafregning_{start.isoformat()}_{end.isoformat()}.csv"
-    save_dir = _safe_save_dir(body.output_folder)
-    try:
-        save_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
-        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
-    try:
-        (save_dir / filename).write_bytes(output.getvalue().encode("utf-8-sig"))
-    except PermissionError:
-        raise HTTPException(
-            400,
-            f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
-        )
+    csv_bytes = output.getvalue().encode("utf-8-sig")
 
     log_action(db, current_user, "payroll_settlement_export", "pay_period",
                exact_period.id if exact_period else None,
                f"Lønafregning eksporteret for periode {start} – {end}")
     db.commit()
 
-    return {"filename": filename, "path": str(save_dir / filename)}
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )

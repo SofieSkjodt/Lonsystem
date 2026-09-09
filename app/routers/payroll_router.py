@@ -1,14 +1,14 @@
 """
 Lønkørsel:
 - /api/payroll/preview           – JSON-mellemregninger til forsiden
-- /api/payroll/proevekoersel     – Excel-fil (alle eller én medarbejder)
-- /api/payroll/export-csv        – "Kør løn": Danløn CSV
-- /api/payroll/pdf-timesedler    – dan PDF-timesedler pr. medarbejder (gemmes
-                                   lokalt i output/timesedler; e-mail-afsendelse
-                                   tilføjes senere, jf. aftale 10/6-2026)
+- /api/payroll/proevekoersel-gem – Excel-fil downloadet til browseren (alle eller én medarbejder)
+- /api/payroll/export-csv        – "Kør løn": Danløn CSV downloadet til browseren
+- /api/payroll/pdf-timesedler    – dan PDF-timesedler pr. medarbejder, downloadet til
+                                   browseren (én PDF, eller en ZIP hvis flere)
 """
 import csv
 import io
+import zipfile
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -58,7 +58,6 @@ from database.session import get_db
 router = APIRouter(prefix="/api/payroll", tags=["payroll"])
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-OUTPUT_DIR = BASE_DIR / "output"
 
 _payroll_access = require_permission("payroll")
 _reopen_access = require_permission("reopen_period")
@@ -958,82 +957,37 @@ def _build_proevekoersel_workbook(employees, period, db):
     return wb
 
 
-@router.get("/proevekoersel")
-def proevekoersel(
-    period_start: Optional[str] = None,
-    employee_id: Optional[int] = None,
-    current_user: AppUser = Depends(_payroll_access),
-    db: Session = Depends(get_db),
-):
-    """Prøvekørsel: Excel-fil med mellemregninger – alle eller én medarbejder."""
-    period = _resolve_period(period_start, db)
-    employees = _active_employees(db, employee_id)
-    if not employees:
-        raise HTTPException(404, "Ingen medarbejdere fundet")
-
-    wb = _build_proevekoersel_workbook(employees, period, db)
-    filename = f"proevekoersel_{period.start_date.isoformat()}_{period.end_date.isoformat()}.xlsx"
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    (OUTPUT_DIR / filename).write_bytes(buf.getvalue())
-    buf.seek(0)
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
-
-
 class ProevekoerselSaveRequest(BaseModel):
     period_start: Optional[str] = None
     employee_id: Optional[int] = None
-    output_folder: str
 
 
 @router.post("/proevekoersel-gem")
 def proevekoersel_gem(body: ProevekoerselSaveRequest,
                       current_user: AppUser = Depends(_payroll_access),
                       db: Session = Depends(get_db)):
-    """Prøvekørsel gemt til valgt mappe i stedet for browser-download."""
+    """Prøvekørsel: Excel-fil downloadet til browseren."""
     period = _resolve_period(body.period_start, db)
     employees = _active_employees(db, body.employee_id)
     if not employees:
         raise HTTPException(404, "Ingen medarbejdere fundet")
 
     wb = _build_proevekoersel_workbook(employees, period, db)
-    save_dir = _safe_save_dir(body.output_folder)
-    try:
-        save_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        _logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
-        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
-
     filename = f"proevekoersel_{period.start_date.isoformat()}_{period.end_date.isoformat()}.xlsx"
-    filepath = save_dir / filename
-    try:
-        wb.save(str(filepath))
-    except PermissionError:
-        raise HTTPException(
-            400,
-            f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
-        )
-    return {"path": str(filepath), "filename": filename}
+    buf = io.BytesIO()
+    wb.save(buf)
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
-@router.get("/export-csv")
-def export_csv(period_start: Optional[str] = None,
-               current_user: AppUser = Depends(_payroll_access),
-               db: Session = Depends(get_db)):
-    """
-    Kør løn: Danløn CSV.
+def _build_danloen_csv(employees, period, db: Session) -> bytes:
+    """Bygger Danløn CSV-indhold for en periode og medarbejderliste.
     Kolonner: A=CVR, B=medarbejdernummer, C=Danløn-kode,
               D=antal timer, E=time-/tillægssats.
     """
-    period = _resolve_period(period_start, db)
-    employees = _active_employees(db)
-
     output = io.StringIO()
     writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
 
@@ -1098,20 +1052,11 @@ def export_csv(period_start: Optional[str] = None,
             row.append(fmt(qty * float(rate)) if inc_tot else "")
             writer.writerow(row)
 
-    filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
-    OUTPUT_DIR.mkdir(exist_ok=True)
-    (OUTPUT_DIR / filename).write_bytes(output.getvalue().encode("utf-8"))
-
-    return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
+    return output.getvalue().encode("utf-8")
 
 
 class ExportCsvRequest(BaseModel):
     period_start: Optional[str] = None
-    output_folder: str
 
 
 @router.post("/export-csv")
@@ -1119,7 +1064,7 @@ def export_csv_post(body: ExportCsvRequest,
                     current_user: AppUser = Depends(_payroll_access),
                     db: Session = Depends(get_db)):
     """
-    Kør løn: låser perioden og gemmer Danløn CSV til valgt mappe.
+    Kør løn: låser perioden og downloader Danløn CSV til browseren.
     """
     period = _resolve_period(body.period_start, db)
 
@@ -1148,84 +1093,8 @@ def export_csv_post(body: ExportCsvRequest,
         )
 
     employees = _active_employees(db)
-
-    output = io.StringIO()
-    writer = csv.writer(output, delimiter=";", lineterminator="\r\n")
-
-    def fmt(v: float) -> str:
-        return str(round(v * 100))
-
-    pt = _get_pay_type_data(db)
-    _code     = lambda k: pt.get(k, {}).get("code", "1")
-    _in_csv   = lambda k: pt.get(k, {}).get("in_csv", True)
-    _inc_rate = lambda k: pt.get(k, {}).get("inc_rate", True)
-    _inc_tot  = lambda k: pt.get(k, {}).get("inc_total", False)
-
-    for emp in employees:
-        calc = _calculate_employee(emp, period.start_date, period.end_date, db)
-        if (calc["activity_count"] == 0
-                and calc["afspadsering_hours"] == 0
-                and calc["sygdom_hours"] == 0
-                and calc["paragraf_56_syg_hours"] == 0
-                and calc["barn_1sygedag_u_loen_hours"] == 0
-                and calc["feriefri_hours"] == 0
-                and calc["barsel_hours"] == 0
-                and calc["skole_kursus_hours"] == 0
-                and calc.get("sh_fuldloennet_hours", 0) == 0
-                and calc.get("sh_timeloennet_hours", 0) == 0):
-            continue
-        raw_rows = [
-            ("NORMAL",         calc["normal_hours"],                                               calc["hourly_rate"]),
-            _springer_row(calc),
-            ("OT_BEFORE",      calc["ot_before_hours"],                                            calc["ot_rates"][OT_BEFORE_KEY]),
-            ("OT_13",          calc["ot_13_hours"] + calc.get("sh_kode8_hours", 0),               calc["ot_rates"][OT_13_KEY]),
-            ("OT_EXTRA",       calc["ot_extra_hours"] + calc.get("sh_kode9_hours", 0),            calc["ot_rates"][OT_EXTRA_KEY]),
-            ("SH_FULDLOENNET", calc.get("sh_fuldloennet_hours", 0),                               calc["hourly_rate"]),
-            ("SH_TIMELOENNET", calc.get("sh_timeloennet_hours", 0),                               calc["hourly_rate"]),
-            ("SALT",           calc.get("salt_hours", 0),                                         calc.get("salt_rate", 0)),
-            ("OVERNATNING",    calc.get("overnight_count", 0),                                    calc.get("overnight_rate", 0)),
-            ("AFSPADSERING",   calc["afspadsering_hours"],                                        calc["hourly_rate"]),
-            ("SYGDOM",         calc["sygdom_hours"],                                              calc["hourly_rate"]),
-            ("PARAGRAF_56",    calc["paragraf_56_syg_hours"],                                     calc.get("dagpenge_sats", 137.43)),
-            ("BARN_1SYGEDAG",  calc["barn_1sygedag_u_loen_hours"],                                calc.get("dagpenge_sats", 137.43)),
-            ("FERIEFRI",       _builtin_absence_qty(pt, "FERIEFRI", "feriefri", calc["feriefri_hours"],
-                                                      emp.id, period.start_date, period.end_date, db), calc["hourly_rate"]),
-            *([("FERIEFRI_FULDLOENNET",  calc["feriefri_hours"], calc["hourly_rate"])] if emp.fuldloennet else []),
-            *([("FERIEFRI_TIMELOENNET", calc["feriefri_hours"], calc["hourly_rate"])] if not emp.fuldloennet else []),
-            ("BARSEL",         calc["barsel_hours"],                                              calc["hourly_rate"]),
-            ("SKOLE_KURSUS",   calc["skole_kursus_hours"],                                        calc["hourly_rate"]),
-        ] + _user_pay_type_rows(emp.id, period.start_date, period.end_date, calc, db)
-        code_agg = {}
-        for key, qty, rate in raw_rows:
-            if not _in_csv(key) or qty == 0:
-                continue
-            code = _code(key)
-            if code in code_agg:
-                prev_qty, prev_rate, prev_inc_rate, prev_inc_tot = code_agg[code]
-                code_agg[code] = (prev_qty + qty, prev_rate, prev_inc_rate, prev_inc_tot)
-            else:
-                code_agg[code] = (qty, rate, _inc_rate(key), _inc_tot(key))
-        for code, (qty, rate, inc_rate, inc_tot) in code_agg.items():
-            qty_fmt = fmt(qty)
-            row = [_get_employee_cvr(emp, db), calc["employee_number"], code, qty_fmt]
-            row.append(fmt(rate) if inc_rate else "")
-            row.append(fmt(qty * float(rate)) if inc_tot else "")
-            writer.writerow(row)
-
+    csv_bytes = _build_danloen_csv(employees, period, db)
     filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
-    save_dir = _safe_save_dir(body.output_folder)
-    try:
-        save_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        import logging; logging.error(f"Kan ikke oprette mappe '{save_dir}': {exc}")
-        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
-    try:
-        (save_dir / filename).write_bytes(output.getvalue().encode("utf-8"))
-    except PermissionError:
-        raise HTTPException(
-            400,
-            f"Kunne ikke gemme filen '{filename}' – tjek om den er åben i Excel eller et andet program, og prøv igen.",
-        )
 
     period.status = PayPeriodStatus.closed
     period.closed_at = datetime.utcnow()
@@ -1234,7 +1103,11 @@ def export_csv_post(body: ExportCsvRequest,
                f"Løn kørt for periode {period.start_date} – {period.end_date}")
     db.commit()
 
-    return {"filename": filename, "path": str(save_dir / filename)}
+    return Response(
+        content=csv_bytes,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"},
+    )
 
 
 @router.post("/reopen-period")
@@ -1279,15 +1152,6 @@ class PdfRequest(BaseModel):
     from_date: date
     to_date: date
     employee_id: Optional[int] = None
-    output_folder: Optional[str] = None
-
-
-@router.get("/downloads-folder")
-def get_downloads_folder(current_user: AppUser = Depends(_payroll_access)):
-    """Returnerer brugerens Downloads-mappe som forslag til gem-placering."""
-    from pathlib import Path as _P
-    folder = _P.home() / "Downloads"
-    return {"path": str(folder)}
 
 
 @router.post("/pdf-timesedler")
@@ -1295,8 +1159,8 @@ def pdf_timesedler(body: PdfRequest,
                    current_user: AppUser = Depends(_payroll_access),
                    db: Session = Depends(get_db)):
     """
-    Dan PDF-timesedler for valgt datointerval.
-    PDF'erne gemmes i output/timesedler/ (e-mail-afsendelse tilføjes senere).
+    Dan PDF-timesedler for valgt datointerval og downloader dem til browseren
+    – én PDF direkte, eller en ZIP-fil hvis flere medarbejdere har data.
     Bruger samme layout som /api/timeseddel (routers/timeseddel_router.py _build_pdf).
     """
     from routers.timeseddel_router import _build_pdf
@@ -1305,15 +1169,6 @@ def pdf_timesedler(body: PdfRequest,
         raise HTTPException(400, "Til-dato skal være efter fra-dato")
 
     employees = _active_employees(db, body.employee_id)
-    if body.output_folder:
-        pdf_dir = _safe_save_dir(body.output_folder)
-    else:
-        pdf_dir = OUTPUT_DIR / "timesedler"
-    try:
-        pdf_dir.mkdir(parents=True, exist_ok=True)
-    except Exception as exc:
-        import logging; logging.error(f"Kan ikke oprette mappe '{pdf_dir}': {exc}")
-        raise HTTPException(400, "Mappen kunne ikke oprettes – tjek stien og rettigheder")
 
     created = []
     skipped = []
@@ -1325,15 +1180,30 @@ def pdf_timesedler(body: PdfRequest,
             continue
 
         filename = f"timeseddel_{emp.employee_number}_{body.from_date.isoformat()}_{body.to_date.isoformat()}.pdf"
-        path = pdf_dir / filename
-
         pdf_bytes = _build_pdf(calc, _get_employee_cvr(emp, db))
-        path.write_bytes(pdf_bytes)
-        created.append({"employee": calc["employee_name"], "email": calc["email"], "file": str(path)})
+        created.append((filename, pdf_bytes))
 
-    return {
-        "created": created,
-        "skipped": skipped,
-        "folder": str(pdf_dir),
-        "note": "PDF'er gemt lokalt – e-mail-afsendelse er ikke konfigureret endnu.",
-    }
+    if not created:
+        raise HTTPException(404, "Ingen medarbejdere med aktiviteter i det valgte interval")
+
+    headers = {"X-Created-Count": str(len(created)), "X-Skipped-Count": str(len(skipped))}
+
+    if len(created) == 1:
+        filename, pdf_bytes = created[0]
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={**headers, "Content-Disposition": f"attachment; filename={filename}"},
+        )
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        for filename, pdf_bytes in created:
+            zf.writestr(filename, pdf_bytes)
+
+    zip_filename = f"timesedler_{body.from_date.isoformat()}_{body.to_date.isoformat()}.zip"
+    return Response(
+        content=zip_buf.getvalue(),
+        media_type="application/zip",
+        headers={**headers, "Content-Disposition": f"attachment; filename={zip_filename}"},
+    )

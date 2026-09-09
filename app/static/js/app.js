@@ -134,6 +134,40 @@ const GET   = (p)    => api("GET",    p);
 const POST  = (p, b) => api("POST",   p, b);
 const PATCH = (p, b) => api("PATCH",  p, b);
 const DEL   = (p)    => api("DELETE", p);
+
+// downloadFile: kalder et POST-endpoint der returnerer en fil (CSV/Excel/PDF/ZIP)
+// og udløser en almindelig browser-download af svaret – i stedet for at bede
+// serveren gemme filen et sted på disken (se aftale 2026-09-09: den gamle
+// "gem i mappe"-flow gemte fejlagtigt på SERVERENS disk, ikke brugerens).
+async function downloadFile(path, body, fallbackFilename) {
+  const opts = { method: "POST", headers: { "Content-Type": "application/json" } };
+  if (body) opts.body = JSON.stringify(body);
+  const res = await fetch(path, opts);
+  if (res.status === 401) {
+    showLoginOverlay();
+    throw new Error("Ikke logget ind");
+  }
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
+    const error = new Error(msg);
+    error.status = res.status;
+    throw error;
+  }
+  const blob = await res.blob();
+  const cd = res.headers.get("Content-Disposition") || "";
+  const match = /filename="?([^";]+)"?/i.exec(cd);
+  const filename = match ? match[1] : fallbackFilename;
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return { filename, headers: res.headers };
+}
 // jq: JSON.stringify der er sikker til brug i onclick="..." HTML-attributter
 const jq = x => JSON.stringify(x).replace(/"/g, "&quot;");
 
@@ -3863,24 +3897,17 @@ async function sendTimeseddel(employeeId) {
 async function proevekoersel(employeeId = null) {
   state.proevekoerselEmployeeId = employeeId;
   document.getElementById("proeve-result").textContent = "";
-  try {
-    const res = await GET("/api/payroll/downloads-folder");
-    document.getElementById("proeve-folder").value = res.path;
-  } catch { /* lad feltet være tomt */ }
   openModal("modal-proevekoersel");
 }
 
 async function confirmProevekoersel() {
-  const folder = document.getElementById("proeve-folder").value.trim();
-  if (!folder) { toast("Angiv en mappe at gemme filen i", "error"); return; }
   setLoading(true);
   try {
-    const result = await POST("/api/payroll/proevekoersel-gem", {
+    const result = await downloadFile("/api/payroll/proevekoersel-gem", {
       period_start: state.currentPeriodStart || null,
       employee_id: state.proevekoerselEmployeeId || null,
-      output_folder: folder,
-    });
-    toast(`Prøvekørsel gemt: ${result.filename}`, "success");
+    }, "proevekoersel.xlsx");
+    toast(`Prøvekørsel downloadet: ${result.filename}`, "success");
     closeModal("modal-proevekoersel");
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
@@ -3900,25 +3927,18 @@ async function exportCsv() {
   const periodTxt = p ? `${fmt(p.start_date)} – ${fmt(p.end_date)}` : "den aktuelle periode";
   document.getElementById("csv-confirm-text").innerHTML =
     `Er du sikker på, at du vil låse lønperioden <strong>${periodTxt}</strong>?<br><br>` +
-    `Når perioden er låst, kan der ikke foretages flere ændringer i den. CSV-filen til Danløn gemmes i den valgte mappe.`;
-  try {
-    const res = await GET("/api/payroll/downloads-folder");
-    document.getElementById("csv-folder").value = res.path;
-  } catch { /* lad feltet stå tomt */ }
+    `Når perioden er låst, kan der ikke foretages flere ændringer i den. CSV-filen til Danløn downloades til din computer.`;
   document.getElementById("csv-result").textContent = "";
   openModal("modal-csv");
 }
 
 async function confirmExportCsv() {
-  const folder = document.getElementById("csv-folder").value.trim();
-  if (!folder) { toast("Angiv en mappe at gemme CSV-filen i", "error"); return; }
   setLoading(true);
   try {
-    const result = await POST("/api/payroll/export-csv", {
+    const result = await downloadFile("/api/payroll/export-csv", {
       period_start: state.currentPeriodStart || null,
-      output_folder: folder,
-    });
-    toast(`Danløn CSV gemt: ${result.filename}`, "success");
+    }, "danloen.csv");
+    toast(`Danløn CSV downloadet: ${result.filename}`, "success");
     closeModal("modal-csv");
     await loadPeriodInfo(state.currentPeriodStart);
     await loadActivities();
@@ -4116,19 +4136,13 @@ async function exportSettlementCsv() {
     return;
   }
   document.getElementById("settlement-csv-result").textContent = "";
-  try {
-    const res = await GET("/api/payroll-settlement/downloads-folder");
-    document.getElementById("settlement-csv-folder").value = res.path;
-  } catch { /* lad feltet stå tomt */ }
   openModal("modal-settlement-csv");
 }
 
 async function confirmExportSettlementCsv() {
-  const folder = document.getElementById("settlement-csv-folder").value.trim();
-  if (!folder) { toast("Angiv en mappe at gemme CSV-filen i", "error"); return; }
   setLoading(true);
   try {
-    const body = { output_folder: folder };
+    const body = {};
     const from = readDatePicker("settlement-from-dp");
     const to   = readDatePicker("settlement-to-dp");
     if (from && to) { body.date_from = from; body.date_to = to; }
@@ -4136,8 +4150,8 @@ async function confirmExportSettlementCsv() {
     const groupId = document.getElementById("settlement-filter-dispatcher-group")?.value;
     if (employeeId) body.employee_id = parseInt(employeeId);
     else if (groupId) body.dispatcher_group_id = parseInt(groupId);
-    const result = await POST("/api/payroll-settlement/export-csv", body);
-    toast(`Lønafregning eksporteret: ${result.filename}`, "success");
+    const result = await downloadFile("/api/payroll-settlement/export-csv", body, "lonafregning.csv");
+    toast(`Lønafregning downloadet: ${result.filename}`, "success");
     closeModal("modal-settlement-csv");
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
@@ -5787,11 +5801,6 @@ async function confirmReopenPeriod() {
 // ── PDF timesedler ─────────────────────────────────────────────────────────
 async function openPdfModal() {
   const p = state.periodInfo?.period;
-  // Hent Downloads-mappe fra backend som forslag
-  try {
-    const res = await GET("/api/payroll/downloads-folder");
-    document.getElementById("pdf-folder").value = res.path;
-  } catch { /* lad feltet være tomt ved fejl */ }
   if (p) {
     document.getElementById("pdf-from").value = p.start_date;
     document.getElementById("pdf-to").value = p.end_date;
@@ -5808,19 +5817,18 @@ async function openPdfModal() {
 async function generatePdfs() {
   const from = document.getElementById("pdf-from").value;
   const to = document.getElementById("pdf-to").value;
-  const folder = document.getElementById("pdf-folder").value.trim();
   if (!from || !to) { toast("Angiv fra- og til-dato", "error"); return; }
-  if (!folder) { toast("Angiv en mappe at gemme PDF'erne i", "error"); return; }
   const empId = document.getElementById("pdf-employee").value;
   setLoading(true);
   try {
-    const result = await POST("/api/payroll/pdf-timesedler", {
+    const result = await downloadFile("/api/payroll/pdf-timesedler", {
       from_date: from, to_date: to,
       employee_id: empId ? parseInt(empId) : null,
-      output_folder: folder,
-    });
-    const msg = `${result.created.length} PDF'er dannet i ${result.folder}` +
-      (result.skipped.length ? ` (${result.skipped.length} sprunget over uden aktiviteter)` : "");
+    }, "timesedler.zip");
+    const createdCount = result.headers.get("X-Created-Count") || "0";
+    const skippedCount = parseInt(result.headers.get("X-Skipped-Count") || "0", 10);
+    const msg = `${createdCount} PDF'er downloadet` +
+      (skippedCount ? ` (${skippedCount} sprunget over uden aktiviteter)` : "");
     toast(msg, "success");
     closeModal("modal-pdf");
   } catch (e) { toast(e.message, "error"); }

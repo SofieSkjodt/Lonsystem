@@ -149,7 +149,7 @@ def _dummy_user():
     return AppUser(name="Test", initials="TST", role="admin", password_hash="x")
 
 
-def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, tmp_path):
+def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee):
     from datetime import timedelta
     from database.models import MasterPayType, ActivityStatus
     from calculators.pay_period import get_or_create_period_for_date
@@ -183,12 +183,10 @@ def test_export_csv_post_splits_overnight_into_kode14_and_kode43(db, employee, t
     make_activity(db, employee, midnight_b, midnight_b, activity_type="dob_overnatning",
                   status=ActivityStatus.approved)
 
-    body = ExportCsvRequest(period_start=period.start_date.isoformat(), output_folder=str(tmp_path))
-    export_csv_post(body, current_user=_dummy_user(), db=db)
+    body = ExportCsvRequest(period_start=period.start_date.isoformat())
+    response = export_csv_post(body, current_user=_dummy_user(), db=db)
 
-    csv_files = list(tmp_path.glob("danloen_*.csv"))
-    assert len(csv_files) == 1
-    content = csv_files[0].read_text(encoding="utf-8-sig")
+    content = response.body.decode("utf-8-sig")
     lines = [l for l in content.splitlines() if l]
     codes = {l.split(";")[2] for l in lines}
     assert "14" in codes, f"Forventede kode 14 (Overnatning) i linjerne: {lines}"

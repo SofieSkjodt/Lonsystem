@@ -179,7 +179,7 @@ def test_springer_row_zero_when_disabled():
     assert _springer_row(calc) == ("SPRINGERTILLAEG", 0, 20.0)
 
 
-def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_path):
+def test_export_csv_post_includes_springer_line_when_enabled(db, employee):
     from database.models import EmployeeSpringerFlag, MasterSupplementRate, MasterPayType, ActivityStatus
     from calculators.pay_rates import DANLOEN_CODE_SPRINGERTILLAEG
     from routers.payroll_router import export_csv_post, ExportCsvRequest
@@ -200,12 +200,10 @@ def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_p
     make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
                   status=ActivityStatus.approved)
 
-    body = ExportCsvRequest(period_start="2026-01-01", output_folder=str(tmp_path))
-    export_csv_post(body, current_user=_dummy_user(), db=db)
+    body = ExportCsvRequest(period_start="2026-01-01")
+    response = export_csv_post(body, current_user=_dummy_user(), db=db)
 
-    csv_files = list(tmp_path.glob("danloen_*.csv"))
-    assert len(csv_files) == 1
-    content = csv_files[0].read_text(encoding="utf-8-sig")
+    content = response.body.decode("utf-8-sig")
     lines = [l for l in content.splitlines() if l]
     # Medarbejderen har kun én aktivitet (8 arbejdstimer, ingen overtid/salt/fravær). NORMAL og
     # SPRINGERTILLAEG deler samme placeholder Danløn-kode ("1"), så de aggregeres (jf.
@@ -218,7 +216,7 @@ def test_export_csv_post_includes_springer_line_when_enabled(db, employee, tmp_p
     assert lines[0].split(";")[4] == "15000"
 
 
-def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_path):
+def test_export_csv_post_omits_springer_line_when_disabled(db, employee):
     from database.models import MasterSupplementRate, MasterPayType, ActivityStatus
     from calculators.pay_rates import DANLOEN_CODE_SPRINGERTILLAEG
     from routers.payroll_router import export_csv_post, ExportCsvRequest
@@ -238,11 +236,10 @@ def test_export_csv_post_omits_springer_line_when_disabled(db, employee, tmp_pat
     make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 14, 0),
                   status=ActivityStatus.approved)
 
-    body = ExportCsvRequest(period_start="2026-01-01", output_folder=str(tmp_path))
-    export_csv_post(body, current_user=_dummy_user(), db=db)
+    body = ExportCsvRequest(period_start="2026-01-01")
+    response = export_csv_post(body, current_user=_dummy_user(), db=db)
 
-    csv_files = list(tmp_path.glob("danloen_*.csv"))
-    content = csv_files[0].read_text(encoding="utf-8-sig")
+    content = response.body.decode("utf-8-sig")
     lines = [l for l in content.splitlines() if l]
     assert len(lines) == 1  # kun NORMAL – ingen SPRINGERTILLAEG-linje uden flueben
 
