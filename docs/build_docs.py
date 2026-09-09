@@ -475,10 +475,9 @@ def build_teknisk():
 
     heading(doc, "Import-flow", 2, "4.2")
     body(doc, (
-        "Brugeren klikker 'Vælg filer' eller 'Vælg mappe' i browsergrænsefladen. "
-        "En tkinter-dialog (Windows-nativ) åbnes via GET /api/browse-ddd-files eller "
-        "/api/browse-ddd-folder. Den valgte sti sendes med POST /api/import-ddd-from, "
-        "som parser filerne og gemmer nye aktiviteter i databasen."
+        "Brugeren klikker 'Tjek ddd_input-mappe' i browsergrænsefladen, som kalder "
+        "POST /api/import-ddd. Denne scanner ddd_input/-mappen (inkl. alle undermapper) "
+        "på serveren, parser alle fundne .ddd-filer og gemmer nye aktiviteter i databasen."
     ))
     body(doc, (
         "_process_import_results() i import_ddd.py samler resultatet af alle filer: antal "

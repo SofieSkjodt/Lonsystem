@@ -30,7 +30,7 @@ app/
     timeseddel_router.py       # /api/timesedler – timeseddel-eksport pr. medarbejder
     stamdata.py                # /api/stamdata – CVR-numre, løntypekoder, overtidssatser, helligdage (admin)
     vehicles.py                # /api/vehicles – alle roller
-    import_ddd.py              # /api/import-ddd-from, browse-ddd-* – admin+lonbogholder
+    import_ddd.py              # /api/import-ddd (scanner ddd_input/) – admin+lonbogholder
     auto_approval_router.py    # POST /api/auto-approval/rebuild-baselines, GET /baseline-summary (manage_baselines perm)
     employee_supplements.py    # /api/employee-supplements – kr/time-tillæg pr. medarbejder (manage_employee_supplements perm)
   calculators/

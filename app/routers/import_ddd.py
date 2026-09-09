@@ -1,6 +1,6 @@
 from datetime import datetime as _dt_now
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -16,68 +16,14 @@ from database.models import (
     DeclinedImport,
 )
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date
-from parsers.ddd_parser import scan_ddd_folder, parse_ddd_file, ParsedActivity
+from parsers.ddd_parser import scan_ddd_folder, ParsedActivity
 from routers.activities import _recalculate_pcts
-from utils.safe_paths import is_under_allowed_root
 
 router = APIRouter(prefix="/api", tags=["import"])
 
 DDD_INPUT_DIR = Path(__file__).resolve().parent.parent / "ddd_input"
 
 _ddd_access = require_permission("import_ddd")
-
-
-class ImportFromRequest(BaseModel):
-    source_folder: Optional[str] = None
-    source_files: Optional[List[str]] = None
-    allow_closed_period: bool = False
-
-
-@router.post("/import-ddd-from")
-def import_ddd_from(body: ImportFromRequest,
-                    current_user: AppUser = Depends(_ddd_access),
-                    db: Session = Depends(get_db)):
-    """
-    Importer .ddd-filer fra en valgt mappe eller en liste af enkeltfiler.
-    Springer allerede importerede aktiviteter over.
-    """
-    errors = []
-
-    if body.source_folder:
-        folder = Path(body.source_folder).resolve()
-        if not is_under_allowed_root(folder):
-            raise HTTPException(400, "Ugyldig mappe – skal ligge under din hjemmemappe")
-        if not folder.exists():
-            raise HTTPException(400, "Mappen findes ikke")
-        results, scan_errors = scan_ddd_folder(folder)
-        errors.extend(scan_errors)
-    elif body.source_files:
-        MAX_DDD_BYTES = 10 * 1024 * 1024  # 10 MB – reelle .ddd-filer er ~100-300 KB
-        results = []
-        for fp in body.source_files:
-            p = Path(fp).resolve()
-            if not is_under_allowed_root(p):
-                errors.append(f"{p.name}: uden for tilladt mappe (skal ligge under din hjemmemappe)")
-                continue
-            if not p.exists():
-                errors.append(f"{p.name}: fil ikke fundet")
-                continue
-            if p.suffix.lower() != ".ddd":
-                errors.append(f"{p.name}: kun .ddd-filer er tilladt")
-                continue
-            if p.stat().st_size > MAX_DDD_BYTES:
-                errors.append(f"{p.name}: filen er for stor (max 10 MB)")
-                continue
-            try:
-                acts = parse_ddd_file(p)
-                results.append((p, acts))
-            except Exception as e:
-                import logging; logging.error(f"Fejl ved parsing af {p}: {e}")
-                errors.append(f"{p.name}: fejl ved import ({e})")
-    else:
-        raise HTTPException(400, "Angiv enten source_folder eller source_files")
-
-    return _process_import_results(results, errors, current_user, db, body.allow_closed_period)
 
 
 @router.post("/import-ddd")

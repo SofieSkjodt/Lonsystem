@@ -3122,7 +3122,7 @@ async function deleteVehicle() {
 
 // ── Import ─────────────────────────────────────────────────────────────────
 function _setImportBtnsDisabled(on) {
-  ["btn-import-files", "btn-import-folder", "btn-import-ddd-input"].forEach(id => {
+  ["btn-import-ddd-input"].forEach(id => {
     const b = document.getElementById(id);
     if (b) b.disabled = on;
   });
@@ -3248,44 +3248,6 @@ function _showImportResult(result) {
     body.innerHTML = rows.join("");
   }
   openModal("modal-import-result");
-}
-
-async function importDddPickFiles() {
-  const last = localStorage.getItem("ddd_import_files") || "";
-  const input = prompt("Angiv sti(er) til .ddd-fil(er) på serveren, adskilt af komma:", last);
-  if (!input) return;
-  const paths = input.split(",").map(p => p.trim()).filter(Boolean);
-  if (!paths.length) return;
-  localStorage.setItem("ddd_import_files", input);
-
-  _setImportBtnsDisabled(true);
-  document.getElementById("import-result").textContent = `Importerer ${paths.length} fil(er)...`;
-  try {
-    const result = await POST("/api/import-ddd-from", { source_files: paths });
-    await _handleImportResult(result, () =>
-      POST("/api/import-ddd-from", { source_files: paths, allow_closed_period: true }));
-  } catch (e) {
-    toast(e.message, "error");
-    document.getElementById("import-result").textContent = "Fejl: " + e.message;
-  } finally { _setImportBtnsDisabled(false); }
-}
-
-async function importDddPickFolder() {
-  const last = localStorage.getItem("ddd_import_folder") || "";
-  const folder = prompt("Angiv sti til mappen med .ddd-filer på serveren:", last);
-  if (!folder) return;
-  localStorage.setItem("ddd_import_folder", folder);
-
-  _setImportBtnsDisabled(true);
-  document.getElementById("import-result").textContent = `Importerer fra ${folder}...`;
-  try {
-    const result = await POST("/api/import-ddd-from", { source_folder: folder });
-    await _handleImportResult(result, () =>
-      POST("/api/import-ddd-from", { source_folder: folder, allow_closed_period: true }));
-  } catch (e) {
-    toast(e.message, "error");
-    document.getElementById("import-result").textContent = "Fejl: " + e.message;
-  } finally { _setImportBtnsDisabled(false); }
 }
 
 async function importDddInputFolder() {
