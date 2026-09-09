@@ -94,6 +94,9 @@ class Employee(Base):
     baselines = relationship("EmployeeBaseline", back_populates="employee")
     dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), nullable=True)
     dispatcher_group = relationship("DispatcherGroup", back_populates="employees")
+    fast_bil = Column(Boolean, default=False, nullable=False)
+    fast_bil_vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
+    fast_bil_vehicle = relationship("Vehicle", foreign_keys=[fast_bil_vehicle_id], backref="fast_bil_employees")
 
     @property
     def name(self) -> str:
@@ -217,7 +220,10 @@ class DispatcherGroup(Base):
     vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=True)
 
     employees = relationship("Employee", back_populates="dispatcher_group")
-    vehicle = relationship("Vehicle")
+    # foreign_keys eksplicit angivet: Vehicle.dispatcher_group_id (tilføjet
+    # senere, mange vogne -> én gruppe) forbinder de samme to tabeller med en
+    # anden FK-kolonne end denne, hvilket ellers giver AmbiguousForeignKeysError.
+    vehicle = relationship("Vehicle", foreign_keys=[vehicle_id])
 
     @property
     def vehicle_number(self) -> str | None:
@@ -241,6 +247,65 @@ class VagtplanComment(Base):
     )
 
 
+class DailyPlanAssignment(Base):
+    __tablename__ = "daily_plan_assignments"
+
+    id = Column(Integer, primary_key=True)
+    date = Column(Date, nullable=False)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    task = Column(String, nullable=True)
+    informed = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    vehicle = relationship("Vehicle")
+    employee = relationship("Employee")
+
+    __table_args__ = (
+        UniqueConstraint("date", "vehicle_id", name="uq_daily_plan_assignments_date_vehicle"),
+    )
+
+
+class DailyPlanExtraAssignment(Base):
+    """De 10 faste 'EKSTRA'-rækker i Dagsplanen (hjælp på pladsen/lærlinge) -
+    ikke knyttet til en rigtig Vehicle, kun et fast rækkenummer (slot 1-10)."""
+    __tablename__ = "daily_plan_extra_assignments"
+
+    id = Column(Integer, primary_key=True)
+    date = Column(Date, nullable=False)
+    slot = Column(Integer, nullable=False)  # 1-10
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True)
+    task = Column(String, nullable=True)
+    informed = Column(Boolean, default=False, nullable=False)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+    employee = relationship("Employee")
+
+    __table_args__ = (
+        UniqueConstraint("date", "slot", name="uq_daily_plan_extra_assignments_date_slot"),
+    )
+
+
+class VehicleAbsence(Base):
+    __tablename__ = "vehicle_absences"
+
+    id = Column(Integer, primary_key=True)
+    vehicle_id = Column(Integer, ForeignKey("vehicles.id"), nullable=False)
+    date_from = Column(Date, nullable=False)
+    date_to = Column(Date, nullable=True)  # null = étdags-fravær (samme dag som date_from)
+    comment = Column(Text, nullable=False)
+    created_by = Column(String, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+
+    vehicle = relationship("Vehicle")
+
+    @property
+    def vehicle_number(self) -> str | None:
+        return self.vehicle.vehicle_number if self.vehicle else None
+
+
 class PayrollRun(Base):
     __tablename__ = "payroll_runs"
 
@@ -261,7 +326,30 @@ class Vehicle(Base):
     id = Column(Integer, primary_key=True)
     registration_number = Column(String, unique=True, nullable=False)  # Registreringsnummer (nummerplade)
     vehicle_number = Column(String, nullable=False)                     # Vognnummer
+    description = Column(Text, nullable=True)                           # "Beskrivelse" (Dagsplan kol. 2)
+    dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+    # Mange vogne -> én gruppe. Adskilt fra DispatcherGroup.vehicle_id (én
+    # gruppes "standardvogn", brugt til vognnummer-autoudfyldning ved
+    # fraværstyper) - de to relationer løser hver sin opgave og skal derfor
+    # begge have deres foreign_keys angivet eksplicit for at undgå
+    # AmbiguousForeignKeysError (to FK-kolonner forbinder de samme to tabeller).
+    dispatcher_group = relationship("DispatcherGroup", foreign_keys=[dispatcher_group_id])
+
+    @property
+    def dispatcher_group_name(self) -> str | None:
+        return self.dispatcher_group.name if self.dispatcher_group else None
+
+    @property
+    def fast_bil_employee_name(self) -> str | None:
+        """Navnet på den/de medarbejder(e) der har denne vogn som 'Fast bil'
+        (jf. Employee.fast_bil_vehicle's backref). Normalt højst én, men
+        intet forhindrer flere - vises da kommasepareret i stedet for at
+        skjule en datainkonsistens."""
+        if not self.fast_bil_employees:
+            return None
+        return ", ".join(e.name for e in self.fast_bil_employees)
 
 
 class Role(Base):

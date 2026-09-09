@@ -54,6 +54,8 @@ class EmployeeCreate(BaseModel):
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
     afloeser: bool = False
+    fast_bil: bool = False
+    fast_bil_vehicle_id: Optional[int] = None
 
 
 class EmployeeUpdate(BaseModel):
@@ -80,6 +82,8 @@ class EmployeeUpdate(BaseModel):
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
     afloeser: Optional[bool] = None
+    fast_bil: Optional[bool] = None
+    fast_bil_vehicle_id: Optional[int] = None
 
 
 class EmployeeResponse(BaseModel):
@@ -112,6 +116,9 @@ class EmployeeResponse(BaseModel):
     paragraf_56_start_date: Optional[date] = None
     paragraf_56_end_date: Optional[date] = None
     afloeser: bool
+    fast_bil: bool
+    fast_bil_vehicle_id: Optional[int] = None
+    fast_bil_vehicle_number: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -291,17 +298,97 @@ class Paragraf56AlertDismiss(BaseModel):
 class VehicleCreate(BaseModel):
     registration_number: str
     vehicle_number: str
+    description: Optional[str] = None
+    dispatcher_group_id: Optional[int] = None
 
 
 class VehicleUpdate(BaseModel):
     registration_number: Optional[str] = None
     vehicle_number: Optional[str] = None
+    description: Optional[str] = None
+    dispatcher_group_id: Optional[int] = None
 
 
 class VehicleResponse(BaseModel):
     id: int
     registration_number: str
     vehicle_number: str
+    description: Optional[str] = None
+    dispatcher_group_id: Optional[int] = None
+    dispatcher_group_name: Optional[str] = None
+    fast_bil_employee_name: Optional[str] = None
+
+    model_config = {"from_attributes": True}
+
+
+class DailyPlanAssignmentUpsert(BaseModel):
+    date: date
+    vehicle_id: int
+    employee_id: Optional[int] = None
+    task: Optional[str] = None
+    informed: bool = False
+    force: bool = False  # true = gennemfør selvom medarbejderen allerede er tildelt en anden vogn/EKSTRA-plads den dag
+
+
+class DailyPlanExtraAssignmentUpsert(BaseModel):
+    date: date
+    slot: Annotated[int, Field(ge=1, le=10)]
+    employee_id: Optional[int] = None
+    task: Optional[str] = None
+    informed: bool = False
+    force: bool = False
+
+
+class DagsplanVehicleRow(BaseModel):
+    vehicle_id: int
+    vehicle_number: str
+    description: Optional[str] = None
+    dispatcher_group_id: Optional[int] = None
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    task: Optional[str] = None
+    informed: bool = False
+    absent: bool = False
+    mismatch_vehicle_number: Optional[str] = None
+
+
+class DagsplanExtraRow(BaseModel):
+    slot: int
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    task: Optional[str] = None
+    informed: bool = False
+
+
+class DagsplanEmployeeRow(BaseModel):
+    employee_id: int
+    employee_name: str
+    status: str  # "assigned" | "absent" | "none" | "comment_only"
+    absence_text: Optional[str] = None
+
+
+class DagsplanResponse(BaseModel):
+    date: date
+    vehicles: list[DagsplanVehicleRow]
+    employees: list[DagsplanEmployeeRow]
+    extra_rows: list[DagsplanExtraRow]
+
+
+class VehicleAbsenceCreate(BaseModel):
+    vehicle_id: int
+    date_from: date
+    date_to: Optional[date] = None
+    comment: str
+
+
+class VehicleAbsenceResponse(BaseModel):
+    id: int
+    vehicle_id: int
+    vehicle_number: str
+    date_from: date
+    date_to: Optional[date] = None
+    comment: str
+    created_by: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

@@ -12,6 +12,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from auth import get_current_user, log_action, require_permission, user_has_permission
 from calculators.baseline_updater import update_baseline_from_activity, is_auto_approval_enabled
+from calculators.dagsplan_helpers import effective_vehicle_for_employee
 from calculators.pay_period import get_billing_period, get_or_create_period_for_date, is_even_week
 from database.models import Activity, ActivitySource, ActivityStatus, AppUser, Employee, EmployeeSpringerFlag, PayPeriod, PayPeriodStatus
 from database.schemas import (
@@ -486,6 +487,12 @@ def create_manual_activity(body: ActivityCreate,
         # Husk seneste terminsdato på medarbejderen, så den foreslås ved næste barsel-oprettelse
         emp.terminsdato = body.terminsdato
 
+    vehicle_number = body.vehicle_number
+    if activity_type == "normal" and not vehicle_number:
+        vehicle = effective_vehicle_for_employee(db, body.employee_id, body.start_time.date())
+        if vehicle:
+            vehicle_number = vehicle.vehicle_number
+
     period = get_billing_period(body.start_time.date(), db)
     is_absence = activity_type != "normal"
     can_auto_approve = user_has_permission(db, current_user, "auto_approve_manual_activities")
@@ -500,7 +507,7 @@ def create_manual_activity(body: ActivityCreate,
         loading_minutes=body.loading_minutes,
         unloading_minutes=body.unloading_minutes,
         comment=body.comment,
-        vehicle_number=body.vehicle_number,
+        vehicle_number=vehicle_number,
         km_start=body.km_start,
         km_end=body.km_end,
         salt_supplement=body.salt_supplement,

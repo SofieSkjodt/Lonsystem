@@ -11,7 +11,7 @@ from calculators.rates_loader import (
     seniority_variant_exists_from_db,
 )
 from database.session import get_db
-from database.models import AppUser, DispatcherGroup, Employee, MasterAgreementKind, Paragraf56AlertDismissal
+from database.models import AppUser, DispatcherGroup, Employee, MasterAgreementKind, Paragraf56AlertDismissal, Vehicle
 from database.schemas import (
     AnciennitetsAlert,
     DispatcherGroupResponse,
@@ -107,6 +107,9 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         paragraf_56_start_date=emp.paragraf_56_start_date,
         paragraf_56_end_date=emp.paragraf_56_end_date,
         afloeser=emp.afloeser,
+        fast_bil=emp.fast_bil,
+        fast_bil_vehicle_id=emp.fast_bil_vehicle_id,
+        fast_bil_vehicle_number=emp.fast_bil_vehicle.vehicle_number if emp.fast_bil_vehicle else None,
     )
 
 
@@ -167,6 +170,14 @@ def _resolve_dispatcher_group(db: Session, group_id: Optional[int]) -> Optional[
     return group
 
 
+def _resolve_fast_bil_vehicle_id(db: Session, vehicle_id: Optional[int]) -> Optional[int]:
+    if vehicle_id is None:
+        return None
+    if not db.query(Vehicle).filter(Vehicle.id == vehicle_id).first():
+        raise HTTPException(400, f"Ukendt vogn-id: {vehicle_id}")
+    return vehicle_id
+
+
 @router.post("", response_model=EmployeeResponse, status_code=201)
 def create_employee(body: EmployeeCreate,
                     current_user: AppUser = Depends(require_permission("manage_employees")),
@@ -187,8 +198,9 @@ def create_employee(body: EmployeeCreate,
         body.paragraf_56, body.paragraf_56_start_date, body.paragraf_56_end_date
     )
 
-    data = body.model_dump(exclude={"dispatcher_group_id"})
+    data = body.model_dump(exclude={"dispatcher_group_id", "fast_bil_vehicle_id"})
     data["work_schedule"] = body.work_schedule.model_dump()
+    data["fast_bil_vehicle_id"] = _resolve_fast_bil_vehicle_id(db, body.fast_bil_vehicle_id)
     emp = Employee(**data)
     emp.dispatcher_group = _resolve_dispatcher_group(db, body.dispatcher_group_id)
     db.add(emp)
@@ -327,13 +339,15 @@ def update_employee(employee_id: int, body: EmployeeUpdate,
         # felt er angivet samtidig – nulstil det gemte felt til "ikke relevant".
         body.agreement_type = ""
     old_agreement_type = emp.agreement_type
-    _paragraf56_excludes = {"dispatcher_group_id", "paragraf_56", "paragraf_56_start_date", "paragraf_56_end_date"}
+    _paragraf56_excludes = {"dispatcher_group_id", "fast_bil_vehicle_id", "paragraf_56", "paragraf_56_start_date", "paragraf_56_end_date"}
     for field_name, value in body.model_dump(exclude_none=True, exclude=_paragraf56_excludes).items():
         if field_name == "work_schedule":
             value = body.work_schedule.model_dump()
         setattr(emp, field_name, value)
     if "dispatcher_group_id" in body.model_fields_set:
         emp.dispatcher_group = _resolve_dispatcher_group(db, body.dispatcher_group_id)
+    if "fast_bil_vehicle_id" in body.model_fields_set:
+        emp.fast_bil_vehicle_id = _resolve_fast_bil_vehicle_id(db, body.fast_bil_vehicle_id)
     if "paragraf_56" in body.model_fields_set:
         start, end = _validate_paragraf_56(
             bool(body.paragraf_56), body.paragraf_56_start_date, body.paragraf_56_end_date

@@ -3,10 +3,18 @@ from sqlalchemy.orm import Session
 
 from auth import get_current_user, require_permission
 from database.session import get_db
-from database.models import Activity, AppUser, Vehicle
+from database.models import Activity, AppUser, DispatcherGroup, Vehicle
 from database.schemas import VehicleCreate, VehicleUpdate, VehicleResponse
 
 router = APIRouter(prefix="/api/vehicles", tags=["vehicles"])
+
+
+def _resolve_dispatcher_group_id(db: Session, group_id):
+    if group_id is None:
+        return None
+    if not db.query(DispatcherGroup).filter(DispatcherGroup.id == group_id).first():
+        raise HTTPException(400, f"Ukendt disponentgruppe-id: {group_id}")
+    return group_id
 
 
 @router.get("", response_model=list[VehicleResponse])
@@ -22,7 +30,12 @@ def create_vehicle(body: VehicleCreate,
     reg = body.registration_number.strip()
     if db.query(Vehicle).filter(Vehicle.registration_number == reg).first():
         raise HTTPException(400, "Registreringsnummer eksisterer allerede")
-    v = Vehicle(registration_number=reg, vehicle_number=body.vehicle_number.strip())
+    v = Vehicle(
+        registration_number=reg,
+        vehicle_number=body.vehicle_number.strip(),
+        description=body.description,
+        dispatcher_group_id=_resolve_dispatcher_group_id(db, body.dispatcher_group_id),
+    )
     db.add(v)
     db.commit()
     db.refresh(v)
@@ -47,6 +60,10 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdate,
         v.registration_number = reg
     if body.vehicle_number is not None:
         v.vehicle_number = body.vehicle_number.strip()
+    if body.description is not None:
+        v.description = body.description
+    if "dispatcher_group_id" in body.model_fields_set:
+        v.dispatcher_group_id = _resolve_dispatcher_group_id(db, body.dispatcher_group_id)
     db.commit()
     db.refresh(v)
     return v

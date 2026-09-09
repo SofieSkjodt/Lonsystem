@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>PS Løn – Poul Schou A/S</title>
-  <link rel="stylesheet" href="/static/css/style.css?v=14">
+  <link rel="stylesheet" href="/static/css/style.css?v=19">
   <script src="/static/js/msal-browser.min.js"></script>
   <script>
     const ENTRA_TENANT_ID = "{{ entra_tenant_id }}";
@@ -98,6 +98,9 @@
       </div>
       <div class="sidebar-item" data-view="vagtplan" data-perm-require="vagtplan_view">
         <span class="icon">🗓️</span> Vagtplan
+      </div>
+      <div class="sidebar-item" data-view="dagsplan" data-perm-require="dagsplan_view">
+        <span class="icon">📋</span> Dagsplan
       </div>
     </div>
     <div class="sidebar-section">
@@ -258,6 +261,71 @@
             <tr><td style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- ══════════════ DAGSPLAN VIEW ══════════════ -->
+    <div class="view hidden" data-view="dagsplan">
+      <div class="period-bar">
+        <button id="btn-prev-dagsplan" class="period-nav-btn" title="Forrige dag" onclick="navigateDagsplan(-1)">&#8249;</button>
+        <h2 id="dagsplan-title" style="font-size:16px;font-weight:600;margin:0 8px;white-space:nowrap">Dagsplan – d. …</h2>
+        <div id="dagsplan-date-picker" style="width:150px"></div>
+        <button id="btn-dagsplan-today" class="btn btn-secondary" style="margin:0 8px" onclick="jumpToDagsplanToday()">I dag</button>
+        <button id="btn-next-dagsplan" class="period-nav-btn" title="Næste dag" onclick="navigateDagsplan(1)">&#8250;</button>
+      </div>
+
+      <div style="display:flex;gap:4px;margin-bottom:16px;border-bottom:2px solid var(--border)">
+        <button id="ds-tab-plan" onclick="switchDagsplanTab('plan')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid var(--primary);margin-bottom:-2px;background:transparent;font-size:13px;font-weight:700;color:var(--primary);cursor:pointer">
+          Dagsplan
+        </button>
+        <button id="ds-tab-absence" onclick="switchDagsplanTab('absence')"
+                style="padding:7px 18px;border:none;border-bottom:2px solid transparent;margin-bottom:-2px;background:transparent;font-size:13px;font-weight:600;color:var(--text-light);cursor:pointer">
+          Materiel fravær
+        </button>
+      </div>
+
+      <div id="ds-pane-plan">
+        <div class="toolbar">
+          <select id="dagsplan-filter-dispatcher-group" onchange="_refreshDagsplanData()" style="width:180px">
+            <option value="">Alle afdelinger</option>
+          </select>
+          <select id="dagsplan-filter-employee" onchange="_refreshDagsplanData()" style="width:200px">
+            <option value="">Alle medarbejdere</option>
+          </select>
+        </div>
+        <div style="display:flex;gap:16px;align-items:flex-start;position:relative">
+          <div class="table-wrapper" style="flex:1">
+            <table class="grid-table">
+              <thead>
+                <tr><th>Vognnummer</th><th>Beskrivelse</th><th>Chauffør</th><th>Opgave</th><th>Informeret</th></tr>
+              </thead>
+              <tbody id="dagsplan-main-body">
+                <tr><td colspan="5" style="padding:40px;text-align:center"><div class="spinner" style="margin:auto"></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <div class="table-wrapper" style="width:320px;flex-shrink:0">
+            <table class="grid-table">
+              <thead><tr><th>Medarbejder</th><th>Fravær</th></tr></thead>
+              <tbody id="dagsplan-employees-body"></tbody>
+            </table>
+          </div>
+          <div id="dagsplan-chauffeur-dropdown" style="display:none;position:fixed;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);max-height:220px;overflow-y:auto"></div>
+        </div>
+      </div>
+
+      <div id="ds-pane-absence" style="display:none">
+        <div class="toolbar">
+          <div class="spacer"></div>
+          <button class="btn btn-primary" data-perm-require="dagsplan_edit" onclick="openReportVehicleAbsenceModal()">+ Meld materielt fravær</button>
+        </div>
+        <div class="table-wrapper">
+          <table class="grid-table">
+            <thead><tr><th>Vognnummer</th><th>Periode</th><th>Kommentar</th><th></th></tr></thead>
+            <tbody id="dagsplan-absence-body"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -1480,6 +1548,20 @@
             <input type="checkbox" id="emp-afloeser"> Afløser
           </label>
         </div>
+        <div class="form-group">
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <input type="checkbox" id="emp-fast-bil" onchange="onFastBilChange()"> Fast bil
+          </label>
+        </div>
+      </div>
+
+      <div class="form-row" id="emp-fast-bil-vehicle-row" style="display:none">
+        <div class="form-group" style="position:relative;flex:1">
+          <label>Vognnummer</label>
+          <input type="text" id="emp-fast-bil-vehicle-search" placeholder="Søg vognnr. eller reg.nr…" autocomplete="off">
+          <input type="hidden" id="emp-fast-bil-vehicle-id">
+          <div id="emp-fast-bil-vehicle-dropdown" style="display:none;position:absolute;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);max-height:220px;overflow-y:auto;width:100%"></div>
+        </div>
       </div>
 
       <div class="form-row" id="emp-paragraf56-dates" style="display:none">
@@ -1629,11 +1711,59 @@
         <label>Vognnummer <span style="color:var(--danger)">*</span></label>
         <input type="text" id="vehicle-num" placeholder="Fx 52">
       </div>
+      <div class="form-group">
+        <label>Beskrivelse</label>
+        <input type="text" id="vehicle-description" placeholder="Fx Kranvogn">
+      </div>
+      <div class="form-group">
+        <label>Disponentgruppe</label>
+        <select id="vehicle-dispatcher-group"><option value="">— Ingen —</option></select>
+      </div>
+      <div class="form-group" id="vehicle-fast-bil-group" style="display:none">
+        <label>Fast bil (medarbejder)</label>
+        <input type="text" id="vehicle-fast-bil-employee" disabled style="background:var(--bg);color:var(--text-light)">
+      </div>
     </div>
     <div class="modal-footer">
       <button class="btn btn-secondary" onclick="closeModal('modal-vehicle')">Annuller</button>
       <button class="btn btn-danger hidden" id="vehicle-delete-btn" onclick="deleteVehicle()">Slet</button>
       <button class="btn btn-primary" onclick="saveVehicle()">Gem</button>
+    </div>
+  </div>
+</div>
+
+<!-- Meld materielt fravær (Dagsplan) -->
+<div id="modal-vehicle-absence" class="modal-overlay">
+  <div class="modal" style="width:440px">
+    <div class="modal-header">
+      <h2>Meld materielt fravær</h2>
+      <button class="modal-close" onclick="closeModal('modal-vehicle-absence')">&#215;</button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group" style="position:relative">
+        <label>Vogn <span style="color:var(--danger)">*</span></label>
+        <input type="text" id="va-vehicle-search" placeholder="Søg vognnr. eller reg.nr…" autocomplete="off">
+        <input type="hidden" id="va-vehicle-id">
+        <div id="va-vehicle-dropdown" style="display:none;position:absolute;z-index:50;background:var(--surface);border:1px solid var(--border);border-radius:6px;box-shadow:var(--shadow);max-height:220px;overflow-y:auto;width:100%"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label>Fra dato <span style="color:var(--danger)">*</span></label>
+          <div id="va-date-from"></div>
+        </div>
+        <div class="form-group">
+          <label>Til dato</label>
+          <div id="va-date-to"></div>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Kommentar <span style="color:var(--danger)">*</span></label>
+        <textarea id="va-comment" rows="3"></textarea>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-secondary" onclick="closeModal('modal-vehicle-absence')">Annuller</button>
+      <button class="btn btn-primary" onclick="confirmVehicleAbsence()">Gem</button>
     </div>
   </div>
 </div>

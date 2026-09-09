@@ -234,6 +234,20 @@ def _migrate():
                 "BOOLEAN NOT NULL DEFAULT 1"
             )
             conn.commit()
+        veh_cols = {row[1] for row in conn.execute("PRAGMA table_info(vehicles)")}
+        if "description" not in veh_cols:
+            conn.execute("ALTER TABLE vehicles ADD COLUMN description TEXT")
+            conn.commit()
+        if "dispatcher_group_id" not in veh_cols:
+            conn.execute("ALTER TABLE vehicles ADD COLUMN dispatcher_group_id INTEGER")
+            conn.commit()
+        emp_cols3 = {row[1] for row in conn.execute("PRAGMA table_info(employees)")}
+        if "fast_bil" not in emp_cols3:
+            conn.execute("ALTER TABLE employees ADD COLUMN fast_bil BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
+        if "fast_bil_vehicle_id" not in emp_cols3:
+            conn.execute("ALTER TABLE employees ADD COLUMN fast_bil_vehicle_id INTEGER")
+            conn.commit()
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_supplements_one_open_row "
             "ON employee_supplements(employee_id) WHERE end_date = '9999-12-31'"

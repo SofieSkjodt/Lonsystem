@@ -35,6 +35,11 @@ const state = {
     comments: [],
     groupFilterIds: null,  // null = alle grupper; annet: array of selected dispatcher_group ids
   },
+  dagsplan: {
+    date: null,
+    data: null,
+    tab: "plan",
+  },
 };
 
 const PERMISSION_LABELS = {
@@ -62,6 +67,8 @@ const PERMISSION_LABELS = {
   vagtplan_edit_all:   "Redigér alle linjer i vagtplan",
   payroll_settlement_view:   "Lønafregning (se)",
   payroll_settlement_export: "Lønafregning (eksport)",
+  dagsplan_view:       "Se dagsplan",
+  dagsplan_edit:       "Redigere dagsplan",
 };
 
 const PERMISSION_DESCRIPTIONS = {
@@ -89,6 +96,8 @@ const PERMISSION_DESCRIPTIONS = {
   vagtplan_edit_all:   "Kan redigere alle medarbejderes linjer i vagtplanen.",
   payroll_settlement_view:   "Kan se lønafregningsoversigten.",
   payroll_settlement_export: "Kan eksportere lønafregningen.",
+  dagsplan_view:       "Kan se Dagsplan-siden (vogn-/chauffør-fordeling og materielt fravær), read-only.",
+  dagsplan_edit:       "Kan redigere Dagsplan-tildelinger, afkrydse \"informeret\", og melde/fjerne materielt fravær på vogne.",
 };
 
 let manualPauses = [];
@@ -114,7 +123,9 @@ async function api(method, path, body = null) {
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     const msg = typeof err.detail === "string" ? err.detail : JSON.stringify(err.detail);
-    throw new Error(msg);
+    const error = new Error(msg);
+    error.status = res.status;
+    throw error;
   }
   if (res.status === 204) return null;
   return res.json();
@@ -165,6 +176,7 @@ function setView(view) {
   if (view === "users-admin")       loadUsersAdminView();
   if (view === "stamdata")          loadStamdata();
   if (view === "vagtplan")          loadVagtplan();
+  if (view === "dagsplan")          loadDagsplan();
 }
 
 const DAYS_PER_VAGTPLAN_VIEW = 28;
@@ -390,6 +402,346 @@ function renderVagtplanTable() {
       openManualActivityModal(parseInt(td.dataset.empId), td.dataset.date, { vagtplan: true });
     });
   });
+}
+
+// ── Dagsplan ─────────────────────────────────────────────────────────────
+const _canEditDagsplan = () => state.currentUser?.permissions?.includes("dagsplan_edit");
+
+function switchDagsplanTab(tab) {
+  state.dagsplan.tab = tab;
+  document.getElementById("ds-pane-plan").style.display = tab === "plan" ? "" : "none";
+  document.getElementById("ds-pane-absence").style.display = tab === "absence" ? "" : "none";
+  const planBtn = document.getElementById("ds-tab-plan");
+  const absBtn = document.getElementById("ds-tab-absence");
+  planBtn.style.borderBottomColor = tab === "plan" ? "var(--primary)" : "transparent";
+  planBtn.style.color = tab === "plan" ? "var(--primary)" : "var(--text-light)";
+  absBtn.style.borderBottomColor = tab === "absence" ? "var(--primary)" : "transparent";
+  absBtn.style.color = tab === "absence" ? "var(--primary)" : "var(--text-light)";
+  if (tab === "absence") loadDagsplanAbsences();
+}
+
+function fillDagsplanFilters() {
+  const groupSel = document.getElementById("dagsplan-filter-dispatcher-group");
+  if (groupSel) {
+    const current = groupSel.value;
+    groupSel.innerHTML = `<option value="">Alle afdelinger</option>` + state.dispatcherGroups
+      .map(g => `<option value="${g.id}">${h(g.name)}</option>`).join("");
+    groupSel.value = current;
+  }
+  const empSel = document.getElementById("dagsplan-filter-employee");
+  if (empSel) {
+    const current = empSel.value;
+    empSel.innerHTML = `<option value="">Alle medarbejdere</option>` + state.employees
+      .filter(e => e.active).sort((a, b) => a.name.localeCompare(b.name, "da"))
+      .map(e => `<option value="${e.id}">${h(e.name)}</option>`).join("");
+    empSel.value = current;
+  }
+}
+
+async function loadDagsplan() {
+  if (!state.dagsplan.date) state.dagsplan.date = _isoOfDate(new Date());
+  if (!state.vehicles.length) { try { state.vehicles = await GET("/api/vehicles"); } catch (_) {} }
+  if (!state.dispatcherGroups.length) { try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); } catch (_) {} }
+  fillDagsplanFilters();
+  await _refreshDagsplanData();
+  if (state.dagsplan.tab === "absence") await loadDagsplanAbsences();
+}
+
+async function _refreshDagsplanData() {
+  setDatePicker("dagsplan-date-picker", state.dagsplan.date);
+  document.getElementById("dagsplan-title").textContent =
+    `Dagsplan – d. ${formatDate(state.dagsplan.date + "T00:00:00")}`;
+  setLoading(true);
+  try {
+    const groupId = document.getElementById("dagsplan-filter-dispatcher-group")?.value || "";
+    const empId = document.getElementById("dagsplan-filter-employee")?.value || "";
+    const qs = new URLSearchParams({ date: state.dagsplan.date });
+    if (groupId) qs.set("dispatcher_group_id", groupId);
+    if (empId) qs.set("employee_id", empId);
+    state.dagsplan.data = await GET(`/api/dagsplan?${qs.toString()}`);
+    renderDagsplanMain();
+    renderDagsplanEmployees();
+  } catch (e) { toast(e.message, "error"); }
+  finally { setLoading(false); }
+}
+
+function navigateDagsplan(deltaDays) {
+  const d = new Date(state.dagsplan.date + "T00:00:00");
+  d.setDate(d.getDate() + deltaDays);
+  state.dagsplan.date = _isoOfDate(d);
+  loadDagsplan();
+}
+
+function jumpToDagsplanToday() {
+  state.dagsplan.date = _isoOfDate(new Date());
+  loadDagsplan();
+}
+
+function renderDagsplanMain() {
+  const body = document.getElementById("dagsplan-main-body");
+  const canEdit = _canEditDagsplan();
+  const rows = state.dagsplan.data?.vehicles || [];
+
+  const vehicleRowClass = v => {
+    if (v.absent) return "dagsplan-vehicle-absent"; // vognen selv er materielt fraværende - højeste prioritet
+    if (!v.employee_id) return "dagsplan-vehicle-none";
+    const empStatus = state.dagsplan.data?.employees?.find(e => e.employee_id === v.employee_id)?.status;
+    // Chaufførens farve i tabel 2 skal afspejles her (samme forrang: gul > rød > grøn).
+    // En Fast-bil-chauffør med fravær skrives stadig på sin faste vogn, men rødt.
+    if (empStatus === "comment_only") return "dagsplan-vehicle-comment-only";
+    if (empStatus === "absent") return "dagsplan-vehicle-absent";
+    return "dagsplan-vehicle-assigned";
+  };
+  let html = rows.map(v => `
+    <tr data-vehicle-id="${v.vehicle_id}" class="${vehicleRowClass(v)}">
+      <td>${h(v.vehicle_number)}</td>
+      <td>${h(v.description || "")}</td>
+      <td>
+        <div style="position:relative;display:flex;align-items:center;gap:4px">
+          <input type="text" class="ds-chauffeur-input" data-vehicle-id="${v.vehicle_id}"
+                 value="${h(v.employee_name || "")}" autocomplete="off" ${canEdit ? "" : "disabled"}
+                 placeholder="Vælg chauffør…" style="width:100%;padding:4px 6px">
+          ${v.mismatch_vehicle_number ? `<span title="vognnummer i løn: ${h(v.mismatch_vehicle_number)}" style="color:var(--warning)">&#9888;</span>` : ""}
+        </div>
+      </td>
+      <td><input type="text" class="ds-task-input" data-vehicle-id="${v.vehicle_id}" value="${h(v.task || "")}" ${canEdit ? "" : "disabled"} style="width:100%;padding:4px 6px"></td>
+      <td style="text-align:center"><input type="checkbox" class="ds-informed-input" data-vehicle-id="${v.vehicle_id}" ${v.informed ? "checked" : ""} ${canEdit ? "" : "disabled"}></td>
+    </tr>`).join("");
+
+  // Samme farvelogik som de rigtige vogne ovenfor - blot uden "absent"
+  // (materielt fravær giver ikke mening for en EKSTRA-plads, som ikke er en rigtig vogn).
+  const extraRowClass = row => {
+    if (!row.employee_id) return "dagsplan-vehicle-none";
+    const empStatus = state.dagsplan.data?.employees?.find(e => e.employee_id === row.employee_id)?.status;
+    if (empStatus === "comment_only") return "dagsplan-vehicle-comment-only";
+    if (empStatus === "absent") return "dagsplan-vehicle-absent";
+    return "dagsplan-vehicle-assigned";
+  };
+  const extraRows = state.dagsplan.data?.extra_rows || [];
+  html += extraRows.map(row => `
+    <tr data-extra-idx="${row.slot}" class="${extraRowClass(row)}">
+      <td>EKSTRA</td>
+      <td></td>
+      <td>
+        <input type="text" class="ds-chauffeur-input" data-extra-idx="${row.slot}"
+               value="${h(row.employee_name || "")}" autocomplete="off" ${canEdit ? "" : "disabled"}
+               placeholder="Vælg chauffør…" style="width:100%;padding:4px 6px">
+      </td>
+      <td><input type="text" class="ds-task-input" data-extra-idx="${row.slot}" value="${h(row.task || "")}" ${canEdit ? "" : "disabled"} style="width:100%;padding:4px 6px"></td>
+      <td style="text-align:center"><input type="checkbox" class="ds-informed-input" data-extra-idx="${row.slot}" ${row.informed ? "checked" : ""} ${canEdit ? "" : "disabled"}></td>
+    </tr>`).join("");
+
+  body.innerHTML = html || `<tr><td colspan="5" class="empty-state"><div class="icon">🚛</div><h3>Ingen vogne</h3></td></tr>`;
+
+  body.querySelectorAll(".ds-chauffeur-input").forEach(el => {
+    el.addEventListener("focus", () => _renderDagsplanChauffeurResults(el));
+    el.addEventListener("input", () => _renderDagsplanChauffeurResults(el));
+    el.addEventListener("blur", () => {
+      // Et klik på et forslag i dropdownen udløser allerede sit eget gem
+      // (via mousedown, som forhindrer denne blur i at ske for det tilfælde).
+      // Denne håndterer i stedet: feltet slettet uden at vælge "— Ingen —"
+      // (skal tælle som at fjerne chaufføren), eller et fuldt navn skrevet
+      // uden at klikke i listen (skal stadig gemmes hvis det matcher præcist).
+      const val = el.value.trim();
+      if (val === "") {
+        _saveDagsplanRow(el.dataset, null);
+        return;
+      }
+      const match = state.employees.find(e => e.active && e.name.toLowerCase() === val.toLowerCase());
+      if (match) {
+        _saveDagsplanRow(el.dataset, match.id);
+      } else {
+        renderDagsplanMain(); // ufuldstændig/ugyldig indtastning - gendan den gemte værdi
+      }
+    });
+  });
+  body.querySelectorAll(".ds-task-input").forEach(el => {
+    el.addEventListener("blur", () => _saveDagsplanRow(el.dataset));
+  });
+  body.querySelectorAll(".ds-informed-input").forEach(el => {
+    el.addEventListener("change", () => _saveDagsplanRow(el.dataset));
+  });
+}
+
+function _renderDagsplanChauffeurResults(inputEl) {
+  const dropdown = document.getElementById("dagsplan-chauffeur-dropdown");
+  const q = inputEl.value.toLowerCase().trim();
+  const matches = state.employees.filter(e => e.active && (!q || e.name.toLowerCase().includes(q)))
+    .sort((a, b) => a.name.localeCompare(b.name, "da"));
+  const noneRow = `<div class="ds-chauffeur-item" data-id="" data-name="" style="padding:8px 10px;cursor:pointer;font-size:13px;color:var(--text-light)">— Ingen —</div>`;
+  const rows = matches.map(e => `<div class="ds-chauffeur-item" data-id="${e.id}" data-name="${h(e.name)}" style="padding:8px 10px;cursor:pointer;font-size:13px">${h(e.name)}</div>`).join("");
+  dropdown.innerHTML = noneRow + (rows || `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen medarbejdere fundet</div>`);
+  // position:fixed - rect er allerede i viewport-koordinater, som fixed
+  // positionering bruger direkte. Ingen scrollX/scrollY-tillæg (det ville
+  // kun være korrekt for position:absolute), og ingen afhængighed af den
+  // positionerede forælders egen scroll-tilstand (som ellers giver en
+  // helt forkert placering, når tabellen selv scroller internt).
+  const rect = inputEl.getBoundingClientRect();
+  const dropdownHeight = 220; // matcher max-height i CSS'en
+  const opensUpward = rect.bottom + dropdownHeight > window.innerHeight && rect.top > dropdownHeight;
+  dropdown.style.left = `${rect.left}px`;
+  dropdown.style.top = opensUpward ? "" : `${rect.bottom}px`;
+  dropdown.style.bottom = opensUpward ? `${window.innerHeight - rect.top}px` : "";
+  dropdown.style.width = `${rect.width}px`;
+  dropdown.style.display = "block";
+  dropdown.querySelectorAll(".ds-chauffeur-item").forEach(el => {
+    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
+    el.addEventListener("mouseout", () => el.style.background = "");
+    el.addEventListener("mousedown", (e) => {
+      e.preventDefault(); // undgå at inputtets blur lukker dropdownen før klikket når frem
+      inputEl.value = el.dataset.name;
+      dropdown.style.display = "none";
+      _saveDagsplanRow(inputEl.dataset, el.dataset.id ? parseInt(el.dataset.id) : null);
+    });
+  });
+}
+
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#dagsplan-chauffeur-dropdown, .ds-chauffeur-input")) {
+    const dropdown = document.getElementById("dagsplan-chauffeur-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+  }
+});
+
+async function _saveDagsplanRow(dataset, explicitEmployeeId) {
+  const isExtra = dataset.extraIdx !== undefined;
+  const endpoint = isExtra ? "/api/dagsplan/extra-assignment" : "/api/dagsplan/assignment";
+  const row = document.querySelector(
+    isExtra ? `tr[data-extra-idx="${dataset.extraIdx}"]` : `tr[data-vehicle-id="${dataset.vehicleId}"]`
+  );
+  const currentEmployeeId = isExtra
+    ? (state.dagsplan.data?.extra_rows?.find(r => r.slot === parseInt(dataset.extraIdx))?.employee_id ?? null)
+    : (state.dagsplan.data?.vehicles?.find(v => v.vehicle_id === parseInt(dataset.vehicleId))?.employee_id ?? null);
+  const employeeId = explicitEmployeeId !== undefined ? explicitEmployeeId : currentEmployeeId;
+  const body = {
+    date: state.dagsplan.date,
+    employee_id: employeeId,
+    task: row.querySelector(".ds-task-input").value || null,
+    informed: row.querySelector(".ds-informed-input").checked,
+    ...(isExtra ? { slot: parseInt(dataset.extraIdx) } : { vehicle_id: parseInt(dataset.vehicleId) }),
+  };
+  try {
+    await PATCH(endpoint, body);
+    await _refreshDagsplanData();
+  } catch (e) {
+    if (e.status === 409) {
+      if (window.confirm(e.message)) {
+        try {
+          await PATCH(endpoint, { ...body, force: true });
+          await _refreshDagsplanData();
+          return;
+        } catch (e2) { toast(e2.message, "error"); return; }
+      }
+      renderDagsplanMain(); // fortryd - gendan feltets oprindelige værdi
+      renderDagsplanEmployees();
+      return;
+    }
+    toast(e.message, "error");
+  }
+}
+
+function renderDagsplanEmployees() {
+  const body = document.getElementById("dagsplan-employees-body");
+  const rows = state.dagsplan.data?.employees || [];
+  const classFor = status => ({
+    assigned: "dagsplan-emp-assigned",
+    absent: "dagsplan-emp-absent",
+    comment_only: "dagsplan-emp-comment-only",
+    none: "dagsplan-emp-none",
+  }[status] || "");
+  // EKSTRA-tildelinger (og "Fast bil"/rigtige vogne) er allerede indregnet i
+  // e.status af serveren (get_dagsplan) - ingen klient-side farvelogik nødvendig her.
+  body.innerHTML = rows.map(e => `
+    <tr class="${classFor(e.status)}">
+      <td>${h(e.employee_name)}</td>
+      <td>${e.absence_text ? h(TYPE_LABELS[e.absence_text] || e.absence_text) : ""}</td>
+    </tr>`).join("") || `<tr><td colspan="2" class="empty-state"><div class="icon">👤</div><h3>Ingen medarbejdere</h3></td></tr>`;
+}
+
+async function loadDagsplanAbsences() {
+  try {
+    const list = await GET(`/api/vehicle-absences?date=${state.dagsplan.date}`);
+    renderDagsplanAbsences(list);
+  } catch (e) { toast(e.message, "error"); }
+}
+
+function renderDagsplanAbsences(list) {
+  const body = document.getElementById("dagsplan-absence-body");
+  const canEdit = _canEditDagsplan();
+  body.innerHTML = list.map(a => `
+    <tr>
+      <td>${h(a.vehicle_number)}</td>
+      <td>${formatDate(a.date_from + "T00:00:00")}${a.date_to ? " – " + formatDate(a.date_to + "T00:00:00") : ""}</td>
+      <td>${h(a.comment)}</td>
+      <td>${canEdit ? `<button class="btn btn-danger btn-sm" onclick="deleteVehicleAbsence(${a.id})">Slet</button>` : ""}</td>
+    </tr>`).join("") || `<tr><td colspan="4" class="empty-state"><div class="icon">🚛</div><h3>Intet meldt fravær</h3></td></tr>`;
+}
+
+function openReportVehicleAbsenceModal() {
+  document.getElementById("va-vehicle-search").value = "";
+  document.getElementById("va-vehicle-id").value = "";
+  document.getElementById("va-vehicle-dropdown").style.display = "none";
+  buildDatePicker("va-date-from", state.dagsplan.date);
+  buildDatePicker("va-date-to", "");
+  document.getElementById("va-comment").value = "";
+  openModal("modal-vehicle-absence");
+}
+
+function _renderVaVehicleSearchResults(query) {
+  const dropdown = document.getElementById("va-vehicle-dropdown");
+  const q = query.trim().toUpperCase();
+  const matches = state.vehicles.filter(v =>
+    v.vehicle_number.toUpperCase().includes(q) || v.registration_number.toUpperCase().includes(q));
+  dropdown.innerHTML = matches.map(v => `
+    <div class="va-vehicle-item" data-id="${v.id}" data-num="${h(v.vehicle_number)}" style="padding:8px 10px;cursor:pointer;font-size:13px">
+      ${h(v.vehicle_number)} <span style="color:var(--text-light)">– ${h(v.registration_number)}</span>
+    </div>`).join("") || `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen køretøjer fundet</div>`;
+  dropdown.querySelectorAll(".va-vehicle-item").forEach(el => {
+    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
+    el.addEventListener("mouseout", () => el.style.background = "");
+    el.addEventListener("click", () => {
+      document.getElementById("va-vehicle-search").value = el.dataset.num;
+      document.getElementById("va-vehicle-id").value = el.dataset.id;
+      dropdown.style.display = "none";
+    });
+  });
+  dropdown.style.display = "block";
+}
+document.getElementById("va-vehicle-search")?.addEventListener("input", function () { _renderVaVehicleSearchResults(this.value); });
+document.getElementById("va-vehicle-search")?.addEventListener("focus", function () { _renderVaVehicleSearchResults(this.value); });
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#va-vehicle-search, #va-vehicle-dropdown")) {
+    const dropdown = document.getElementById("va-vehicle-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+  }
+});
+
+async function confirmVehicleAbsence() {
+  const vehicleId = document.getElementById("va-vehicle-id").value;
+  const dateFrom = readDatePicker("va-date-from");
+  const dateTo = readDatePicker("va-date-to");
+  const comment = document.getElementById("va-comment").value.trim();
+  if (!vehicleId) { toast("Vælg en vogn", "error"); return; }
+  if (!dateFrom) { toast("Angiv fra-dato", "error"); return; }
+  if (!comment) { toast("Angiv en kommentar", "error"); return; }
+  try {
+    await POST("/api/vehicle-absences", {
+      vehicle_id: parseInt(vehicleId), date_from: dateFrom, date_to: dateTo || null, comment,
+    });
+    toast("Materielt fravær meldt", "success");
+    closeModal("modal-vehicle-absence");
+    await loadDagsplanAbsences();
+    await _refreshDagsplanData();
+  } catch (e) { toast(e.message, "error"); }
+}
+
+async function deleteVehicleAbsence(id) {
+  try {
+    await DEL(`/api/vehicle-absences/${id}`);
+    toast("Fravær fjernet", "success");
+    await loadDagsplanAbsences();
+    await _refreshDagsplanData();
+  } catch (e) { toast(e.message, "error"); }
 }
 
 // ── Period navigation ──────────────────────────────────────────────────────
@@ -1822,6 +2174,7 @@ function updateManualTypeVisibility() {
     applyBarselTerminsdatoDefault();
   }
   applyDispatcherGroupVehicleDefault();
+  applyDagsplanVehicleDefault();
 }
 
 // Foreslår vognnummeret fra medarbejderens disponentgruppe ved fraværsregistrering.
@@ -1836,8 +2189,33 @@ function applyDispatcherGroupVehicleDefault() {
   const vehicleNumber = emp?.dispatcher_group?.vehicle_number;
   if (vehicleNumber) {
     regField.value = vehicleNumber;
-    regField.dispatchEvent(new Event("input"));
+    _updateManualRegHint(); // kun hint - IKKE _renderManualRegDropdown, feltet er allerede udfyldt korrekt
+    document.getElementById("manual-reg-dropdown").style.display = "none";
   }
+}
+
+// Foreslår vognnummeret fra Dagsplanens tildeling (eller medarbejderens
+// "Fast bil") for "normal tid"-aktiviteter, dvs. samme kilde som
+// autoudfyldningen på serveren i create_manual_activity(). Overskriver ikke
+// et allerede udfyldt felt. Kræver dagsplan_view - fejler brugeren ikke
+// permission, forbliver feltet blot tomt (kan stadig udfyldes manuelt).
+async function applyDagsplanVehicleDefault() {
+  const type = document.getElementById("manual-type").value;
+  if (type !== "normal") return;
+  const regField = document.getElementById("manual-reg");
+  if (regField.value.trim()) return;
+  const empId = parseInt(document.getElementById("manual-employee").value);
+  const dateStr = document.getElementById("manual-start")?.querySelector(".dt-date")?.value;
+  if (!empId || !dateStr) return;
+  try {
+    const data = await GET(`/api/dagsplan?date=${dateStr}&employee_id=${empId}`);
+    const match = data.vehicles.find(v => v.employee_id === empId);
+    if (match && !regField.value.trim()) {
+      regField.value = match.vehicle_number;
+      _updateManualRegHint(); // kun hint - IKKE _renderManualRegDropdown, feltet er allerede udfyldt korrekt
+      document.getElementById("manual-reg-dropdown").style.display = "none";
+    }
+  } catch (_) { /* ingen dagsplan_view-adgang eller ingen tildeling - lad feltet være tomt */ }
 }
 
 // Foreslår medarbejderens seneste registrerede terminsdato ved oprettelse af en ny barsel-aktivitet.
@@ -2210,6 +2588,7 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
     document.getElementById("manual-reg").value = "";
     document.getElementById("manual-reg-hint").textContent = "";
     applyDispatcherGroupVehicleDefault();
+    applyDagsplanVehicleDefault();
   };
   // Lyt på dato-ændring inde i dt-picker containeren
   document.getElementById("manual-start").addEventListener("change", () => {
@@ -2222,6 +2601,7 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
       const startDate = document.getElementById("manual-start")?.querySelector(".dt-date")?.value;
       const endDateEl = document.getElementById("manual-end")?.querySelector(".dt-date");
       if (startDate && endDateEl) endDateEl.value = startDate;
+      applyDagsplanVehicleDefault();
     }
   });
 
@@ -2711,6 +3091,40 @@ function onParagraf56Change() {
   document.getElementById("emp-paragraf56-dates").style.display = checked ? "" : "none";
 }
 
+function onFastBilChange() {
+  const checked = document.getElementById("emp-fast-bil").checked;
+  document.getElementById("emp-fast-bil-vehicle-row").style.display = checked ? "" : "none";
+}
+
+function _renderEmpFastBilVehicleResults(query) {
+  const dropdown = document.getElementById("emp-fast-bil-vehicle-dropdown");
+  const q = query.trim().toUpperCase();
+  const matches = state.vehicles.filter(v =>
+    v.vehicle_number.toUpperCase().includes(q) || v.registration_number.toUpperCase().includes(q));
+  dropdown.innerHTML = matches.map(v => `
+    <div class="emp-fbv-item" data-id="${v.id}" data-num="${h(v.vehicle_number)}" style="padding:8px 10px;cursor:pointer;font-size:13px">
+      ${h(v.vehicle_number)} <span style="color:var(--text-light)">– ${h(v.registration_number)}</span>
+    </div>`).join("") || `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen køretøjer fundet</div>`;
+  dropdown.querySelectorAll(".emp-fbv-item").forEach(el => {
+    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
+    el.addEventListener("mouseout", () => el.style.background = "");
+    el.addEventListener("click", () => {
+      document.getElementById("emp-fast-bil-vehicle-search").value = el.dataset.num;
+      document.getElementById("emp-fast-bil-vehicle-id").value = el.dataset.id;
+      dropdown.style.display = "none";
+    });
+  });
+  dropdown.style.display = "block";
+}
+document.getElementById("emp-fast-bil-vehicle-search")?.addEventListener("input", function () { _renderEmpFastBilVehicleResults(this.value); });
+document.getElementById("emp-fast-bil-vehicle-search")?.addEventListener("focus", function () { _renderEmpFastBilVehicleResults(this.value); });
+document.addEventListener("click", (e) => {
+  if (!e.target.closest("#emp-fast-bil-vehicle-search, #emp-fast-bil-vehicle-dropdown")) {
+    const dropdown = document.getElementById("emp-fast-bil-vehicle-dropdown");
+    if (dropdown) dropdown.style.display = "none";
+  }
+});
+
 function onAgreementKindChange() {
   const key = document.getElementById("emp-agreement-kind").value;
   const kind = state.agreementKinds.find(k => k.key === key);
@@ -2761,6 +3175,7 @@ function fillDispatcherGroupSelect(selectedId = null) {
 async function openNewEmployeeModal() {
   await loadAgreementTypes();
   await loadAgreementKinds();
+  if (!state.vehicles.length) { try { state.vehicles = await GET("/api/vehicles"); } catch (_) {} }
   document.getElementById("emp-modal-title").textContent = "Opret medarbejder";
   document.getElementById("emp-save-btn").textContent = "Opret";
   document.getElementById("emp-id").value = "";
@@ -2778,6 +3193,10 @@ async function openNewEmployeeModal() {
   buildDatePicker("emp-paragraf56-end", "");
   onParagraf56Change();
   document.getElementById("emp-afloeser").checked = false;
+  document.getElementById("emp-fast-bil").checked = false;
+  document.getElementById("emp-fast-bil-vehicle-row").style.display = "none";
+  document.getElementById("emp-fast-bil-vehicle-search").value = "";
+  document.getElementById("emp-fast-bil-vehicle-id").value = "";
   buildScheduleTable(null);
   await _loadEmpCvrDropdown(null);
   document.getElementById("emp-active-supplement").value = "";
@@ -2787,6 +3206,7 @@ async function openNewEmployeeModal() {
 async function openEditEmployee(id) {
   await loadAgreementTypes();
   await loadAgreementKinds();
+  if (!state.vehicles.length) { try { state.vehicles = await GET("/api/vehicles"); } catch (_) {} }
   const e = state.employees.find(x => x.id === id);
   if (!e) return;
   document.getElementById("emp-modal-title").textContent = "Rediger medarbejder";
@@ -2814,6 +3234,10 @@ async function openEditEmployee(id) {
   buildDatePicker("emp-paragraf56-end", e.paragraf_56_end_date || "");
   onParagraf56Change();
   document.getElementById("emp-afloeser").checked = e.afloeser;
+  document.getElementById("emp-fast-bil").checked = e.fast_bil;
+  document.getElementById("emp-fast-bil-vehicle-row").style.display = e.fast_bil ? "" : "none";
+  document.getElementById("emp-fast-bil-vehicle-search").value = e.fast_bil_vehicle_number || "";
+  document.getElementById("emp-fast-bil-vehicle-id").value = e.fast_bil_vehicle_id || "";
   buildScheduleTable(e.work_schedule);
   await _loadEmpCvrDropdown(e.cvr_number || null);
   if (state.currentUser?.permissions?.includes("manage_employee_supplements")) {
@@ -2858,6 +3282,9 @@ async function confirmEmployee() {
     paragraf_56_end_date: document.getElementById("emp-paragraf56").checked
       ? readDatePicker("emp-paragraf56-end") : null,
     afloeser: document.getElementById("emp-afloeser").checked,
+    fast_bil: document.getElementById("emp-fast-bil").checked,
+    fast_bil_vehicle_id: document.getElementById("emp-fast-bil-vehicle-id").value
+      ? parseInt(document.getElementById("emp-fast-bil-vehicle-id").value) : null,
   };
   if (!body.employee_number || !body.first_name || !body.last_name || !body.hire_date) {
     toast("Udfyld lønnummer, navn og ansættelsesdato", "error");
@@ -3030,9 +3457,17 @@ async function loadVehicles() {
   setLoading(true);
   try {
     state.vehicles = await GET("/api/vehicles");
+    if (!state.dispatcherGroups.length) { try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); } catch (_) {} }
     renderVehicleList();
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
+}
+
+function fillVehicleDispatcherGroupSelect(selectedId = null) {
+  const sel = document.getElementById("vehicle-dispatcher-group");
+  sel.innerHTML = `<option value="">— Ingen —</option>` + state.dispatcherGroups
+    .map(g => `<option value="${g.id}" ${g.id === selectedId ? "selected" : ""}>${h(g.name)}</option>`)
+    .join("");
 }
 
 function renderVehicleList() {
@@ -3075,6 +3510,9 @@ function openNewVehicleModal() {
   document.getElementById("vehicle-modal-title").textContent = "Opret vogn";
   document.getElementById("vehicle-reg").value = "";
   document.getElementById("vehicle-num").value = "";
+  document.getElementById("vehicle-description").value = "";
+  fillVehicleDispatcherGroupSelect(null);
+  document.getElementById("vehicle-fast-bil-group").style.display = "none"; // vognen findes ikke endnu - kan ikke være nogens Fast bil
   document.getElementById("vehicle-delete-btn").classList.add("hidden");
   openModal("modal-vehicle");
 }
@@ -3086,6 +3524,10 @@ function openEditVehicle(id) {
   document.getElementById("vehicle-modal-title").textContent = "Rediger vogn";
   document.getElementById("vehicle-reg").value = v.registration_number;
   document.getElementById("vehicle-num").value = v.vehicle_number;
+  document.getElementById("vehicle-description").value = v.description || "";
+  fillVehicleDispatcherGroupSelect(v.dispatcher_group_id);
+  document.getElementById("vehicle-fast-bil-group").style.display = "";
+  document.getElementById("vehicle-fast-bil-employee").value = v.fast_bil_employee_name || "—";
   document.getElementById("vehicle-delete-btn").classList.remove("hidden");
   openModal("modal-vehicle");
 }
@@ -3094,12 +3536,19 @@ async function saveVehicle() {
   const reg = document.getElementById("vehicle-reg").value.trim();
   const num = document.getElementById("vehicle-num").value.trim();
   if (!reg || !num) { toast("Udfyld begge felter", "error"); return; }
+  const body = {
+    registration_number: reg,
+    vehicle_number: num,
+    description: document.getElementById("vehicle-description").value.trim() || null,
+    dispatcher_group_id: document.getElementById("vehicle-dispatcher-group").value
+      ? parseInt(document.getElementById("vehicle-dispatcher-group").value) : null,
+  };
   try {
     if (_editingVehicleId) {
-      await PATCH(`/api/vehicles/${_editingVehicleId}`, { registration_number: reg, vehicle_number: num });
+      await PATCH(`/api/vehicles/${_editingVehicleId}`, body);
       toast("Vogn opdateret", "success");
     } else {
-      await POST("/api/vehicles", { registration_number: reg, vehicle_number: num });
+      await POST("/api/vehicles", body);
       toast("Vogn oprettet", "success");
     }
     closeModal("modal-vehicle");
