@@ -45,6 +45,12 @@ class OvertimeResult:
     normal_remaining_after: Decimal = Decimal("0")
     ot13_remaining_after: Decimal = Decimal("0")
     supplements: dict = field(default_factory=dict)
+    # Timerne fordelt pr. KALENDERDAG de faktisk er arbejdet på – en vagt der
+    # krydser midnat bidrager til to datoer her, selvom den regnes som ét
+    # sammenhængende skift ovenfor (loftet er ikke pr.-dato nulstillet).
+    # Bruges af Lønafregning til at vise timerne på de rigtige dage (bekræftet
+    # af bruger 2026-09-09) uden at ændre selve tærskel-beregningen.
+    by_date: dict = field(default_factory=dict)
 
     def supplement_total(self) -> Decimal:
         return sum(self.supplements.values(), Decimal("0"))
@@ -155,29 +161,40 @@ def calculate_overtime(
                 ot13_remaining = OT_13_MAX
 
         result.total_hours += duration
+        day_bucket = result.by_date.setdefault(seg_start.date(), {
+            "normal": Decimal("0"), "ot_before": Decimal("0"),
+            "ot_13": Decimal("0"), "ot_extra": Decimal("0"),
+            "total_hours": Decimal("0"),
+        })
+        day_bucket["total_hours"] += duration
 
         window = _window(seg_start)
 
         # Alle arbejdede timer giver normal løn (kode 1). Tillæg er additive.
         result.normal_hours += duration
+        day_bucket["normal"] += duration
 
         if window == "night":
             # 21-05: Øvrigt overtid-tillæg. Registreret normaltid kan kun
             # forbruges i tidsrummet 06-18, så nattetimer fortærer ikke loftet.
             result.ot_extra_hours += duration
+            day_bucket["ot_extra"] += duration
         elif window == "before":
             # 05-06: "Overtid 1 time før" regnes separat og fortærer ikke
             # normaltids-loftet (bekræftet af bruger 2026-07-02).
             result.ot_before_hours += duration
+            day_bucket["ot_before"] += duration
         elif window == "evening":
             # 18-21: OT 1-3-tillæg (op til 3 timer), derefter Øvrig-tillæg.
             # Ligger uden for 06-18, så det fortærer heller ikke normaltids-loftet.
             in_13 = min(duration, ot13_remaining)
             result.ot_13_hours += in_13
+            day_bucket["ot_13"] += in_13
             ot13_remaining -= in_13
             overflow = duration - in_13
             if overflow > 0:
                 result.ot_extra_hours += overflow
+                day_bucket["ot_extra"] += overflow
         else:
             # 06-18: forbruger normaltid; overtid ud over kap → supplement-tillæg
             as_normal = min(duration, normal_remaining)
@@ -186,10 +203,12 @@ def calculate_overtime(
             if rest > 0:
                 in_13 = min(rest, ot13_remaining)
                 result.ot_13_hours += in_13
+                day_bucket["ot_13"] += in_13
                 ot13_remaining -= in_13
                 overflow = rest - in_13
                 if overflow > 0:
                     result.ot_extra_hours += overflow
+                    day_bucket["ot_extra"] += overflow
 
     result.supplements = {
         OT_BEFORE_KEY: result.ot_before_hours * rates.get(OT_BEFORE_KEY, Decimal("0")),
@@ -213,10 +232,17 @@ def calculate_flat_hours(
     """
     result = OvertimeResult()
     work_intervals = _subtract_pauses(start, end, pause_intervals or [])
-    for seg_start, seg_end in work_intervals:
+    for seg_start, seg_end in _work_segments(work_intervals):
         duration = Decimal(str((seg_end - seg_start).total_seconds())) / 3600
         if duration <= 0:
             continue
         result.total_hours += duration
         result.normal_hours += duration
+        day_bucket = result.by_date.setdefault(seg_start.date(), {
+            "normal": Decimal("0"), "ot_before": Decimal("0"),
+            "ot_13": Decimal("0"), "ot_extra": Decimal("0"),
+            "total_hours": Decimal("0"),
+        })
+        day_bucket["total_hours"] += duration
+        day_bucket["normal"] += duration
     return result

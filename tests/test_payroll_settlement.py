@@ -232,6 +232,126 @@ def test_employee_settlement_data_absence_kr_counts_toward_employee_total(db, em
     assert data["total_kr"] == pytest.approx(8.0 * 150.00 + 8.0 * 150.00)
 
 
+def test_employee_settlement_data_splits_shift_crossing_midnight_onto_both_days(db, employee):
+    """En vagt der krydser midnat skal vise sine timer på de kalenderdage den
+    reelt er arbejdet på – ikke lagt samlet på vagtens startdato. Bekræftet af
+    bruger 2026-09-09 (Preben Thornfeldt-sagen: en manuelt oprettet vagt hen
+    over midnat viste forkerte tal, fordi hele vagten lå på startdatoen)."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 22, 0), datetime(2026, 1, 6, 8, 0),
+                  status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    day1 = _find_day(data, "2026-01-05")
+    day2 = _find_day(data, "2026-01-06")
+    assert day1["total_hours"] == pytest.approx(2.0)   # 22-24: øvrig overtid
+    assert day1["ot_extra"] == pytest.approx(2.0)
+    assert day1["normal"] == pytest.approx(0.0)   # ingen timer uden tillæg denne dag
+    assert day1["total_kr"] == pytest.approx(2 * 150.0 + 2 * 100.0)
+    assert day2["total_hours"] == pytest.approx(8.0)   # 00-05 øvrig, 05-06 før, 06-08 normal
+    assert day2["ot_extra"] == pytest.approx(5.0)
+    assert day2["ot_before"] == pytest.approx(1.0)
+    assert day2["normal"] == pytest.approx(2.0)   # kun 06-08 er uden tillæg
+    assert day2["total_kr"] == pytest.approx(8 * 150.0 + 1 * 50.0 + 5 * 100.0)
+    # Periodetotalen er upåvirket af hvordan timerne fordeles på dagene.
+    assert data["total_kr"] == pytest.approx(day1["total_kr"] + day2["total_kr"])
+
+
+def test_employee_settlement_data_no_spurious_empty_row_on_split_arrival_day(db, employee):
+    """Regressionsværn: dagen EFTER en vagt der krydser midnat får rigtige
+    timer via by_date-opdelingen, men _calculate_employee tilføjer stadig sin
+    egen tomme 'ingen aktivitet'-placeholder for den dato (ingen aktivitet
+    STARTER der) – de to må ikke blive til to rækker (én rigtig + én tom) for
+    samme dag. Fundet under verifikation 2026-09-09."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 22, 0), datetime(2026, 1, 6, 8, 0),
+                  status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    matching = [d for d in data["days"] if d["date"] == "2026-01-06"]
+    assert len(matching) == 1
+    assert matching[0]["total_hours"] == pytest.approx(8.0)
+
+
+def test_employee_settlement_data_collapses_multiple_activities_same_day_into_one_row(db, employee):
+    """Flere godkendte aktiviteter samme dag (fx en vagt splittet manuelt af
+    brugeren i flere sammenhængende aktiviteter) skal vises som ÉN samlet
+    række pr. dag i Lønafregning, ikke én række pr. aktivitet – bekræftet af
+    bruger 2026-09-09."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 10, 0),
+                  status=ActivityStatus.approved)
+    make_activity(db, employee, datetime(2026, 1, 5, 10, 0), datetime(2026, 1, 5, 14, 0),
+                  status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    matching = [d for d in data["days"] if d["date"] == "2026-01-05"]
+    assert len(matching) == 1
+    day = matching[0]
+    assert day["total_hours"] == pytest.approx(8.0)
+    assert day["total_kr"] == pytest.approx(8.0 * 150.0)
+
+
+def test_employee_settlement_data_splits_same_day_into_rows_by_vehicle_number(db, employee):
+    """Den ENESTE grund til at en dag skal vises som flere rækker er hvis
+    medarbejderen har kørt flere vagne samme dag – bekræftet af bruger
+    2026-09-09 ('den eneste årsag til, at en dag skal splittes op i flere
+    linjer, er hvis medarbejderen kører flere vagter med forskelligt
+    vognnummer'). Samme vognnummer to gange samme dag skal stadig give ÉN
+    række (se test_..._collapses_multiple_activities_same_day_into_one_row)."""
+    from datetime import datetime
+    from database.models import ActivityStatus
+    from calculators.pay_period import get_or_create_period_for_date
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    act1 = make_activity(db, employee, datetime(2026, 1, 5, 6, 0), datetime(2026, 1, 5, 10, 0),
+                         status=ActivityStatus.approved)
+    act1.vehicle_number = "1111"
+    act2 = make_activity(db, employee, datetime(2026, 1, 5, 10, 0), datetime(2026, 1, 5, 14, 0),
+                         status=ActivityStatus.approved)
+    act2.vehicle_number = "2222"
+    db.commit()
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    matching = sorted(
+        (d for d in data["days"] if d["date"] == "2026-01-05"),
+        key=lambda d: d["vehicle_number"],
+    )
+    assert len(matching) == 2
+    assert matching[0]["vehicle_number"] == "1111"
+    assert matching[0]["total_hours"] == pytest.approx(4.0)
+    assert matching[0]["total_kr"] == pytest.approx(4.0 * 150.0)
+    assert matching[1]["vehicle_number"] == "2222"
+    assert matching[1]["total_hours"] == pytest.approx(4.0)
+    assert matching[1]["total_kr"] == pytest.approx(4.0 * 150.0)
+    # Periodetotalen er upåvirket af opdelingen i to rækker.
+    assert data["total_kr"] == pytest.approx(8.0 * 150.0)
+
+
 def test_page_totals_aggregates_across_employees():
     from routers.payroll_settlement_router import _page_totals
     from calculators.overtime import OT_BEFORE_KEY, OT_13_KEY, OT_EXTRA_KEY

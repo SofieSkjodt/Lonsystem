@@ -645,6 +645,33 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                     totals["salt_hours"] += day_salt_hours
                     totals["salt_kr"]    += day_salt_kr
                     total_kr             += day_kr
+                    # by_date: samme aktivitets timer fordelt pr. kalenderdag de
+                    # faktisk er arbejdet på (en vagt over midnat rammer to
+                    # datoer) – bruges KUN af Lønafregning til at vise timerne
+                    # på de rigtige dage og samle flere aktiviteter/stykker pr.
+                    # dag i én række (bekræftet af bruger 2026-09-09). Ændrer
+                    # ikke selve loft-/tærskelberegningen ovenfor.
+                    by_date_display = {}
+                    for piece_date, b in ot.by_date.items():
+                        piece_salt_hours = b["total_hours"] if act.salt_supplement else Decimal("0")
+                        piece_salt_kr = piece_salt_hours * salt_rate
+                        piece_kr = (
+                            b["normal"] * hourly_rate
+                            + b["ot_before"] * ot_rates[OT_BEFORE_KEY]
+                            + b["ot_13"] * ot_rates[OT_13_KEY]
+                            + b["ot_extra"] * ot_rates[OT_EXTRA_KEY]
+                            + piece_salt_kr
+                        )
+                        by_date_display[piece_date.isoformat()] = {
+                            "normal":       float(_round2(b["normal"])),
+                            "ot_before":    float(_round2(b["ot_before"])),
+                            "ot_13":        float(_round2(b["ot_13"])),
+                            "ot_extra":     float(_round2(b["ot_extra"])),
+                            "total_hours":  float(_round2(b["total_hours"])),
+                            "total_kr":     float(_round2(piece_kr)),
+                            "salt_hours":   float(_round2(piece_salt_hours)),
+                            "salt_kr":      float(_round2(piece_salt_kr)),
+                        }
                     days.append({
                         "date": cur.isoformat(),
                         "normal":       float(_round2(ot.normal_hours)),
@@ -664,6 +691,7 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         "vehicle_number": act.vehicle_number or "",
                         "overnight":    row_overnight,
                         "dob_overnight": row_dob_overnight,
+                        "by_date":      by_date_display,
                     })
         if is_hourly_flexible:
             week_normal_remaining = day_normal_remaining

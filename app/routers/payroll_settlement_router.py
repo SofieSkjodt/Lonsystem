@@ -48,6 +48,104 @@ def _display_day(day: dict) -> dict:
     return result
 
 
+def _expand_day(day: dict) -> list:
+    """Udfolder én aktivitets dags-indgang i ét stykke pr. kalenderdag den
+    reelt strækker sig over. En vagt der krydser midnat får sine timer fordelt
+    via 'by_date' (sat af _calculate_employee) i stedet for at ligge samlet på
+    vagtens startdato – bekræftet af bruger 2026-09-09 ('timerne skal ligge på
+    de dage, hvor de afholdes'). Fraværs-/nul-rækker har intet 'by_date' og
+    udfoldes derfor uændret."""
+    by_date = day.get("by_date")
+    if not by_date:
+        return [day]
+    pieces = []
+    for i, (date_str, part) in enumerate(by_date.items()):
+        piece = {**day, "date": date_str, **part}
+        if i > 0:
+            # Overnatnings-markøren hører til vagtens FØRSTE dag – ikke de
+            # øvrige stykker den splittes i her.
+            piece["overnight"] = 0
+            piece["dob_overnight"] = 0
+        pieces.append(piece)
+    return pieces
+
+
+_AGGREGATE_NUMERIC_KEYS = ("normal", "ot_before", "ot_13", "ot_extra", "total_hours", "total_kr")
+
+
+def _aggregate_days(days: list) -> list:
+    """Slår Lønafregningens dags-indgange sammen til én række pr. kalenderdag
+    OG vognnummer. En dag kan bestå af flere godkendte aktiviteter (fx en vagt
+    splittet manuelt af brugeren, eller en nattevagt der krydser midnat og nu
+    er fordelt via _expand_day) – de samles i én række, MEDMINDRE de reelt
+    dækker forskellige vogne, for så skal dagen vise én række pr. vognnummer
+    (bekræftet af bruger 2026-09-09: "den eneste årsag til at en dag skal
+    splittes op i flere linjer, er hvis medarbejderen kører flere vagter med
+    forskelligt vognnummer")."""
+    buckets: dict = {}
+    order: list = []
+    for day in days:
+        for piece in _expand_day(_display_day(day)):
+            date_str = piece["date"]
+            vehicle_number = piece.get("vehicle_number") or None
+            key = (date_str, vehicle_number)
+            if key not in buckets:
+                buckets[key] = {
+                    "date": date_str,
+                    "vehicle_number": vehicle_number,
+                    **{k: 0.0 for k in _AGGREGATE_NUMERIC_KEYS},
+                    "overnight": 0, "dob_overnight": 0,
+                    "absence_kr": None, "absence_hours": None,
+                    "_absence_types": [],
+                }
+                order.append(key)
+            bucket = buckets[key]
+            for numeric_key in _AGGREGATE_NUMERIC_KEYS:
+                bucket[numeric_key] = round(bucket[numeric_key] + (piece.get(numeric_key) or 0), 2)
+            bucket["overnight"] = 1 if (bucket["overnight"] or piece.get("overnight")) else 0
+            bucket["dob_overnight"] = 1 if (bucket["dob_overnight"] or piece.get("dob_overnight")) else 0
+            if piece.get("absence_kr") is not None:
+                bucket["absence_kr"] = round((bucket["absence_kr"] or 0) + piece["absence_kr"], 2)
+                bucket["absence_hours"] = round(
+                    (bucket["absence_hours"] or 0) + (piece.get("absence_hours") or 0), 2)
+            absence_type = piece.get("absence_type")
+            if absence_type and absence_type not in bucket["_absence_types"]:
+                bucket["_absence_types"].append(absence_type)
+
+    # _calculate_employee tilføjer en tom "ingen aktivitet"-placeholder-række
+    # for enhver dato ingen aktivitet STARTER på – men en vagt der krydser
+    # midnat kan nu (via _expand_day) lægge REELLE timer på netop den dato
+    # (døgnet efter vagten startede). I så fald er placeholderen overflødig
+    # og skal ikke vises som sin egen tomme række ved siden af de rigtige tal.
+    dates_with_real_data = {
+        key[0] for key, bucket in buckets.items()
+        if bucket["vehicle_number"] is not None or bucket["total_hours"] or bucket["total_kr"]
+        or bucket["_absence_types"] or bucket["overnight"] or bucket["dob_overnight"]
+    }
+
+    result = []
+    for key in order:
+        date_str, vehicle_number = key
+        bucket = buckets[key]
+        is_empty_placeholder = (
+            vehicle_number is None and not bucket["total_hours"] and not bucket["total_kr"]
+            and not bucket["_absence_types"] and not bucket["overnight"] and not bucket["dob_overnight"]
+        )
+        if is_empty_placeholder and date_str in dates_with_real_data:
+            continue
+        bucket["absence_type"] = ", ".join(bucket.pop("_absence_types")) or None
+        # "Normal timer" skal kun være timer der IKKE udløser tillæg – "normal"
+        # er her stadig ALLE arbejdede timer (tillæggene er additive, jf.
+        # calculators/overtime.py), så tillægstimerne trækkes fra til visning,
+        # ligesom Prøvekørsel-excel'en allerede gør (payroll_router.py). Total
+        # tid/Total kr. er upåvirket. Bekræftet af bruger 2026-09-09.
+        bucket["normal"] = round(
+            bucket["normal"] - bucket["ot_before"] - bucket["ot_13"] - bucket["ot_extra"], 2,
+        ) + 0.0
+        result.append(bucket)
+    return result
+
+
 def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
     """Headline-info (satser vist separat) + periodetotal for én medarbejder,
     oven på den fælles _calculate_employee()-beregning (samme datakilde som Lønkørsel)."""
@@ -62,7 +160,7 @@ def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
         if calc["springer_enabled"] else Decimal("0")
     )
 
-    days = [_display_day(day) for day in calc["days"]]
+    days = _aggregate_days(calc["days"])
     # Alle fraværstyper med et beregnet beløb (sygdom, §56 syg, sygdom u. 8 uger,
     # barn 1.sygedag, graviditetsbetinget sygdom, barsel, skole/kursus, ferie,
     # afspadsering) tæller nu med i medarbejderens samlede løn – bekræftet af
@@ -116,11 +214,15 @@ _PAGE_TOTAL_ABSENCE_LABELS = {
 
 
 def _sum_absence_kr(employees_data: list, label: str) -> float:
+    # "in ... .split(', ')" i stedet for et rent "==" fordi en aggregeret
+    # dags-række (se _aggregate_days) kan vise flere komma-separerede
+    # fraværstyper, hvis dagen reelt bestod af mere end én type.
     return sum(
         d["absence_kr"]
         for e in employees_data
         for d in e["days"]
-        if d.get("absence_type") == label and d.get("absence_kr") is not None
+        if d.get("absence_kr") is not None
+        and label in (d.get("absence_type") or "").split(", ")
     )
 
 
