@@ -3228,6 +3228,7 @@ async function openNewEmployeeModal() {
   buildDatePicker("emp-paragraf56-end", "");
   onParagraf56Change();
   document.getElementById("emp-afloeser").checked = false;
+  document.getElementById("emp-ot-extra-alle-timer").checked = false;
   document.getElementById("emp-fast-bil").checked = false;
   document.getElementById("emp-fast-bil-vehicle-row").style.display = "none";
   document.getElementById("emp-fast-bil-vehicle-search").value = "";
@@ -3269,6 +3270,7 @@ async function openEditEmployee(id) {
   buildDatePicker("emp-paragraf56-end", e.paragraf_56_end_date || "");
   onParagraf56Change();
   document.getElementById("emp-afloeser").checked = e.afloeser;
+  document.getElementById("emp-ot-extra-alle-timer").checked = e.ot_extra_alle_timer;
   document.getElementById("emp-fast-bil").checked = e.fast_bil;
   document.getElementById("emp-fast-bil-vehicle-row").style.display = e.fast_bil ? "" : "none";
   document.getElementById("emp-fast-bil-vehicle-search").value = e.fast_bil_vehicle_number || "";
@@ -3317,6 +3319,7 @@ async function confirmEmployee() {
     paragraf_56_end_date: document.getElementById("emp-paragraf56").checked
       ? readDatePicker("emp-paragraf56-end") : null,
     afloeser: document.getElementById("emp-afloeser").checked,
+    ot_extra_alle_timer: document.getElementById("emp-ot-extra-alle-timer").checked,
     fast_bil: document.getElementById("emp-fast-bil").checked,
     fast_bil_vehicle_id: document.getElementById("emp-fast-bil-vehicle-id").value
       ? parseInt(document.getElementById("emp-fast-bil-vehicle-id").value) : null,

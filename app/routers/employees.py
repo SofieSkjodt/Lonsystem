@@ -107,6 +107,7 @@ def _to_response(emp: Employee, db) -> EmployeeResponse:
         paragraf_56_start_date=emp.paragraf_56_start_date,
         paragraf_56_end_date=emp.paragraf_56_end_date,
         afloeser=emp.afloeser,
+        ot_extra_alle_timer=emp.ot_extra_alle_timer,
         fast_bil=emp.fast_bil,
         fast_bil_vehicle_id=emp.fast_bil_vehicle_id,
         fast_bil_vehicle_number=emp.fast_bil_vehicle.vehicle_number if emp.fast_bil_vehicle else None,

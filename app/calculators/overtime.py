@@ -246,3 +246,32 @@ def calculate_flat_hours(
         day_bucket["total_hours"] += duration
         day_bucket["normal"] += duration
     return result
+
+
+def override_ot_extra_alle_timer(
+    result: OvertimeResult, is_special_day: bool, rates: dict,
+) -> OvertimeResult:
+    """
+    Særaftale (Employee.ot_extra_alle_timer): normal løn for alle arbejdstimer
+    OG Øvrig overtid (kode 9) for alle arbejdstimer - aldrig Overtid 1-3 timer
+    (kode 8). Kode 4/63 (SH-garanti) beregnes i compute_sh_hours() og påvirkes
+    ikke af denne funktion.
+
+    is_special_day=False (hverdag/lørdag, `result` fra calculate_flat_hours()):
+    ot_extra_hours sættes til alle timer.
+    is_special_day=True (søndag/helligdag, `result` fra
+    calculate_special_day_overtime()): sh_kode8_hours nulstilles og
+    sh_kode9_hours sættes til alle timer - normal_hours er i forvejen altid
+    alle kørte timer for særlige dage.
+    """
+    result.ot_before_hours = Decimal("0")
+    result.ot_13_hours = Decimal("0")
+    if is_special_day:
+        result.sh_kode8_hours = Decimal("0")
+        result.sh_kode9_hours = result.total_hours
+    else:
+        result.ot_extra_hours = result.total_hours
+        result.supplements = {OT_EXTRA_KEY: result.ot_extra_hours * rates.get(OT_EXTRA_KEY, Decimal("0"))}
+        for bucket in result.by_date.values():
+            bucket["ot_extra"] = bucket["total_hours"]
+    return result

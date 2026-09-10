@@ -31,6 +31,7 @@ from calculators.overtime import (
     OT_EXTRA_KEY,
     calculate_overtime,
     calculate_flat_hours,
+    override_ot_extra_alle_timer,
 )
 from calculators.day_type import (
     DayType,
@@ -587,7 +588,16 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                          for p_start, p_end in pauses),
                         Decimal("0"),
                     )
-                    if not is_recognized_agreement_kind:
+                    if emp.ot_extra_alle_timer and (
+                        day_type in (DayType.NORMAL, DayType.SATURDAY)
+                        or not is_recognized_agreement_kind
+                    ):
+                        # Særaftale (docs/superpowers/specs/2026-09-10-ot-extra-alle-timer-design.md):
+                        # normal løn + Øvrig overtid for ALLE timer, intet loft,
+                        # ingen tids-tillæg.
+                        ot = calculate_flat_hours(act.start_time, act.end_time, pauses)
+                        ot = override_ot_extra_alle_timer(ot, is_special_day=False, rates=ot_rates)
+                    elif not is_recognized_agreement_kind:
                         # Aftale-type uden for de to kendte nøgler – ingen
                         # automatisk OT-beregning endnu (se
                         # docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md).
@@ -617,6 +627,18 @@ def _calculate_employee(emp: Employee, start: date, end: date, db: Session) -> d
                         day_ot13_remaining = ot.ot13_remaining_after
                         if not is_hourly_flexible and act.end_time.date() != cur:
                             midnight_carry = (act.end_time.date(), day_normal_remaining, day_ot13_remaining)
+                    elif emp.ot_extra_alle_timer:
+                        # Særaftale på søndag/helligdag: kode 1 er i forvejen
+                        # altid alle kørte timer, kode 9 udvides til at dække
+                        # hele dagen (ikke kun eftermiddagen/1-3-timers-loftet),
+                        # kode 8 gives aldrig.
+                        ot = calculate_special_day_overtime(
+                            act.start_time, act.end_time,
+                            day_type, pauses,
+                            kode8_remaining=day_ot13_remaining,
+                        )
+                        ot = override_ot_extra_alle_timer(ot, is_special_day=True, rates=ot_rates)
+                        day_ot13_remaining = ot.ot13_remaining_after
                     else:
                         ot = calculate_special_day_overtime(
                             act.start_time, act.end_time,

@@ -251,6 +251,9 @@ def _migrate():
         if "fast_bil_vehicle_id" not in emp_cols3:
             conn.execute("ALTER TABLE employees ADD COLUMN fast_bil_vehicle_id INTEGER")
             conn.commit()
+        if "ot_extra_alle_timer" not in emp_cols3:
+            conn.execute("ALTER TABLE employees ADD COLUMN ot_extra_alle_timer BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
         conn.execute(
             "CREATE UNIQUE INDEX IF NOT EXISTS uq_employee_supplements_one_open_row "
             "ON employee_supplements(employee_id) WHERE end_date = '9999-12-31'"

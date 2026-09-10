@@ -55,6 +55,7 @@ class EmployeeCreate(BaseModel):
     paragraf_56_end_date: Optional[date] = None
     afloeser: bool = False
     fast_bil: bool = False
+    ot_extra_alle_timer: bool = False
     fast_bil_vehicle_id: Optional[int] = None
 
 
@@ -83,6 +84,7 @@ class EmployeeUpdate(BaseModel):
     paragraf_56_end_date: Optional[date] = None
     afloeser: Optional[bool] = None
     fast_bil: Optional[bool] = None
+    ot_extra_alle_timer: Optional[bool] = None
     fast_bil_vehicle_id: Optional[int] = None
 
 
@@ -117,6 +119,7 @@ class EmployeeResponse(BaseModel):
     paragraf_56_end_date: Optional[date] = None
     afloeser: bool
     fast_bil: bool
+    ot_extra_alle_timer: bool
     fast_bil_vehicle_id: Optional[int] = None
     fast_bil_vehicle_number: Optional[str] = None
 

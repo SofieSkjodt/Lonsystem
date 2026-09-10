@@ -87,6 +87,7 @@ class Employee(Base):
     paragraf_56_start_date = Column(Date, nullable=True)
     paragraf_56_end_date = Column(Date, nullable=True)
     afloeser = Column(Boolean, default=False, nullable=False)
+    ot_extra_alle_timer = Column(Boolean, default=False, nullable=False)
     created_at = Column(DateTime, server_default=func.now())
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
