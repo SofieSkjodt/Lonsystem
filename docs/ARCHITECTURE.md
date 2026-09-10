@@ -65,7 +65,8 @@ Lønsystem/
     │   ├── activities.py, employees.py, payroll_router.py, payroll_settlement_router.py,
     │   │   absence_overview_router.py, timeseddel_router.py, stamdata.py, vehicles.py,
     │   │   import_ddd.py, auto_approval_router.py, employee_supplements.py,
-    │   │   vagtplan_comments.py, auth.py, users.py, roles.py
+    │   │   vagtplan_comments.py, dagsplan_router.py (+ vehicle_absence_router),
+    │   │   auth.py, users.py, roles.py
     ├── static/
     │   ├── css/style.css
     │   └── js/app.js

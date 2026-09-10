@@ -285,16 +285,21 @@ def build_teknisk():
             ["termination_date",      "Date",            "Fratrædelsesdato (default 31-12-9999)"],
             ["work_schedule",         "JSON",            '{"even":[man..søn], "odd":[man..søn]} – normaltimer pr. dag i lig/ulige uge'],
             ["anciennitet_dismissed_at","DateTime (opt.)","Tidspunkt for afvisning af anciennitetsvarsel (nulstilles ved overenskomstskifte)"],
+            ["dispatcher_group_id",   "Integer FK (opt.)","Én disponentgruppe (nullable) – se nedenfor"],
+            ["fast_bil",              "Boolean",         "'Fast bil'-indstilling – foreslår medarbejderen som standardchauffør på en bestemt vogn i Dagsplan (kapitel 14)"],
+            ["fast_bil_vehicle_id",   "Integer FK (opt.)","Den faste vogn – kun relevant når fast_bil=true. Ikke begrænset til medarbejderens egen disponentgruppe"],
+            ["ot_extra_alle_timer",   "Boolean",         "Særaftale: alle arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn, uden dagligt loft – se afsnit 5.6"],
         ]
     )
     body(doc, (
-        "Disponentgrupper (afdelinger) er ikke et enkelt felt på medarbejderen, men en mange-til-mange-relation "
-        "via tabellerne dispatcher_groups (navn, beskrivelse) og employee_dispatcher_groups (kobling). En medarbejder "
-        "kan tilhøre 0-N grupper samtidig, og der er ingen 'primær' gruppe. Grupperne administreres under "
-        "Stamdata → Disponentgrupper (opret/omdøb/slet); en medarbejder tilknyttes sine grupper via afkrydsningsbokse "
-        "i medarbejder-modalen. Ved filtrering (aktivitetstabel, fraværsoversigt-eksport) vises en medarbejder under "
-        "alle sine tilknyttede grupper. Frem til 27. juli 2026 lå dette som en enkelt tekststreng på medarbejderen – "
-        "denne kolonne er fjernet og data migreret automatisk til de nye tabeller ved første opstart efter opgraderingen."
+        "Disponentgruppe (afdeling) er ét enkelt, valgfrit felt på medarbejderen (dispatcher_group_id, "
+        "FK til dispatcher_groups) – ikke en mange-til-mange-relation. En medarbejder tilhører højst "
+        "0-1 gruppe ad gangen og vælges via en dropdown i medarbejder-modalen, ikke afkrydsningsbokse. "
+        "Grupperne selv (navn, beskrivelse) administreres under Stamdata → Disponentgrupper "
+        "(opret/omdøb/slet). Feltet har historisk skiftet form to gange: oprindeligt en enkelt "
+        "tekststreng, dernæst (fra 27. juli 2026) en mange-til-mange-relation via en "
+        "EmployeeDispatcherGroup-jointabel, og siden igen erstattet af den nuværende enkelte FK – "
+        "begge tidligere ordninger er fjernet fra databasen."
     ))
 
     heading(doc, "Activity – aktiviteter", 2, "2.2")
@@ -321,6 +326,7 @@ def build_teknisk():
             ["approved_by",           "String (opt.)",  "Initialer på godkender (kun ved godkendelse)"],
             ["approved_at",           "DateTime (opt.)","Godkendelsestidspunkt"],
             ["deactivated_by",        "String (opt.)",  "Initialer på den der deaktiverede (kun ved deaktivering)"],
+            ["updated_by",            "String (opt.)",  "Initialer på den bruger der senest gemte en rettelse via PATCH /api/activities/{id} – NULL indtil første redigering, overskrives ubetinget ved hver efterfølgende (ingen historik, samme mønster som approved_by/deactivated_by)"],
             ["comment",               "Text (opt.)",    "Kommentar (påkrævet ved godkendelse < 4 timer)"],
             ["parent_activity_id",    "FK → Activity",  "Peger på moderaktivitet ved opdeling"],
             ["split_part",            "Integer (opt.)", "1 eller 2 – rækkefølge af opdelingsdele"],
@@ -403,6 +409,43 @@ def build_teknisk():
     note_box(doc,
         "half_day_from-feltet er forberedt til brug i fremtidig lønberegning (helligdagstillæg). "
         "Feltet bruges allerede i aktivitetskalenderens '½ fra HH:MM'-badge.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Vehicle – køretøjer", 2, "2.7")
+    header_table(doc,
+        ["Felt", "Type", "Beskrivelse"],
+        [
+            ["registration_number", "String",           "Nummerplade"],
+            ["vehicle_number",      "String",            "Internt vognnummer"],
+            ["description",         "Text (opt.)",       "'Beskrivelse' – vises som kolonne 2 i Dagsplan (afsnit 14.3)"],
+            ["dispatcher_group_id", "Integer FK (opt.)", "Mange vogne → én disponentgruppe. Adskilt fra DispatcherGroup.vehicle_id (gruppens egen 'standardvogn', bruges uændret til den eksisterende autoudfyldning af vognnummer på fraværstype-aktiviteter) – de to felter løser hver sin opgave og lever side om side"],
+        ]
+    )
+    body(doc, (
+        "description og dispatcher_group_id sættes/redigeres i den eksisterende Vognpark-sides "
+        "opret/rediger-vogn-modal (kræver fortsat 'manage_vehicles')."
+    ))
+
+    heading(doc, "Dagsplan – tabeller", 2, "2.8")
+    body(doc, (
+        "Tre tabeller understøtter Dagsplan-siden (kapitel 14): daglig vogn/chauffør-tildeling, "
+        "de 10 faste 'EKSTRA'-rækker og materielt fravær pr. vogn."
+    ))
+    header_table(doc,
+        ["Tabel", "Felt", "Beskrivelse"],
+        [
+            ["daily_plan_assignments",       "date / vehicle_id / employee_id (opt.) / task (opt.) / informed", "Én tildeling pr. vogn pr. dag. UniqueConstraint(date, vehicle_id) – upsert. employee_id kan være tomt (vogn uden chauffør den dag)."],
+            ["daily_plan_extra_assignments", "date / slot (1-10) / employee_id (opt.) / task (opt.) / informed", "De 10 faste 'EKSTRA'-rækker (hjælp på pladsen/lærlinge). Persisteres i egen tabel siden 2026-09-09 (oprindeligt kun frontend-state, nulstillet ved datoskift – ændret efter brugerønske om at kunne se dem igen senere). Indgår ALDRIG i vognnummer-autoudfyldning."],
+            ["vehicle_absences",             "vehicle_id / date_from / date_to (opt.) / comment / created_by", "Materielt fravær for en vogn. date_to=NULL betyder étdags-fravær (samme dag som date_from). En vogn regnes fraværende på dato d hvis date_from ≤ d ≤ (date_to ?? date_from)."],
+        ],
+        [Cm(3.8), Cm(4.2), Cm(8)]
+    )
+    note_box(doc,
+        "Forsøges en medarbejder tildelt en vogn/EKSTRA-plads, mens vedkommende allerede har en "
+        "anden effektiv tildeling samme dag (eller har registreret fravær den dag), blokeres "
+        "handlingen ikke – i stedet vises en advarsel (409 med menneskelæsbar besked), som "
+        "brugeren kan bekræfte for at gennemføre dobbelttildelingen alligevel.",
         "TEKNISK NOTE"
     )
 
@@ -605,6 +648,37 @@ def build_teknisk():
         "Dette er en bevidst, midlertidig afgrænsning: den konkrete beregningslogik for nye "
         "aftaletyper (hvis den overhovedet skal afvige fra flad normaltid) er endnu ikke defineret "
         "og er ikke en del af denne opgave. Se docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Særaftale: Øvrig overtid for alle timer", 2, "5.6")
+    body(doc, (
+        "Employee.ot_extra_alle_timer (Boolean, default false) er et generisk, togglebart "
+        "per-medarbejder-flag til én navngiven medarbejders individuelle særaftale: ALLE hans "
+        "arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn – uanset tidspunkt, dagtype "
+        "eller det sædvanlige daglige loft. Flaget er UAFHÆNGIGT af agreement_kind-branchingen i "
+        "afsnit 5.5 – det virker ovenpå den almindelige beregning, ikke som en ny aftaletype."
+    ))
+    for step in [
+        "Erstatter de normale tidstillæg (nat/aften/'1 time før', OT 1-3/kode 8) i stedet for at lægge oveni dem.",
+        "Intet dagligt loft: fuld normalløn (kode 1) for samtlige arbejdstimer, uanset det sædvanlige loft på 7/7,5/8 timer.",
+        "Gælder alle dage – hverdag, lørdag, søndag og alle helligdagstyper (inkl. 1. maj og Grundlovsdag).",
+        "Kode 8 (Overtid 1-3 timer) gives ALDRIG – kun kode 1 og kode 9, begge for samtlige arbejdstimer.",
+        "Kode 4/63 (SH-garantibetaling, compute_sh_hours()) beregnes helt uændret – uafhængig af flaget.",
+    ]:
+        bullet(doc, step)
+    body(doc, (
+        "Implementeret som override_ot_extra_alle_timer() i overtime.py, kaldt fra "
+        "_calculate_employee() (payroll_router.py) som et nyt, øverste tjek FØR den eksisterende "
+        "agreement_kind-gren. Slår automatisk igennem alle steder der bruger _calculate_employee(): "
+        "lønkørsel-preview, prøvekørsel, PDF-timesedler, Lønafregning-fanen og Danløn CSV."
+    ))
+    note_box(doc,
+        "Ingen ny løntypekode/Danløn-kode – genbruger den eksisterende kode 9-infrastruktur "
+        "(OT_EXTRA_KEY). Ingen ændring af salttillæg, overnatningstillæg eller afløser-logik. "
+        "Sættes via en checkbox i medarbejder-modalen ('Særaftale: Øvrig overtid for alle timer'), "
+        "gated af samme manage_employees/stamdata-tilladelse som resten af modalen – ingen ny "
+        "permission. Se docs/superpowers/specs/2026-09-10-ot-extra-alle-timer-design.md.",
         "TEKNISK NOTE"
     )
 
@@ -1345,6 +1419,81 @@ def build_teknisk():
         "(det gør kun 'Kør løn' under Lønkørsel)."
     ))
 
+    # ── 14. Dagsplan ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Dagsplan", 1, "14")
+    body(doc, (
+        "Dagsplan (routers/dagsplan_router.py) digitaliserer den daglige fordeling af vogne til "
+        "chauffører, der tidligere foregik manuelt i et Excel-ark uden for systemet. Siden kobler "
+        "sig til data der allerede findes i systemet: medarbejdere, vognpark, vagtplan/fravær og "
+        "Aktivitetsoversigten. Databasemodellerne er beskrevet i afsnit 2.7-2.8."
+    ))
+
+    heading(doc, "Permissions", 2, "14.1")
+    two_col_table(doc, [
+        ["dagsplan_view", "Se Dagsplan-siden (begge underfaner Dagsplan og Materiel fravær), read-only."],
+        ["dagsplan_edit", "Redigere tildelinger, afkrydse 'informeret', melde/fjerne materielt fravær."],
+    ])
+    body(doc, (
+        "Tilføjes idempotent ved opstart (samme mønster som manage_baselines-permissionen). "
+        "'admin' får dem automatisk som systemrolle; øvrige roller tildeles dem ikke som default, "
+        "men kan gives det via rolle-editoren."
+    ))
+
+    heading(doc, "API-endepunkter", 2, "14.2")
+    header_table(doc,
+        ["Endepunkt", "Metode", "Rettighed", "Beskrivelse"],
+        [
+            ["/api/dagsplan?date=",            "GET",    "dagsplan_view", "Samlet svar for én dag: vehicles (filtrerbar på disponentgruppe/medarbejder) + employees (altid ufiltreret, farvestatus + fraværstekst)."],
+            ["/api/dagsplan/assignment",       "PATCH",  "dagsplan_edit", "Upsert på (date, vehicle_id). Body: {date, vehicle_id, employee_id?, task?, informed?}."],
+            ["/api/dagsplan/extra-assignment", "PATCH",  "dagsplan_edit", "Upsert på en af de 10 faste EKSTRA-rækker."],
+            ["/api/vehicle-absences?date=",    "GET",    "dagsplan_view", "Materielt fravær der er aktivt på den angivne dato."],
+            ["/api/vehicle-absences",          "POST",   "dagsplan_edit", "Meld materielt fravær. Body: {vehicle_id, date_from, date_to?, comment}."],
+            ["/api/vehicle-absences/{id}",     "DELETE", "dagsplan_edit", "Fjern en materielt fravær-registrering."],
+        ],
+        [Cm(4), Cm(2), Cm(3), Cm(7.5)]
+    )
+    body(doc, (
+        "vehicles.py (VehicleCreate/VehicleUpdate/VehicleResponse) og employees.py "
+        "(EmployeeCreate/EmployeeUpdate/EmployeeResponse) er udvidet med hhv. "
+        "description/dispatcher_group_id og fast_bil/fast_bil_vehicle_id – uændrede permissions "
+        "(manage_vehicles/manage_employees)."
+    ))
+
+    heading(doc, "Farvestatus og mismatch-advarsel", 2, "14.3")
+    body(doc, (
+        "Medarbejderlisten i GET /api/dagsplan farvekoder hver medarbejder efter forrang "
+        "gul > rød > grøn > grå: gul (comment_only – vagtplan-kommentar uden egentligt fravær), "
+        "rød (absent – registreret fravær den dag), grøn (assigned – tildelt en vogn/EKSTRA-plads) "
+        "og grå (none – hverken tildelt eller fraværende). En medarbejder med fravær forbliver gul "
+        "selv når vedkommende samtidig er skrevet i chauffør-kolonnen."
+    ))
+    body(doc, (
+        "For hver tildelt medarbejder slås dagens 'normal'-type aktiviteter op. Findes mindst én "
+        "med et vehicle_number der afviger fra den tildelte vogns vehicle_number, sættes "
+        "mismatch_vehicle_number til den afvigende værdi – vist i frontend som et ⚠️-ikon med "
+        "tooltip 'vognnummer i løn: xxx'. Andre aktivitetstyper (fravær) indgår ikke i "
+        "sammenligningen."
+    ))
+
+    heading(doc, "Autoudfyld af vognnummer", 2, "14.4")
+    body(doc, (
+        "create_manual_activity() (activities.py) slår daily_plan_assignments op på "
+        "(employee_id, start_time.date()), når en 'normal tid'-aktivitet oprettes med tomt "
+        "vehicle_number. Findes en tildeling med en vogn, udfyldes vehicle_number automatisk fra "
+        "den. Gælder KUN 'normal tid' og overskriver aldrig et allerede udfyldt vognnummer – den "
+        "eksisterende disponentgruppe-baserede autoudfyldning for fraværstyper "
+        "(applyDispatcherGroupVehicleDefault() i frontend) er uændret og upåvirket. "
+        "applyDagsplanVehicleDefault() i app.js udfører den tilsvarende autoudfyldning i "
+        "frontend-formularen inden POST sendes."
+    ))
+    note_box(doc,
+        "'EKSTRA'-rækkerne indgår aldrig i denne autoudfyldning (der er intet rigtigt vognnummer "
+        "at udfylde med), og de indgår heller ikke i nogen lønberegning – kun 'Fast bil'/rigtige "
+        "vogne gør. Se docs/superpowers/specs/2026-09-09-dagsplan-design.md for det fulde design.",
+        "TEKNISK NOTE"
+    )
+
     doc.save(OUT / "Teknisk dokumentation.docx")
     print("Teknisk dokumentation.docx gemt.")
 
@@ -1395,8 +1544,10 @@ def build_bruger():
     two_col_table(doc, [
         ["📋 Aktiviteter",    "Viser aktivitetstabellen for den aktuelle lønperiode."],
         ["💰 Lønkørsel",      "Åbner lønkørselspanelet med prøvekørsel, PDF og CSV-eksport. Kræver 'Lønkørsel'-rettigheden."],
+        ["🧾 Lønafregning",   "Periodetotaler og pr.-medarbejder oversigt over lønnen (kapitel 12). Kræver 'Lønafregning (se)'."],
         ["📊 Fraværsoversigt","Samlet oversigt over fravær pr. medarbejder/type, med eksport. Kræver 'Fraværsoversigt'-rettigheden."],
         ["🗓️ Vagtplan",       "Ugentlig/periodisk vagtplanlægning pr. medarbejder. Kræver 'Se vagtplan'; redigering kræver desuden 'Redigér egen linje' eller 'Redigér alle linjer'."],
+        ["🗓️ Dagsplan",       "Daglig vogn/chauffør-fordeling og materielt fravær (kapitel 13). Kræver 'Se dagsplan'; redigering kræver desuden 'Redigér dagsplan'."],
     ])
     body(doc, "")
     two_col_table(doc, [
@@ -1570,6 +1721,7 @@ def build_bruger():
         ["Aktivitetsfordeling",       "Fordeling mellem kørsel, rådighedstid, andet arbejde og hvil/pause (fra tachografen)."],
         ["Detaljeret tidslinje",      "Alle segmenter med præcise tidspunkter."],
         ["Status og godkender",       "Hvem har godkendt og hvornår."],
+        ["Ændret af",                 "Initialerne på den bruger der sidst gemte en rettelse. Vises kun når aktiviteten faktisk er blevet redigeret."],
     ])
 
     heading(doc, "Hvad kan du gøre?", 2, "5.2")
@@ -1706,7 +1858,9 @@ def build_bruger():
         [
             ["Aftale",              "Ja", "Vælg fra listen der stammer fra Stamdata (Aftale-fanen) – som udgangspunkt 'Timelønnet, fast arbejdstid' eller 'Timelønnet, ikke fastlagt arbejdstid'. Administratorer kan tilføje flere aftaletyper i Stamdata."],
             ["Overenskomsttype",    "Afhænger af Aftale", "Bestemmer timesatsen. Vælg fra listen der stammer fra Stamdata (Overenskomsttyper-fanen). Feltet er kun obligatorisk (rød *) hvis den valgte Aftale-type kræver det – styres pr. aftaletype i Stamdata."],
-            ["Disponentgrupper",    "Nej","Afdeling(er) – afkrydsningsbokse, en medarbejder kan tilhøre flere grupper samtidig. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten."],
+            ["Disponentgruppe",     "Nej","Afdeling – dropdown, en medarbejder kan højst tilhøre én gruppe ad gangen. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten."],
+            ["Fast bil",            "Nej","Afkryds for at medarbejderen skal foreslås som standardchauffør på en bestemt vogn i Dagsplan (kapitel 13). Vises herefter et søgbart vognnummer-felt, ikke begrænset til egen disponentgruppe."],
+            ["Særaftale: Øvrig overtid for alle timer", "Nej", "Afkryds KUN for en medarbejder med en individuel aftale om at alle arbejdstimer skal give Øvrig overtid oveni normal løn, uden dagligt loft (se afsnit 9.6). Berører lønberegningen direkte – brug med omtanke."],
             ["Lønnummer",           "Ja", "Unikt lønnummer (bruges i Danløn-eksporten)."],
             ["Førerkortnummer",     "Nej","EU-førerkortnummer – påkrævet for at importere .ddd-filer korrekt."],
             ["Navn",                "Ja", "Fornavn og efternavn."],
@@ -1996,6 +2150,25 @@ def build_bruger():
         "GODT AT VIDE"
     )
 
+    heading(doc, "Særaftale: Øvrig overtid for alle timer", 2, "9.6")
+    body(doc, (
+        "En enkelt navngiven medarbejder kan have en individuel særaftale om at ALLE hans "
+        "arbejdstimer giver Øvrig overtid oveni normal løn – uanset tidspunkt på døgnet, "
+        "dagtype eller det sædvanlige daglige loft. Aftalen slås til via krydsfeltet 'Særaftale: "
+        "Øvrig overtid for alle timer' i medarbejder-modalen (se afsnit 7.2)."
+    ))
+    bullet(doc, "Erstatter de normale tillæg (05-06, 18-21/OT, nat) i stedet for at lægge oveni dem.")
+    bullet(doc, "Intet dagligt loft – fuld normalløn for samtlige arbejdstimer, uanset medarbejderens skemalagte timer.")
+    bullet(doc, "Gælder alle dage, også søndage, helligdage, 1. maj og Grundlovsdag.")
+    bullet(doc, "Kode 4/63 (søgnehelligdagsbetaling) er upåvirket og beregnes helt som normalt.")
+    note_box(doc,
+        "Krydses feltet af for en medarbejder, slår ændringen automatisk igennem overalt: "
+        "lønkørsel-preview, prøvekørsel, PDF-timesedler, Lønafregning og Danløn CSV. Brug kun "
+        "feltet til den konkrete særaftale det er lavet til – det er ikke en generel "
+        "'overtidsbonus'-indstilling.",
+        "VIGTIGT"
+    )
+
     # ── 10. Vigtige regler ────────────────────────────────────────────────
     doc.add_page_break()
     heading(doc, "Vigtige regler og opmærksomhedspunkter", 1, "10")
@@ -2150,6 +2323,8 @@ def build_bruger():
             ["vagtplan_edit_all",           "Redigér alle linjer i vagtplan",    "Ret alle medarbejderes rækker i Vagtplan."],
             ["payroll_settlement_view",     "Lønafregning (se)",                 "Menupunktet 'Lønafregning': periodetotaler og pr.-medarbejder oversigt (se kapitel 12)."],
             ["payroll_settlement_export",   "Lønafregning (eksport)",            "Eksportér Lønafregning som CSV. Kræver låst periode, medmindre brugeren er administrator."],
+            ["dagsplan_view",               "Se dagsplan",                       "Menupunktet 'Dagsplan' (læse-adgang, se kapitel 13)."],
+            ["dagsplan_edit",               "Redigér dagsplan",                  "Redigér tildelinger og 'informeret'-afkrydsning, meld/fjern materielt fravær."],
         ],
         [Cm(3.5), Cm(4), Cm(8.5)]
     )
@@ -2248,6 +2423,63 @@ def build_bruger():
         "ikke perioden – det sker kun ved 'Kør løn' under Lønkørsel.",
         "VIGTIGT"
     )
+
+    # ── 13. Dagsplan ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Dagsplan", 1, "13")
+    body(doc, (
+        "Klik på '🗓️ Dagsplan' i venstre menu for at se og redigere dagens fordeling af vogne "
+        "til chauffører – den digitale afløser for det Excel-ark, der tidligere blev brugt uden "
+        "for systemet. Siden kræver rettigheden 'Se dagsplan'; redigering kræver desuden "
+        "'Redigér dagsplan' (se afsnit 11.3). Uden redigeringsrettighed ser du samme visning, "
+        "men alle felter og knapper er låst."
+    ))
+    body(doc, "Siden har to underfaner, der deler samme valgte dato: 'Dagsplan' og 'Materiel fravær'.")
+
+    heading(doc, "Dagsplan-fanen", 2, "13.1")
+    body(doc, (
+        "Øverst navigerer du mellem dage med ◀ / ▶ eller datovælgeren (default: dags dato). "
+        "Disponentgruppe-filteret og det søgbare medarbejder-filter indsnævrer kun hovedtabellen "
+        "– sidelisten med den fulde medarbejderoversigt er altid upåvirket af filtrene."
+    ))
+    header_table(doc,
+        ["Kolonne", "Indhold"],
+        [
+            ["Vognnummer",  "Vognens nummer (fra Vognpark)."],
+            ["Beskrivelse", "Vognens beskrivelse, hvis udfyldt under Vognpark."],
+            ["Chauffør",    "Søgbar medarbejder-vælger. Er medarbejderens 'Fast bil' sat til denne vogn (se afsnit 7.2), foreslås vedkommende automatisk – forslaget kan altid ændres."],
+            ["Opgave",      "Frit tekstfelt."],
+            ["Informeret",  "Afkrydsningsfelt – markér når chaufføren er informeret om dagens tildeling."],
+        ]
+    )
+    body(doc, (
+        "Under hovedtabellen findes 10 faste 'EKSTRA'-rækker til hjælp på pladsen eller lærlinge "
+        "– samme felter som ovenfor, men uden vognnummer og uden vognnummer-autoudfyldning på "
+        "aktiviteter."
+    ))
+    bullet(doc, "En medarbejder med registreret fravær den valgte dag vises med rødt i sidelisten – og forbliver rødt, selv hvis vedkommende samtidig er skrevet i en Chauffør-kolonne.")
+    bullet(doc, "En vogn med meldt materielt fravær (se afsnit 13.2) vises rødt i hovedtabellen.")
+    bullet(doc, "Er der uoverensstemmelse mellem den tildelte vogn og vognnummeret på chaufførens egen 'normal tid'-aktivitet den dag, vises et ⚠️-ikon med tooltip 'vognnummer i løn: xxx' ved chaufførnavnet.")
+    note_box(doc,
+        "Forsøger du at tildele en medarbejder, der allerede har en anden tildeling (eller "
+        "registreret fravær) samme dag, viser systemet en advarsel i stedet for at blokere "
+        "handlingen – bekræfter du, gennemføres dobbelttildelingen alligevel.",
+        "BEMÆRK"
+    )
+    note_box(doc,
+        "Opretter du en 'normal tid'-aktivitet for en chauffør med en tildelt vogn i Dagsplan "
+        "den pågældende dag, udfyldes vognnummeret automatisk på aktiviteten – medmindre feltet "
+        "allerede er udfyldt. Dette rører ikke ved fraværstyper eller EKSTRA-rækkerne.",
+        "GODT AT VIDE"
+    )
+
+    heading(doc, "Materiel fravær-fanen", 2, "13.2")
+    body(doc, (
+        "Registrér når en vogn er ude af drift (værksted, reparation m.m.). Klik "
+        "'Meld materielt fravær' (kræver 'Redigér dagsplan') og angiv vogn, 'Fra dato' (default: "
+        "fanens valgte dato), en valgfri 'Til dato' (tom betyder étdags-fravær) samt en kommentar. "
+        "Tabellen nedenfor viser dagens meldte fravær med en slet-knap."
+    ))
 
     doc.save(OUT / "Brugervejledning.docx")
     print("Brugervejledning.docx gemt.")

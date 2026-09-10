@@ -33,13 +33,29 @@ Excel-ark som reference).
 | `dispatcher_group_id` | Integer FK → `dispatcher_groups.id`, nullable | Ny, separat relation (mange vogne → én gruppe). Erstatter IKKE det eksisterende `DispatcherGroup.vehicle_id` (én "standardvogn" pr. gruppe, fortsat brugt uændret til autoudfyld af vognnummer ved oprettelse af fraværstype-aktiviteter). De to felter løser hver sin opgave og lever side om side. |
 
 Sættes/redigeres i den eksisterende Vognpark-sides opret/rediger-vogn-modal
-(kræver fortsat `manage_vehicles`, uændret).
+(kræver fortsat `manage_vehicles`, uændret). `create_vehicle`/`update_vehicle`
+afviser et ukendt `dispatcher_group_id` med 400 ("Ukendt disponentgruppe-id:
+{id}"). *(Tilføjet efter implementering.)*
+
+**`Vehicle.fast_bil_employee_name`** *(tilføjet efter implementering, ikke i
+oprindeligt design):* beregnet property (ikke en DB-kolonne) – kommasepareret
+liste af navne på medarbejdere der har denne vogn som `fast_bil_vehicle_id`
+(håndterer det usandsynlige tilfælde at flere medarbejdere deler samme faste
+vogn). Eksponeres på `VehicleResponse` og vises read-only i
+Vognpark-modalen (`#vehicle-fast-bil-employee`) sammen med vognens
+disponentgruppe (`#vehicle-fast-bil-group`) – se "Vognpark-siden" nedenfor.
 
 ### `Employee` (nye felter)
 | Felt | Type | Bemærk |
 |---|---|---|
 | `fast_bil` | Boolean, default false | Krydsfelt i medarbejder-modalen |
 | `fast_bil_vehicle_id` | Integer FK → `vehicles.id`, nullable | Kun udfyldt/relevant hvis `fast_bil=true`. Vognvalget er IKKE begrænset til medarbejderens egen disponentgruppe – alle vogne i vognparken kan vælges. |
+
+`create_employee`/`update_employee` afviser et ukendt `fast_bil_vehicle_id`
+med 400 ("Ukendt vogn-id: {id}"). `EmployeeResponse` medtager desuden det
+afledte felt `fast_bil_vehicle_number` (vognens nummer, opslået server-side)
+til at forudfylde søgefeltet i medarbejder-modalen uden en ekstra
+frontend-lookup. *(Begge tilføjet efter implementering.)*
 
 ### Ny tabel `daily_plan_assignments`
 | Felt | Type | Bemærk |
@@ -68,6 +84,15 @@ gennemføres dobbelttildelingen alligevel. Samme mønster bruges til at advare,
 hvis medarbejderen har registreret fravær den dag. *(Tilføjet 2026-09-09 efter
 brugerønske – oprindeligt var her slet ingen validering.)*
 
+**Præcisering (tilføjet efter implementering):** konflikttjekket
+(`_conflicting_assignment_label()`) dækker alle fire kombinationer – vogn↔vogn,
+vogn↔EKSTRA-plads, EKSTRA-plads↔vogn og EKSTRA-plads↔EKSTRA-plads – og
+sammenligner mod den *effektive* tildeling (en gemt `daily_plan_assignment`
+ELLER medarbejderens "Fast bil"-standard, ikke kun gemte rækker). Beskeden
+navngiver konfliktkilden som "vogn {nummer}" eller "EKSTRA-plads {slot}".
+Bekræftelsen sendes som `force: true` i PATCH-body'en (se endpoints nedenfor)
+for at omgå både dobbelttildelings- og fraværsadvarslen.
+
 ### Ny tabel `vehicle_absences` (materielt fravær)
 | Felt | Type | Bemærk |
 |---|---|---|
@@ -95,9 +120,17 @@ ved `Base.metadata.create_all` (som resten af skemaet).
 - `dagsplan_edit` – redigere tildelinger, afkrydse "informeret", melde/fjerne
   materielt fravær.
 
-Tilføjes idempotent ved opstart (samme mønster som
-`_ensure_manage_baselines_permission()`); `admin` får dem automatisk som
-systemrolle. Øvrige roller tildeles dem ikke som default, men kan gives det via
+`admin` får dem automatisk som systemrolle (systemroller får ALLE permissions
+ubetinget – ingen særlig kobling til disse to). Øvrige roller tildeles dem ikke
+som default, men kan gives det via rolle-editoren.
+
+**Rettelse (afviger fra oprindeligt design):** permissionerne seedes IKKE
+idempotent ved opstart, i modsætning til hvad der oprindeligt var planlagt her
+(der findes ingen `_ensure_dagsplan_permissions()`-funktion i `session.py`,
+svarende til fx `_ensure_vagtplan_permissions()`). De to nøgler
+(`dagsplan_view`/`dagsplan_edit`) findes udelukkende som statiske entries i
+`ALL_PERMISSIONS`-dictet i `auth.py` – der er intet at migrere, da ikke-system-
+roller uden dem blot mangler dem indtil en admin tildeler dem manuelt via
 rolle-editoren.
 
 ### `GET /api/dagsplan?date=YYYY-MM-DD`
@@ -114,6 +147,12 @@ Kræver `dagsplan_view`. Ét samlet svar for hele dagsvisningen:
   `comment_only` gul – forrang: gul > rød > grøn > grå, jf. kravet om at forblive
   gul selv når medarbejderen er skrevet i chauffør-kolonnen) og evt. fraværstekst
   (type-label eller vagtplan-kommentar).
+- `extra_rows` *(tilføjet efter implementering, ikke i oprindeligt design):* de
+  10 faste EKSTRA-pladser (slot 1-10), hver med `slot`, `employee_id`,
+  `employee_name`, `task`, `informed` – ingen `vehicle`/`absent`/`mismatch`-felter,
+  da en EKSTRA-plads ikke er en rigtig vogn. Altid ufiltreret, ligesom
+  `employees`. En medarbejder tildelt en EKSTRA-plads tæller også som `assigned`
+  (grøn) i medarbejderlistens farvestatus.
 
 Disponentgruppe- og medarbejder-filtrering sker på query-parametre
 (`dispatcher_group_id?`, `employee_id?`) og påvirker KUN `vehicles`-listen –
@@ -128,7 +167,18 @@ indgår ikke i denne sammenligning.
 
 ### `PATCH /api/dagsplan/assignment`
 Kræver `dagsplan_edit`. Body: `{date, vehicle_id, employee_id?, task?,
-informed?}`. Upsert på `(date, vehicle_id)`.
+informed?, force?}`. Upsert på `(date, vehicle_id)`. `force: bool = false`
+*(tilføjet efter implementering, ikke i oprindeligt design)* – sæt til `true`
+for at gennemføre en tildeling på trods af den dobbelttildelings-/
+fraværsadvarsel der ellers returneres som 409 (se "Ny tabel
+`daily_plan_assignments`" ovenfor).
+
+### `PATCH /api/dagsplan/extra-assignment`
+*(Manglede i det oprindelige design – tilføjet sammen med at EKSTRA-rækkerne
+blev gjort persisterede 2026-09-09.)* Kræver `dagsplan_edit`. Body: `{date,
+slot, employee_id?, task?, informed?, force?}`, `slot` valideret til 1-10.
+Upsert på `(date, slot)` i `daily_plan_extra_assignments`. Samme `force`-flag
+og samme konflikttjek som `/assignment` (se ovenfor).
 
 ### `POST /api/vehicle-absences`
 Kræver `dagsplan_edit`. Body: `{vehicle_id, date_from, date_to?, comment}`.
@@ -143,25 +193,37 @@ dato (bruges af "Materiel fravær"-underfanen, som deler valgt dato med
 
 ### `vehicles.py`
 `VehicleCreate`/`VehicleUpdate`/`VehicleResponse` udvides med
-`description`/`dispatcher_group_id`. Uændret permission (`manage_vehicles`).
+`description`/`dispatcher_group_id` (+ `fast_bil_employee_name` på
+`VehicleResponse`, se Datamodel ovenfor). Uændret permission
+(`manage_vehicles`). `dispatcher_group_id` valideres til at pege på en
+eksisterende gruppe (400 ellers, se Datamodel).
 
 ### `employees.py`
 `EmployeeCreate`/`EmployeeUpdate`/`EmployeeResponse` udvides med
-`fast_bil`/`fast_bil_vehicle_id`.
+`fast_bil`/`fast_bil_vehicle_id` (+ det afledte `fast_bil_vehicle_number` på
+`EmployeeResponse`, se Datamodel ovenfor). `fast_bil_vehicle_id` valideres til
+at pege på en eksisterende vogn (400 ellers).
 
 ### Autoudfyld ved oprettelse af manuel aktivitet (`create_manual_activity`, `activities.py`)
 Hvis `activity_type == "normal"` og request-body'ens `vehicle_number` er tomt:
-slå `daily_plan_assignments` op på `(employee_id, start_time.date())`. Findes en
-tildeling med en vogn, udfyldes `vehicle_number` fra den. Gælder KUN "normal
-tid" – den eksisterende disponentgruppe-baserede autoudfyldning for
-fraværstyper (`applyDispatcherGroupVehicleDefault()` i frontend) er uændret og
-upåvirket.
+slå den EFFEKTIVE vogn op for `(employee_id, start_time.date())` via
+`effective_vehicle_for_employee()` (`calculators/dagsplan_helpers.py`) – samme
+regel som Dagsplan-tabellen selv bruger: en gemt `daily_plan_assignment` for
+dagen, og ELLERS medarbejderens "Fast bil" (`fast_bil_vehicle_id`), hvis sat.
+*(Rettelse: det oprindelige design nævnte kun opslag i `daily_plan_assignments`
+– Fast bil-fallbacket blev tilføjet under implementeringen og er dækket af
+`tests/test_dagsplan_activity_autofill.py`.)* Gælder KUN "normal tid" – den
+eksisterende disponentgruppe-baserede autoudfyldning for fraværstyper
+(`applyDispatcherGroupVehicleDefault()` i frontend) er uændret og upåvirket.
 
 ## Frontend (`app.js` + `index.html`)
 
 ### Sidebar
-Ny post `data-view="dagsplan"` med `data-perm-require="dagsplan_view"`, placeret
-mellem "Vagtplan" og "DDD-import".
+Ny post `data-view="dagsplan"` med `data-perm-require="dagsplan_view"`. Placeret
+sidst i "Løn"-sidebargruppen, lige efter "Vagtplan" – IKKE mellem to punkter i
+samme flade liste som først antaget: "Importer .ddd" er første punkt i den
+efterfølgende gruppe "Registre", altså visuelt lige under, men i en anden
+sidebar-sektion.
 
 ### Fanestruktur
 To underfaner på Dagsplan-siden (samme tab-switch-mønster som Stamdata):
@@ -189,6 +251,15 @@ state-felt, fx `state.dagsplan.date`).
   read-only/deaktiverede (samme mønster som andre steder i appen –
   `data-perm-require`/`btn-muted`).
 
+**Kobling til Aktivitetsoversigten (tilføjet efter implementering):**
+`applyDagsplanVehicleDefault()` i `app.js` er et selvstændigt, klient-side
+modstykke til backend-autoudfyldningen ovenfor – kaldes når den manuelle
+aktivitets-formular åbnes/opdateres (medarbejder eller dato ændres) og henter
+`GET /api/dagsplan?date=...&employee_id=...` for at forudfylde
+vognnummer-feltet i UI'et FØR selve oprettelsen sendes. No-op'er stille ved
+manglende `dagsplan_view`-rettighed eller fejlet kald – samme mønster som
+`applyDispatcherGroupVehicleDefault()` for fraværstyper.
+
 ### Underfane "Materiel fravær"
 - "Meld materielt fravær"-knap (kræver `dagsplan_edit`) → modal: vognvalg,
   "Fra dato" (default: fanens valgte dato), "Til dato" (valgfri – tom betyder
@@ -201,23 +272,49 @@ Opret/rediger-vogn-modalen udvides med "Beskrivelse" (tekstfelt) og
 disponentgruppe (samme dropdown-mønster som medarbejder-modalens
 disponentgruppe-felt). Uændret permission (`manage_vehicles`).
 
+**Read-only Fast bil-visning (tilføjet efter implementering, ikke i
+oprindeligt design):** modalen viser desuden to read-only felter –
+`#vehicle-fast-bil-employee` (fra `VehicleResponse.fast_bil_employee_name`) og
+`#vehicle-fast-bil-group` – så man kan se, uden at forlade Vognpark-siden,
+hvilken medarbejder der evt. har denne vogn som fast bil, og hvilken
+disponentgruppe vognen tilhører.
+
 ### Medarbejder-modalen (`modal-employee`, eksisterende)
 Nyt "Fast bil"-krydsfelt; når krydset, vises et søgbart vognnummer-felt
 (`fast_bil_vehicle_id`), ubegrænset af disponentgruppe.
 
 ## Tests
-- `daily_plan_assignments`: upsert (opret + opdater eksisterende), unik pr.
-  (date, vehicle_id).
+Fordelt over seks filer i stedet for én samlet `test_dagsplan.py`:
+`test_dagsplan_router.py`, `test_dagsplan_datamodel.py`,
+`test_dagsplan_activity_autofill.py`, `test_dagsplan_permission_keys.py`,
+`test_employee_fast_bil_endpoint.py`, `test_vehicle_dispatcher_group_field.py`.
+
+- `daily_plan_assignments`/`daily_plan_extra_assignments`: upsert (opret +
+  opdater eksisterende), unik pr. (date, vehicle_id) hhv. (date, slot),
+  `slot`-validering (1-10).
 - `vehicle_absences`: opret med/uden `date_to`, korrekt "aktiv på dato"-logik,
   sletning.
+- Konflikttjek: alle fire kombinationer vogn↔vogn/EKSTRA, inkl. "Fast bil" som
+  konfliktkilde (ikke kun gemte tildelinger), samt at `force: true` omgår
+  advarslen.
 - Autoudfyld: `create_manual_activity` udfylder vognnummer for "normal tid" fra
-  dagens tildeling, rører IKKE ved fraværstyper, overskriver ALDRIG et allerede
-  udfyldt vognnummer.
-- `GET /api/dagsplan`: filtrering påvirker kun `vehicles`, aldrig `employees`;
-  mismatch-felt sættes korrekt ved afvigende vognnummer på en "normal
-  tid"-aktivitet; farveprioritet (gul > rød > grøn > grå) på medarbejderlisten.
-- Permission-tjek: `dagsplan_view`/`dagsplan_edit` håndhæves på alle nye
-  endpoints.
+  dagens EFFEKTIVE tildeling (gemt tildeling ELLER Fast bil), rører IKKE ved
+  fraværstyper, overskriver ALDRIG et allerede udfyldt vognnummer.
+- `GET /api/dagsplan`: filtrering påvirker kun `vehicles`, aldrig
+  `employees`/`extra_rows`; mismatch-felt sættes korrekt ved afvigende
+  vognnummer på en "normal tid"-aktivitet; farveprioritet (gul > rød > grøn >
+  grå) på medarbejderlisten; medarbejderlisten ekskluderer medarbejdere uden en
+  synlig disponentgruppe (samme grundmængde som Aktivitetsoversigten).
+- 400-validering: ukendt `dispatcher_group_id` (vogn) og ukendt
+  `fast_bil_vehicle_id` (medarbejder) afvises.
+- `fast_bil_employee_name`: korrekt (inkl. flere medarbejdere på samme vogn).
+
+**Ikke dækket (bevidst, samme konvention som fx `test_employee_supplements.py`):**
+Permission-håndhævelse af `dagsplan_view`/`dagsplan_edit` er IKKE testet –
+`test_dagsplan_router.py` kalder route-funktionerne direkte og springer
+dermed FastAPIs `Depends()`-injektion over. `test_dagsplan_permission_keys.py`
+tjekker kun at de to nøgler findes i `ALL_PERMISSIONS`, ikke at de håndhæves.
+Det oprindelige design antog fejlagtigt at håndhævelse var testdækket.
 
 ## Ikke omfattet
 - Ingen ændring af den eksisterende disponentgruppe-baserede

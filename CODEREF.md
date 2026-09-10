@@ -33,6 +33,7 @@ app/
     import_ddd.py              # /api/import-ddd (scanner ddd_input/) – admin+lonbogholder
     auto_approval_router.py    # POST /api/auto-approval/rebuild-baselines, GET /baseline-summary (manage_baselines perm)
     employee_supplements.py    # /api/employee-supplements – kr/time-tillæg pr. medarbejder (manage_employee_supplements perm)
+    dagsplan_router.py         # /api/dagsplan + /api/vehicle-absences – daglig vogn/chauffør-fordeling (dagsplan_view/dagsplan_edit perm)
   calculators/
     overtime.py                # calculate_overtime() → OvertimeResult
     pay_period.py              # get_or_create_period_for_date(), is_even_week()
@@ -71,6 +72,8 @@ app/Salttillæg.xlsx            # Celle B1 = salttillæg pr. time
 | hire_date / termination_date | Date | Ansættelses-/slutdato |
 | paragraf_56 | Boolean | Krydses af i medarbejder-modalen; kræver paragraf_56_start_date/paragraf_56_end_date udfyldt (400 ellers). Ingen kobling til lønberegning eller den eksisterende "§56 syg"-fraværstype endnu |
 | paragraf_56_start_date / paragraf_56_end_date | Date nullable | Se paragraf_56 – nulstilles til NULL server-side når paragraf_56 sættes til false |
+| fast_bil / fast_bil_vehicle_id | Boolean / Int FK nullable | "Fast bil" – foreslår medarbejderen som default chauffør på den valgte vogn i Dagsplan (se "Dagsplan" nedenfor). Vognvalget er IKKE begrænset til egen disponentgruppe |
+| ot_extra_alle_timer | Boolean, default false | Særaftale pr. medarbejder: alle arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn, uden dagligt loft. Se `override_ot_extra_alle_timer()` i overtime.py nedenfor |
 
 ### MasterAgreementKind (tabel: master_agreement_kinds) — "Aftale"
 | Felt | Type | Bemærk |
@@ -97,6 +100,7 @@ CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Ligh
 | approved_by | String | Initialer – kun ved godkendelse |
 | approved_at | DateTime | |
 | deactivated_by | String nullable | Initialer – kun ved deaktivering (legacy: falder tilbage til approved_by) |
+| updated_by | String nullable | Initialer på seneste bruger der gemte en PATCH-rettelse. NULL indtil første redigering, overskrives ubetinget ved hver efterfølgende (ingen historik, samme mønster som approved_by/deactivated_by). Sat ubetinget i `update_activity()` (activities.py), vist i frontend kun når feltet er sat |
 | salt_supplement | Boolean | |
 | pause_intervals | JSON | `[["ISO","ISO"],...]` |
 | segments | JSON | `[["ISO","ISO","type"],...]` |
@@ -110,8 +114,13 @@ CRUD under Stamdata → "Disponentgrupper" (kræver `stamdata`-tilladelse). Ligh
 
 ### Øvrige
 - **PayPeriod**: start_date, end_date, status(open/preview/closed)
-- **Vehicle**: registration_number (nummerplade), vehicle_number (vognnr)
+- **Vehicle**: registration_number (nummerplade), vehicle_number (vognnr), description (Text nullable, Dagsplan kol. 2), dispatcher_group_id (Int FK nullable – mange vogne → én gruppe, adskilt fra `DispatcherGroup.vehicle_id`s "standardvogn"-relation, se linje ~586)
 - **PayrollRun**: pay_period_id, run_type, csv_path, excel_path
+
+### Dagsplan-tabeller (2026-09-09, se "Dagsplan" nedenfor)
+- **DailyPlanAssignment** (`daily_plan_assignments`): date, vehicle_id, employee_id (nullable), task, informed. `UniqueConstraint(date, vehicle_id)` – upsert.
+- **DailyPlanExtraAssignment** (`daily_plan_extra_assignments`): samme felter uden vehicle_id, i stedet slot 1-10 (de 10 faste "EKSTRA"-rækker). Persisteres siden 2026-09-09 (oprindeligt kun frontend-state).
+- **VehicleAbsence** (`vehicle_absences`): vehicle_id, date_from, date_to (nullable = étdags), comment, created_by. Aktiv på dato `d` hvis `date_from <= d <= (date_to ?? date_from)`.
 
 ### EmployeeSupplement (tabel: employee_supplements)
 | Felt | Type | Bemærk |
@@ -172,6 +181,20 @@ Status (Aktiv/Inaktiv) er IKKE lagret – beregnes ved visning ud fra om dags da
 `EmployeeCreate`/`EmployeeUpdate` bruger `dispatcher_group_id: Optional[int]` (én gruppe, ikke en liste); `EmployeeResponse.dispatcher_group` er et enkelt `{id, name, description}`-objekt eller `null`. Fuld CRUD på selve grupperne (opret/omdøb/slet) ligger under `/api/stamdata/dispatcher-groups` (kræver `stamdata`-tilladelse) – fane "Disponentgrupper" i Stamdata-viewet.
 
 **Advarsel om mulig dublet ved oprettelse (app.js: `confirmEmployee`, kun ved `id` tom):** Før POST slås navn (for+efternavn, case-insensitive) og førerkortnummer op mod `GET /api/employees?active_only=false`. Navnesammenfald → `modal-emp-duplicate-warning` med to knapper: "Ændre" (luk advarslen, bliv i oprettelsesmodalen) og "OK, opret alligevel" (kalder `_saveEmployee` med det gemte `_pendingEmployeeBody`). Match på førerkortnummer skjuler OK-knappen (`btn-emp-duplicate-ok`) – kan kun rettes, ikke ignoreres, da kolonnen stadig er unik i DB.
+
+### /api/dagsplan (dagsplan_view / dagsplan_edit)
+| Method | Sti | Beskrivelse |
+|---|---|---|
+| GET | /?date=YYYY-MM-DD | Samlet svar: `vehicles` (filtrerbar på disponentgruppe/medarbejder, farvestatus+mismatch) + `employees` (altid ufiltreret, farvestatus grøn/rød/grå/gul) |
+| PATCH | /assignment | Upsert på (date, vehicle_id). Body: {date, vehicle_id, employee_id?, task?, informed?} |
+| PATCH | /extra-assignment | Upsert på én af de 10 faste EKSTRA-rækker (slot 1-10) |
+
+### /api/vehicle-absences (dagsplan_view / dagsplan_edit)
+| Method | Sti | Beskrivelse |
+|---|---|---|
+| GET | /?date=YYYY-MM-DD | Materielt fravær aktivt på angivet dato |
+| POST | / | Meld materielt fravær. Body: {vehicle_id, date_from, date_to?, comment} |
+| DELETE | /{id} | Fjern en materielt fravær-registrering |
 
 ### /api/auto-approval
 | Method | Sti | Beskrivelse |
@@ -584,6 +607,42 @@ Ny løntypekode `SPRINGERTILLAEG` (kr/time-sats fra `MasterSupplementRate`, labe
 
 ## Disponentgruppe 1:1 + vognnummer-autoudfyldning ved fravær (2026-08-26)
 `Employee.dispatcher_groups` (mange-til-mange) er erstattet af `Employee.dispatcher_group_id`/`dispatcher_group` (én gruppe, nullable). `EmployeeDispatcherGroup`-tabellen er fjernet (migreret af `_migrate_dispatcher_group_to_single()` i `session.py`, som ved konflikt beholder den alfabetisk først sorterede gruppe; kolonnetilføjelserne selv sker i `_migrate()`, da den ORM-baserede `_migrate_dispatcher_groups()` ellers ville fejle på manglende kolonner). `DispatcherGroup.vehicle_id`/`vehicle`/`vehicle_number` (property) peger på et køretøj i vognparken, vedligeholdt via Stamdata → Disponentgrupper (søgbart vognnummer-felt, brugerdefineret dropdown – ikke native `<datalist>`, af hensyn til konsistent substring-søgning på tværs af browsere). `app.js`s `applyDispatcherGroupVehicleDefault()` foreslår automatisk gruppens vognnummer i opret-aktivitet-modalens vognnummer-felt for enhver fraværstype (kun hvis feltet er tomt) – rent frontend-prefill, ingen backend-håndhævelse. Fejl rettet undervejs: flerdags-fraværsregistrering (`confirmManualActivity()`s range-gren) sendte tidligere slet ikke `vehicle_number` med i sit `POST /api/activities`-kald.
+
+---
+
+## Dagsplan (2026-09-09, dagsplan_router.py + models.py + activities.py + app.js)
+
+Ny sidebar-side der digitaliserer den daglige fordeling af vogne til chauffører (tidligere et Excel-ark uden for systemet). To underfaner, samme fane-mønster som Stamdata: "Dagsplan" og "Materiel fravær" – deler ét state-felt for valgt dato (`state.dagsplan.date`). Se `docs/superpowers/specs/2026-09-09-dagsplan-design.md` for det fulde design, og "Dagsplan-tabeller"/"/api/dagsplan"/"/api/vehicle-absences" ovenfor for datamodel og endpoints.
+
+**Permissions** `dagsplan_view`/`dagsplan_edit` (`app/auth.py:34-35`) – tilføjes idempotent ved opstart, samme mønster som `manage_baselines`. `admin` får dem automatisk som systemrolle; andre roller kun via rolle-editoren.
+
+**Mismatch-advarsel:** for hver tildelt medarbejder slås dagens `normal`-type aktiviteter op. Afviger en akivitets `vehicle_number` fra den tildelte vogns, sættes `mismatch_vehicle_number` (⚠️-ikon + tooltip "vognnummer i løn: xxx" i frontend). Kun `normal`-aktiviteter indgår – fravær sammenlignes ikke.
+
+**Farveprioritet på medarbejderlisten** (altid ufiltreret, uanset disponentgruppe-/medarbejder-filtrene på hovedtabellen): gul (comment_only – vagtplan-kommentar) > rød (absent – fravær) > grøn (assigned) > grå (none). En medarbejder med fravær forbliver gul selv når vedkommende samtidig er tildelt en vogn.
+
+**Dobbelttildeling blokeres ikke:** forsøger man at tildele en medarbejder der allerede har en anden tildeling eller registreret fravær samme dag, returneres 409 med en menneskelæsbar advarsel i stedet for en hård fejl – brugeren kan bekræfte og gennemføre alligevel. *(Tilføjet efter brugerønske – oprindeligt ingen validering.)*
+
+**Autoudfyld af vognnummer:** `create_manual_activity()` (activities.py:~491-497) slår `daily_plan_assignments` op på `(employee_id, start_time.date())` når en `normal`-aktivitet oprettes med tomt `vehicle_number`. Gælder KUN "normal tid", overskriver aldrig et allerede udfyldt felt, og er uafhængig af den eksisterende disponentgruppe-baserede autoudfyldning for fraværstyper (`applyDispatcherGroupVehicleDefault()`) – de to mekanismer lever side om side. Frontend-modstykket er `applyDagsplanVehicleDefault()` i app.js (~linje 2237).
+
+**EKSTRA-rækkerne** (10 faste pladser til hjælp på pladsen/lærlinge) indgår ALDRIG i vognnummer-autoudfyldning eller lønberegning – kun "Fast bil"/rigtige vogne gør.
+
+---
+
+## "Ændret af"-felt på aktiviteter (2026-09-10, models.py + schemas.py + activities.py + app.js)
+
+`Activity.updated_by` (String nullable) sættes ubetinget til `current_user.initials` i `update_activity()` (`PATCH /api/activities/{id}`) ved HVERT kald – rammes af både "Gem ændringer" i redigeringsmodalen og øvrige steder der patcher en aktivitet. NULL indtil første redigering, overskrives uden historik ved hver efterfølgende (samme mønster som `approved_by`/`deactivated_by`, og som `SystemSettings.updated_by`). Vist i app.js (aktivitetsdetalje, ved siden af "Godkendt af"/"Deaktiveret af") kun når feltet er sat. Se `docs/superpowers/specs/2026-09-10-aendret-af-felt-design.md`.
+
+---
+
+## Særaftale: Øvrig overtid for alle timer (2026-09-10, overtime.py + payroll_router.py + models.py)
+
+`Employee.ot_extra_alle_timer` (Boolean, default false) – generisk, togglebart per-medarbejder-flag til én navngiven medarbejders individuelle særaftale. UAFHÆNGIGT af `agreement_kind`-branchingen (linje ~573) – virker som et nyt, øverste tjek i `_calculate_employee()` FØR den gren, ikke som en ny aftaletype. Se `docs/superpowers/specs/2026-09-10-ot-extra-alle-timer-design.md`.
+
+**Regler:** erstatter (lægger ikke oveni) de normale tidstillæg; INTET dagligt loft (fuld kode 1 for alle arbejdstimer); gælder alle dage inkl. søndag/helligdag/1. maj/Grundlovsdag; kode 8 (OT 1-3) gives ALDRIG, kun kode 1 + kode 9 (Øvrig overtid); kode 4/63 (`compute_sh_hours()`) er upåvirket og uændret.
+
+**Implementering:** `override_ot_extra_alle_timer(result, is_special_day, rates)` i `overtime.py` – post-processing-funktion der nulstiller `ot_before_hours`/`ot_13_hours` og sætter enten `sh_kode9_hours=total_hours` (særdag) eller `ot_extra_hours=total_hours` + genberegner `supplements[OT_EXTRA_KEY]` (almindelig dag). `by_date`-bucket'ene (Lønafregning) opdateres samtidig. Kaldes fra `_calculate_employee()` (payroll_router.py, linje ~591/599/630/640) – slår automatisk igennem alle forbrugere: lønkørsel-preview, prøvekørsel, PDF-timesedler, Lønafregning, Danløn CSV.
+
+**Frontend:** checkbox `emp-ot-extra-alle-timer` i `modal-employee` (samme mønster som `emp-afloeser`/`emp-fast-bil`), label "Særaftale: Øvrig overtid for alle timer". Ingen ny permission – gates af `manage_employees`/`stamdata` som resten af modalen.
 
 ---
 

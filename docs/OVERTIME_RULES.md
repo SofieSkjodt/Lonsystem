@@ -58,6 +58,23 @@ og genindlæses ved hvert kald:
   kode 8, resten → kode 9" uden særkode. Se `calculators/day_type.py` og
   `memory/project_lonsystem_midnight_split.md` for den fulde baggrund og verifikation.
 
+## Særaftale: "Øvrig overtid for alle timer" (`Employee.ot_extra_alle_timer`)
+
+Generisk, togglebart per-medarbejder-flag (default `false`) til en individuel særaftale –
+IKKE knyttet til `agreement_kind`, virker ovenpå den almindelige beregning:
+
+- **Erstatter** de normale tidstillæg (05-06, 18-21/OT 1-3, nat) i stedet for at lægge oveni dem.
+- **Intet loft**: fuld normalløn (kode 1) for samtlige arbejdstimer, uanset det daglige loft.
+- Gælder **alle dage** – hverdag, lørdag, søndag og alle helligdagstyper (inkl. 1. maj/Grundlovsdag).
+- **Kode 8 gives aldrig** – kun kode 1 og kode 9 (Øvrig overtid), begge for alle arbejdstimer.
+- Kode 4/63 (SH-garanti, `compute_sh_hours()`) er upåvirket og beregnes uændret.
+
+Implementeret som `override_ot_extra_alle_timer()` i `calculators/overtime.py`, kaldt fra
+`_calculate_employee()` (`payroll_router.py`) som et nyt, øverste tjek før den eksisterende
+`agreement_kind`-gren. Se `docs/superpowers/specs/2026-09-10-ot-extra-alle-timer-design.md`.
+
+---
+
 ## Lønperioder
 
 Faste 14-dages perioder, mandag–søndag, anker 1/6-2026

@@ -27,7 +27,10 @@
 | terminsdato | DATE NULL | Seneste terminsdato angivet ved oprettelse af en barsel-aktivitet |
 | paragraf_56, paragraf_56_start_date, paragraf_56_end_date | BOOLEAN / DATE NULL | §56-aftale (fleksjob) |
 | afloeser | BOOLEAN NOT NULL DEFAULT FALSE | Afløser |
-| dispatcher_group_id | INTEGER FK NULL | Reference til disponentgruppe |
+| dispatcher_group_id | INTEGER FK NULL | Reference til disponentgruppe (én, ikke flere – se `dispatcher_groups` nedenfor) |
+| fast_bil | BOOLEAN NOT NULL DEFAULT FALSE | "Fast bil" – foreslår medarbejderen som standardchauffør på `fast_bil_vehicle_id` i Dagsplan |
+| fast_bil_vehicle_id | INTEGER FK NULL | Den faste vogn (kun relevant når `fast_bil=true`), ikke begrænset til egen disponentgruppe |
+| ot_extra_alle_timer | BOOLEAN NOT NULL DEFAULT FALSE | Særaftale: alle arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn, uden dagligt loft – se `OVERTIME_RULES.md` |
 | created_at | DATETIME | Oprettelsestidspunkt |
 | updated_at | DATETIME | Sidst opdateret |
 
@@ -79,6 +82,9 @@ Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `anc
 | status | TEXT | `pending`, `approved`, `deactivated` |
 | approved_by | TEXT | Initialer på godkender |
 | approved_at | DATETIME | Godkendelsestidspunkt |
+| deactivated_by | TEXT NULL | Initialer på den der deaktiverede |
+| updated_by | TEXT NULL | Initialer på den bruger der senest gemte en rettelse via PATCH – NULL indtil første redigering, overskrives ved hver efterfølgende (ingen historik) |
+| vehicle_registration, vehicle_number | TEXT NULL | Nummerplade / internt vognnummer på aktiviteten |
 | comment | TEXT | Fri kommentar |
 | parent_activity_id | INTEGER FK NULL | Hvis splittet: reference til original |
 | split_part | INTEGER NULL | 1 = første del (deaktiveret), 2 = anden del (aktiv) |
@@ -106,13 +112,61 @@ Anciennitet beregnes automatisk fra `hire_date`. Pop-up ved 9 måneder hvis `anc
 | id | INTEGER PK | Intern ID |
 | name | TEXT NOT NULL | Gruppenavn |
 | description | TEXT | Beskrivelse |
+| vehicle_id | INTEGER FK NULL | Gruppens "standardvogn" – bruges til autoudfyldning af vognnummer på fraværstype-aktiviteter |
 
-### `employee_dispatcher_groups` (Mange-til-mange)
+En medarbejder tilhører højst ÉN gruppe (`employees.dispatcher_group_id`, se ovenfor) – ikke en
+mange-til-mange-relation. Feltet har historisk skiftet form to gange: oprindeligt en enkelt
+tekststreng, dernæst (fra 27/7-2026) en mange-til-mange-relation via en nu fjernet
+`employee_dispatcher_groups`-jointabel, og siden igen erstattet af den nuværende enkelte FK.
+
+---
+
+### `vehicles` (Køretøjer)
 
 | Felt | Type | Beskrivelse |
 |------|------|-------------|
-| employee_id | INTEGER FK | Medarbejder |
-| dispatcher_group_id | INTEGER FK | Disponentgruppe |
+| id | INTEGER PK | Intern ID |
+| registration_number | TEXT | Nummerplade |
+| vehicle_number | TEXT | Internt vognnummer |
+| description | TEXT NULL | Vises som kolonne 2 i Dagsplan |
+| dispatcher_group_id | INTEGER FK NULL | Mange vogne → én disponentgruppe (adskilt fra `dispatcher_groups.vehicle_id` ovenfor, som er gruppens egen "standardvogn") |
+
+---
+
+### `daily_plan_assignments` (Dagsplan – vogntildeling)
+
+| Felt | Type | Beskrivelse |
+|------|------|-------------|
+| id | INTEGER PK | Intern ID |
+| date | DATE NOT NULL | |
+| vehicle_id | INTEGER FK NOT NULL | |
+| employee_id | INTEGER FK NULL | Tom = vogn uden chauffør den dag |
+| task | TEXT NULL | Opgave |
+| informed | BOOLEAN NOT NULL DEFAULT FALSE | Chauffør informeret |
+| created_at, updated_at | DATETIME | |
+
+`UniqueConstraint(date, vehicle_id)` – én tildeling pr. vogn pr. dag (upsert via `PATCH /api/dagsplan/assignment`).
+
+### `daily_plan_extra_assignments` (Dagsplan – EKSTRA-rækker)
+
+Samme felter som `daily_plan_assignments`, men uden `vehicle_id` – i stedet et fast `slot`
+(1-10) for de 10 EKSTRA-pladser (hjælp på pladsen/lærlinge). Indgår aldrig i vognnummer-
+autoudfyldning eller lønberegning.
+
+### `vehicle_absences` (Materielt fravær)
+
+| Felt | Type | Beskrivelse |
+|------|------|-------------|
+| id | INTEGER PK | Intern ID |
+| vehicle_id | INTEGER FK NOT NULL | |
+| date_from | DATE NOT NULL | |
+| date_to | DATE NULL | NULL = étdags-fravær (samme dag som `date_from`) |
+| comment | TEXT NOT NULL | Årsag/beskrivelse |
+| created_by | TEXT NULL | Initialer |
+| created_at | DATETIME | |
+
+En vogn regnes som materielt fraværende på dato `d`, hvis `date_from <= d <= (date_to ?? date_from)`.
+Permissions: `dagsplan_view` (læse) / `dagsplan_edit` (redigere) for alle fire Dagsplan-tabeller.
 
 ---
 
