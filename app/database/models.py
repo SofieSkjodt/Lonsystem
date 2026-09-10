@@ -162,6 +162,7 @@ class Activity(Base):
     approved_by = Column(String, nullable=True)     # initialer – sat ved godkendelse
     approved_at = Column(DateTime, nullable=True)
     deactivated_by = Column(String, nullable=True)  # initialer – sat ved deaktivering
+    updated_by = Column(String, nullable=True)  # initialer – seneste bruger der ændrede aktiviteten
     comment = Column(Text, nullable=True)
     parent_activity_id = Column(Integer, ForeignKey("activities.id"), nullable=True)
     split_part = Column(Integer, nullable=True)

@@ -149,6 +149,7 @@ class ActivityResponse(BaseModel):
     approved_by: Optional[str]
     approved_at: Optional[datetime]
     deactivated_by: Optional[str] = None
+    updated_by: Optional[str] = None
     comment: Optional[str]
     is_under_4h: bool
     is_over_12h: bool

@@ -1251,6 +1251,7 @@ async function openActivityDetail(id) {
       ${(a.auto_approval_flags && a.auto_approval_flags.length > 0) ? `<div class="auto-approval-flags"><strong>Afvigelser registreret (ikke auto-godkendt):</strong><ul>${a.auto_approval_flags.map(f => `<li>${h(f)}</li>`).join('')}</ul></div>` : ""}
       ${a.status === "approved" && a.approved_by ? `<div class="detail-item"><label>Godkendt af</label><span>${h(a.approved_by)}</span></div>` : ""}
       ${a.status === "deactivated" && (a.deactivated_by || a.approved_by) ? `<div class="detail-item"><label>Deaktiveret af</label><span>${h(a.deactivated_by || a.approved_by)}</span></div>` : ""}
+      ${a.updated_by ? `<div class="detail-item"><label>Ændret af</label><span>${h(a.updated_by)}</span></div>` : ""}
     </div>
 
     <div class="form-row" style="margin-bottom:14px">

@@ -263,6 +263,7 @@ def _to_response(a: Activity) -> ActivityResponse:
         approved_by=a.approved_by,
         approved_at=a.approved_at,
         deactivated_by=a.deactivated_by,
+        updated_by=a.updated_by,
         comment=a.comment,
         is_under_4h=under_4h,
         is_over_12h=dur > TWELVE_HOURS,
@@ -678,6 +679,7 @@ def update_activity(activity_id: int, body: ActivityUpdate,
         a.original_end_time = a.end_time
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
+    a.updated_by = current_user.initials
     if body.pause_intervals is not None:
         flag_modified(a, "pause_intervals")
         for p in a.pause_intervals:
