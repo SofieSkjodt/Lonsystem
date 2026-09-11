@@ -677,6 +677,12 @@ def update_activity(activity_id: int, body: ActivityUpdate,
     if times_changed and a.original_start_time is None:
         a.original_start_time = a.start_time
         a.original_end_time = a.end_time
+    # Gem originale pauser ved første rettelse, af samme grund som tiderne ovenfor:
+    # en senere ddd-genimport skal kunne se, at kun brugeren rettede pausen (ikke
+    # kildedataen), og ikke fejlagtigt oprette en ny linje pga. den manuelle rettelse.
+    pauses_changed = body.pause_intervals is not None and body.pause_intervals != (a.pause_intervals or [])
+    if pauses_changed and a.original_pause_intervals is None:
+        a.original_pause_intervals = a.pause_intervals
     for field, value in body.model_dump(exclude_none=True).items():
         setattr(a, field, value)
     a.updated_by = current_user.initials

@@ -4,6 +4,7 @@ from typing import List
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
+from sqlalchemy import and_, case
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -259,6 +260,17 @@ def _import_activity(
     # fejlagtigt at oprette en duplikat (bekræftet 2026-09-03: Mikkel Hørlin
     # 2/9 – en parser-rettelse flyttede vagtens beregnede start fra 07:02 til
     # 06:54).
+    #
+    # Findes der BÅDE en godkendt/deaktiveret linje og en tidligere oprettet
+    # pending-korrektionslinje for samme dag (fordi en genimport engang fandt
+    # en reel afvigelse, se needs_new_line nedenfor), skal den pending linje
+    # foretrækkes. Uden denne sortering finder et opslag uden order_by ofte
+    # den gamle, "frosne" godkendte linje igen – som ALDRIG selv opdateres –
+    # og genimporten opretter derfor en helt ny konkurrerende linje for HVER
+    # eneste efterfølgende import, i det uendelige (bekræftet 2026-09-11:
+    # 1.273 dublet-rækker på tværs af 38 medarbejdere stammede fra netop
+    # dette). Med sorteringen konvergerer alle senere importer i stedet til
+    # at opdatere den ene, allerede oprettede korrektionslinje.
     existing = (
         db.query(Activity)
         .filter(
@@ -267,6 +279,11 @@ def _import_activity(
             Activity.start_time < act.end_time,
             Activity.end_time > act.start_time,
         )
+        .order_by(case(
+            (and_(Activity.status == ActivityStatus.pending,
+                  Activity.parent_activity_id.is_(None)), 0),
+            else_=1,
+        ))
         .first()
     )
     if existing:
@@ -339,17 +356,38 @@ def _import_activity(
                     and not act.is_likely_incomplete
                 )
 
+                # Sammenlign mod det OPRINDELIGT importerede (før evt. manuel
+                # rettelse), ikke mod de nuværende gemte værdier – ellers vil en
+                # genimport af uændret kildedata tolke en tidligere manuel
+                # tids-/pauserettelse som en afvigelse og lydløst overskrive den
+                # (bekræftet 2026-09-11: pause_intervals kan rettes manuelt via
+                # 'Ret linje'/'Tilpas', men blev hidtil ikke husket her).
+                baseline_start = existing.original_start_time or existing.start_time
+                baseline_end = existing.original_end_time or existing.end_time
+                baseline_pauses = (
+                    existing.original_pause_intervals
+                    if existing.original_pause_intervals is not None
+                    else (existing.pause_intervals or [])
+                )
+
                 if can_resync_fully:
                     if (
-                        act.start_time != existing.start_time
-                        or act.end_time != existing.end_time
+                        act.start_time != baseline_start
+                        or act.end_time != baseline_end
                         or new_segments != (existing.segments or [])
-                        or new_pause_intervals != (existing.pause_intervals or [])
+                        or new_pause_intervals != baseline_pauses
                     ):
                         existing.start_time = act.start_time
                         existing.end_time = act.end_time
                         existing.segments = new_segments
                         existing.pause_intervals = new_pause_intervals
+                        # Kildedata er reelt anderledes end det oprindeligt
+                        # importerede – en evt. manuel rettelse er nu forældet
+                        # og erstattet af den friske parsing, så der er intet
+                        # tilbage at sammenligne fremtidige genimporter mod.
+                        existing.original_start_time = None
+                        existing.original_end_time = None
+                        existing.original_pause_intervals = None
                         existing.availability_time_pct = act.availability_time_pct
                         existing.rest_pause_pct = act.rest_pause_pct
                         existing.other_work_pct = act.other_work_pct
@@ -401,10 +439,10 @@ def _import_activity(
                     # den nye linje kan uden problemer have samme starttidspunkt
                     # som den godkendte/deaktiverede aktivitet.
                     if (
-                        act.start_time != existing.start_time
-                        or act.end_time != existing.end_time
+                        act.start_time != baseline_start
+                        or act.end_time != baseline_end
                         or new_segments != (existing.segments or [])
-                        or new_pause_intervals != (existing.pause_intervals or [])
+                        or new_pause_intervals != baseline_pauses
                     ):
                         needs_new_line = True
 

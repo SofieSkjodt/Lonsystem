@@ -172,6 +172,9 @@ def _migrate():
         if "absence_group_id" not in act_cols2:
             conn.execute("ALTER TABLE activities ADD COLUMN absence_group_id VARCHAR(36)")
             conn.commit()
+        if "original_pause_intervals" not in act_cols2:
+            conn.execute("ALTER TABLE activities ADD COLUMN original_pause_intervals TEXT")
+            conn.commit()
         existing_indexes = {row[1] for row in conn.execute("PRAGMA index_list(activities)")}
         if "ix_activities_employee_start_source" not in existing_indexes:
             conn.execute(

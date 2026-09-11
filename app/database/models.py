@@ -156,9 +156,13 @@ class Activity(Base):
     # [["ISO-start","ISO-slut","rest|availability|work|driving"], ...]
     segments = Column(JSON, nullable=False, default=list)
     created_by = Column(String, nullable=True)   # initialer på bruger der oprettede manuelt
-    # Originale tider gemmes ved første manuelle rettelse (muliggør fortryd)
+    # Originale tider/pauser gemmes ved første manuelle rettelse (muliggør fortryd,
+    # og lader en ddd-genimport sammenligne mod det oprindeligt importerede i
+    # stedet for en senere manuel rettelse – ellers vil genimport af uændret
+    # kildedata fejlagtigt tolke den manuelle rettelse som en afvigelse).
     original_start_time = Column(DateTime, nullable=True)
     original_end_time = Column(DateTime, nullable=True)
+    original_pause_intervals = Column(JSON, nullable=True)
     status = Column(Enum(ActivityStatus), default=ActivityStatus.pending, nullable=False)
     approved_by = Column(String, nullable=True)     # initialer – sat ved godkendelse
     approved_at = Column(DateTime, nullable=True)
