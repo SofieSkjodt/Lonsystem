@@ -35,6 +35,7 @@ def create_vehicle(body: VehicleCreate,
         vehicle_number=body.vehicle_number.strip(),
         description=body.description,
         dispatcher_group_id=_resolve_dispatcher_group_id(db, body.dispatcher_group_id),
+        vognpark=body.vognpark,
     )
     db.add(v)
     db.commit()
@@ -62,6 +63,8 @@ def update_vehicle(vehicle_id: int, body: VehicleUpdate,
         v.vehicle_number = body.vehicle_number.strip()
     if body.description is not None:
         v.description = body.description
+    if body.vognpark is not None:
+        v.vognpark = body.vognpark
     if "dispatcher_group_id" in body.model_fields_set:
         v.dispatcher_group_id = _resolve_dispatcher_group_id(db, body.dispatcher_group_id)
     db.commit()

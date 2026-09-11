@@ -18,8 +18,8 @@ def _user():
     return AppUser(name="Test", initials="TST", role="lonbogholder", password_hash="x")
 
 
-def _vehicle(db, number="52", reg="BN47449"):
-    v = Vehicle(registration_number=reg, vehicle_number=number)
+def _vehicle(db, number="52", reg="BN47449", vognpark=True):
+    v = Vehicle(registration_number=reg, vehicle_number=number, vognpark=vognpark)
     db.add(v)
     db.commit()
     db.refresh(v)
@@ -410,6 +410,38 @@ def test_upsert_extra_assignment_conflict_when_employee_is_absent(db, employee):
         )
     assert exc.value.status_code == 409
     assert "Ferie" in exc.value.detail
+
+
+def test_vehicle_without_vognpark_flag_excluded_from_dagsplan(db):
+    from routers.dagsplan_router import get_dagsplan
+    _vehicle(db, vognpark=False)
+    resp = get_dagsplan(date=date(2026, 9, 9), dispatcher_group_id=None, employee_id=None,
+                        current_user=_user(), db=db)
+    assert resp.vehicles == []
+
+
+def test_fast_bil_on_non_vognpark_vehicle_hidden_and_no_conflict(db, employee):
+    """En vogn der ikke er markeret 'Vognpark' må hverken vises i Dagsplanen via
+    Fast bil-fallback, eller tælle som en eksisterende tildeling ved konflikttjek
+    når medarbejderen tildeles en anden (vognpark-markeret) vogn."""
+    from routers.dagsplan_router import get_dagsplan, upsert_assignment
+    v_not_in_fleet = _vehicle(db, "52", "BN47449", vognpark=False)
+    v_in_fleet = _vehicle(db, "60", "AB12345", vognpark=True)
+    employee.fast_bil = True
+    employee.fast_bil_vehicle_id = v_not_in_fleet.id
+    db.commit()
+
+    resp = get_dagsplan(date=date(2026, 9, 9), dispatcher_group_id=None, employee_id=None,
+                        current_user=_user(), db=db)
+    assert len(resp.vehicles) == 1
+    assert resp.vehicles[0].vehicle_number == "60"
+    assert resp.vehicles[0].employee_id is None  # Fast bil-fallback rammer ikke en vogn uden for Dagsplanen
+
+    # Ingen 409-konflikt, selvom medarbejderen "burde" være optaget via Fast bil på v_not_in_fleet
+    row = upsert_assignment(DailyPlanAssignmentUpsert(date=date(2026, 9, 9), vehicle_id=v_in_fleet.id,
+                                                       employee_id=employee.id),
+                            current_user=_user(), db=db)
+    assert row.employee_id == employee.id
 
 
 def test_vehicle_assignment_conflict_detects_existing_extra_slot(db, employee):

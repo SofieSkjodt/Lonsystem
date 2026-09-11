@@ -330,6 +330,7 @@ class Vehicle(Base):
     vehicle_number = Column(String, nullable=False)                     # Vognnummer
     description = Column(Text, nullable=True)                           # "Beskrivelse" (Dagsplan kol. 2)
     dispatcher_group_id = Column(Integer, ForeignKey("dispatcher_groups.id"), nullable=True)
+    vognpark = Column(Boolean, default=False, nullable=False)           # Indgår i Dagsplanens vognkolonne
     created_at = Column(DateTime, server_default=func.now())
 
     # Mange vogne -> én gruppe. Adskilt fra DispatcherGroup.vehicle_id (én

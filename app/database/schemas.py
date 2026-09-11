@@ -304,6 +304,7 @@ class VehicleCreate(BaseModel):
     vehicle_number: str
     description: Optional[str] = None
     dispatcher_group_id: Optional[int] = None
+    vognpark: bool = False
 
 
 class VehicleUpdate(BaseModel):
@@ -311,6 +312,7 @@ class VehicleUpdate(BaseModel):
     vehicle_number: Optional[str] = None
     description: Optional[str] = None
     dispatcher_group_id: Optional[int] = None
+    vognpark: Optional[bool] = None
 
 
 class VehicleResponse(BaseModel):
@@ -321,6 +323,7 @@ class VehicleResponse(BaseModel):
     dispatcher_group_id: Optional[int] = None
     dispatcher_group_name: Optional[str] = None
     fast_bil_employee_name: Optional[str] = None
+    vognpark: bool
 
     model_config = {"from_attributes": True}
 

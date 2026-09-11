@@ -244,6 +244,9 @@ def _migrate():
         if "dispatcher_group_id" not in veh_cols:
             conn.execute("ALTER TABLE vehicles ADD COLUMN dispatcher_group_id INTEGER")
             conn.commit()
+        if "vognpark" not in veh_cols:
+            conn.execute("ALTER TABLE vehicles ADD COLUMN vognpark BOOLEAN NOT NULL DEFAULT 0")
+            conn.commit()
         emp_cols3 = {row[1] for row in conn.execute("PRAGMA table_info(employees)")}
         if "fast_bil" not in emp_cols3:
             conn.execute("ALTER TABLE employees ADD COLUMN fast_bil BOOLEAN NOT NULL DEFAULT 0")

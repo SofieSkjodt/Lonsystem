@@ -26,6 +26,7 @@ const state = {
   currentUser: null,       // { id, name, initials, role, email, permissions }
   roles: [],               // { id, name, display_name, is_system, permissions[] }
   usersAdminTab: "users",  // aktiv fane i users-admin view
+  vehiclesTab: "vognpark", // aktiv fane i Vognpark-view ("vognpark" | "all")
   holidays: [],            // { date: "YYYY-MM-DD", name: string, half_day_from: string|null }
   dispatcherGroups: [],    // { id, name, description }
   autoApprovalEnabled: true, // global til/fra-kontakt, hentet ved app-bootstrap
@@ -3496,7 +3497,7 @@ async function loadVehicles() {
   try {
     state.vehicles = await GET("/api/vehicles");
     if (!state.dispatcherGroups.length) { try { state.dispatcherGroups = await GET("/api/employees/dispatcher-groups"); } catch (_) {} }
-    renderVehicleList();
+    switchVehiclesTab(state.vehiclesTab || "vognpark");
   } catch (e) { toast(e.message, "error"); }
   finally { setLoading(false); }
 }
@@ -3508,11 +3509,27 @@ function fillVehicleDispatcherGroupSelect(selectedId = null) {
     .join("");
 }
 
+function switchVehiclesTab(tab) {
+  state.vehiclesTab = tab;
+  ["vognpark", "all"].forEach(t => {
+    const btn = document.getElementById(`veh-tab-${t}`);
+    if (btn) {
+      btn.style.borderBottomColor = t === tab ? "var(--primary)" : "transparent";
+      btn.style.color             = t === tab ? "var(--primary)" : "var(--text-light)";
+      btn.style.fontWeight        = t === tab ? "700" : "600";
+    }
+  });
+  renderVehicleList();
+}
+
 function renderVehicleList() {
   const query = (document.getElementById("vehicle-search")?.value || "").toLowerCase().trim();
   const container = document.getElementById("vehicle-list");
   container.innerHTML = "";
   let vehicles = state.vehicles;
+  if (state.vehiclesTab === "vognpark") {
+    vehicles = vehicles.filter(v => v.vognpark);
+  }
   if (query) {
     vehicles = vehicles.filter(v =>
       v.registration_number.toLowerCase().includes(query) ||
@@ -3549,6 +3566,7 @@ function openNewVehicleModal() {
   document.getElementById("vehicle-reg").value = "";
   document.getElementById("vehicle-num").value = "";
   document.getElementById("vehicle-description").value = "";
+  document.getElementById("vehicle-vognpark").checked = false;
   fillVehicleDispatcherGroupSelect(null);
   document.getElementById("vehicle-fast-bil-group").style.display = "none"; // vognen findes ikke endnu - kan ikke være nogens Fast bil
   document.getElementById("vehicle-delete-btn").classList.add("hidden");
@@ -3563,6 +3581,7 @@ function openEditVehicle(id) {
   document.getElementById("vehicle-reg").value = v.registration_number;
   document.getElementById("vehicle-num").value = v.vehicle_number;
   document.getElementById("vehicle-description").value = v.description || "";
+  document.getElementById("vehicle-vognpark").checked = v.vognpark;
   fillVehicleDispatcherGroupSelect(v.dispatcher_group_id);
   document.getElementById("vehicle-fast-bil-group").style.display = "";
   document.getElementById("vehicle-fast-bil-employee").value = v.fast_bil_employee_name || "—";
@@ -3578,6 +3597,7 @@ async function saveVehicle() {
     registration_number: reg,
     vehicle_number: num,
     description: document.getElementById("vehicle-description").value.trim() || null,
+    vognpark: document.getElementById("vehicle-vognpark").checked,
     dispatcher_group_id: document.getElementById("vehicle-dispatcher-group").value
       ? parseInt(document.getElementById("vehicle-dispatcher-group").value) : null,
   };

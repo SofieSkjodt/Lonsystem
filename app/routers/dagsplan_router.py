@@ -59,7 +59,7 @@ def _build_vehicle_rows(db: Session, d: date_type) -> list[DagsplanVehicleRow]:
         db.query(Employee).filter(Employee.fast_bil == True, Employee.fast_bil_vehicle_id.isnot(None)).all()
     }
     rows = []
-    for v in db.query(Vehicle).order_by(Vehicle.vehicle_number).all():
+    for v in db.query(Vehicle).filter(Vehicle.vognpark == True).order_by(Vehicle.vehicle_number).all():
         a = assignments.get(v.id)
         default_emp = fast_bil_by_vehicle.get(v.id) if a is None else None
         employee = a.employee if (a and a.employee) else default_emp
