@@ -294,6 +294,115 @@ def test_unchanged_readout_of_approved_activity_does_not_create_new_line(db, emp
     assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
 
 
+def test_legacy_corrected_segment_without_recorded_original_still_creates_one_more_line(db, employee):
+    """
+    Reproducerer Alexander B. Knudsen og Claus Ulrik Nicolaisen 9/9-2026: en
+    aktivitet blev godkendt med et manuelt rettet segment (pause->arbejde, 4.
+    element bevarer originalen, jf. correct_segment i activities.py) FØR
+    original_segments-feltet fandtes, så ingen baseline blev fanget for netop
+    DEN rettelse. Én sidste genimport opretter derfor stadig én ny linje her –
+    kendt begrænsning, kræver et engangs-databackfill af original_segments for
+    allerede eksisterende rettede aktiviteter (rekonstruerbart fra 4.
+    element). Fra og med denne linje bliver rettet (fx via correct_segment
+    igen på den nye linje), fanges original_segments dog fremover automatisk,
+    jf. test_manually_corrected_segment_survives_reimport_via_original_segments
+    nedenfor.
+    """
+    start = datetime(2026, 9, 9, 6, 25)
+    end = datetime(2026, 9, 9, 13, 46)
+    act = make_activity(db, employee, start=start, end=end, status=ActivityStatus.approved)
+    rest_end = datetime(2026, 9, 9, 6, 26)
+    act.segments = [
+        [start.isoformat(), rest_end.isoformat(), "work", "rest"],
+        [rest_end.isoformat(), end.isoformat(), "driving"],
+    ]
+    act.pause_intervals = []
+    db.commit()
+
+    same_source = _parsed(
+        start, end,
+        segments=[
+            (start, rest_end, "rest"),
+            (rest_end, end, "driving"),
+        ],
+        pauses=[(start, rest_end)],
+    )
+
+    result, _ = _import_activity(same_source, db, employee)
+    db.refresh(act)
+
+    assert result == "new"
+    assert act.status == ActivityStatus.approved
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 2
+
+
+def test_manually_corrected_segment_survives_reimport_via_original_segments(db, employee):
+    """Samme scenarie som ovenfor, men original_segments ER sat (rettelsen
+    skete via correct_segment EFTER dette felt blev indført) – skal opføre sig
+    identisk: reimport af uændret kildedata må stadig ikke skabe en duplikat."""
+    start = datetime(2026, 9, 9, 6, 25)
+    end = datetime(2026, 9, 9, 13, 46)
+    act = make_activity(db, employee, start=start, end=end, status=ActivityStatus.approved)
+    rest_end = datetime(2026, 9, 9, 6, 26)
+    original = [
+        [start.isoformat(), rest_end.isoformat(), "rest"],
+        [rest_end.isoformat(), end.isoformat(), "driving"],
+    ]
+    act.original_segments = original
+    act.segments = [
+        [start.isoformat(), rest_end.isoformat(), "work", "rest"],
+        [rest_end.isoformat(), end.isoformat(), "driving"],
+    ]
+    act.pause_intervals = []
+    db.commit()
+
+    same_source = _parsed(
+        start, end,
+        segments=[
+            (start, rest_end, "rest"),
+            (rest_end, end, "driving"),
+        ],
+        pauses=[],
+    )
+
+    result, _ = _import_activity(same_source, db, employee)
+    db.refresh(act)
+
+    assert result == "skipped_duplicate"
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
+
+
+def test_genuinely_different_segments_on_approved_activity_still_creates_new_line(db, employee):
+    """En reel afvigelse i segmenterne (ikke bare en tidligere manuel rettelse)
+    skal stadig udløse en ny linje, præcis som for tid – original_segments må
+    ikke skjule ægte nye oplysninger fra en senere/mere fuldstændig udlæsning."""
+    start = datetime(2026, 9, 9, 6, 25)
+    end = datetime(2026, 9, 9, 13, 46)
+    act = make_activity(db, employee, start=start, end=end, status=ActivityStatus.approved)
+    act.segments = [[start.isoformat(), end.isoformat(), "driving"]]
+    act.pause_intervals = []
+    db.commit()
+
+    pause_start = datetime(2026, 9, 9, 10, 0)
+    pause_end = datetime(2026, 9, 9, 10, 15)
+    different = _parsed(
+        start, end,
+        segments=[
+            (start, pause_start, "driving"),
+            (pause_start, pause_end, "rest"),
+            (pause_end, end, "driving"),
+        ],
+        pauses=[(pause_start, pause_end)],
+    )
+
+    result, _ = _import_activity(different, db, employee)
+    db.refresh(act)
+
+    assert result == "new"
+    assert act.status == ActivityStatus.approved
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 2
+
+
 def test_corrected_shorter_end_time_does_not_shrink_split_activity(db, employee):
     """En aktivitet der er en af de to dele af et split må ikke gøres kortere
     af en genimport – brugeren har bevidst omfordelt tiden mellem de to

@@ -163,6 +163,7 @@ class Activity(Base):
     original_start_time = Column(DateTime, nullable=True)
     original_end_time = Column(DateTime, nullable=True)
     original_pause_intervals = Column(JSON, nullable=True)
+    original_segments = Column(JSON, nullable=True)
     status = Column(Enum(ActivityStatus), default=ActivityStatus.pending, nullable=False)
     approved_by = Column(String, nullable=True)     # initialer – sat ved godkendelse
     approved_at = Column(DateTime, nullable=True)

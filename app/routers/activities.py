@@ -936,6 +936,12 @@ def correct_segment(
         seg = seg[:2] + ["work", seg[2]]  # ret til arbejde, bevar original
 
     segments[idx] = seg
+    # Gem originale segmenter ved første manuelle rettelse, af samme grund som
+    # original_pause_intervals i update_activity: en senere ddd-genimport skal
+    # kunne sammenligne mod det oprindeligt importerede i stedet for at tolke
+    # den manuelle rettelse som en afvigelse i selve kildedataen.
+    if a.original_segments is None:
+        a.original_segments = a.segments
     a.segments = segments
     flag_modified(a, "segments")
     _recalculate_pcts(a)
@@ -981,6 +987,8 @@ def correct_all_segments(
     if corrected_count == 0:
         raise HTTPException(400, "Ingen pauselinjer at rette")
 
+    if a.original_segments is None:
+        a.original_segments = a.segments
     a.segments = new_segments
     flag_modified(a, "segments")
     _recalculate_pcts(a)
@@ -1055,6 +1063,8 @@ def resize_segment(
         shortened_next = [new_end_str] + next_seg[1:]
         segments = segments[:idx] + [extended, shortened_next] + segments[idx + 2:]
 
+    if a.original_segments is None:
+        a.original_segments = a.segments
     a.segments = segments
     flag_modified(a, "segments")
     _recalculate_pcts(a)

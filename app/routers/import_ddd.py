@@ -369,12 +369,25 @@ def _import_activity(
                     if existing.original_pause_intervals is not None
                     else (existing.pause_intervals or [])
                 )
+                # Samme baseline-princip for segments: en manuel pause->arbejde-
+                # rettelse ('Ret linje'/'Tilpas pause') ændrer eksisterende.segments,
+                # men skal ikke få en reimport af uændret kildedata til at ligne en
+                # afvigelse (bekræftet 2026-09-14: Alexander B. Knudsen og Claus
+                # Ulrik Nicolaisen 9/9 – en genimport af samme fil som tidligere
+                # skabte igen nye dublet-linjer, udelukkende fordi segments (ikke
+                # tid/pauser) stadig blev sammenlignet mod den aktuelle, rettede
+                # værdi i stedet for det oprindeligt importerede).
+                baseline_segments = (
+                    existing.original_segments
+                    if existing.original_segments is not None
+                    else (existing.segments or [])
+                )
 
                 if can_resync_fully:
                     if (
                         act.start_time != baseline_start
                         or act.end_time != baseline_end
-                        or new_segments != (existing.segments or [])
+                        or new_segments != baseline_segments
                         or new_pause_intervals != baseline_pauses
                     ):
                         existing.start_time = act.start_time
@@ -388,6 +401,7 @@ def _import_activity(
                         existing.original_start_time = None
                         existing.original_end_time = None
                         existing.original_pause_intervals = None
+                        existing.original_segments = None
                         existing.availability_time_pct = act.availability_time_pct
                         existing.rest_pause_pct = act.rest_pause_pct
                         existing.other_work_pct = act.other_work_pct
@@ -441,7 +455,7 @@ def _import_activity(
                     if (
                         act.start_time != baseline_start
                         or act.end_time != baseline_end
-                        or new_segments != (existing.segments or [])
+                        or new_segments != baseline_segments
                         or new_pause_intervals != baseline_pauses
                     ):
                         needs_new_line = True
