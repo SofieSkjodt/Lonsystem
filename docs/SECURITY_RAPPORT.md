@@ -1,8 +1,9 @@
 # Sikkerhedsrapport – PS Lønsystem
-**Dato:** 21. juni 2026  
+**Oprindelig gennemgang:** 21. juni 2026 (senest indholdsmæssigt opdateret 2026-08-29 – se de enkelte fund for datostemplede tilføjelser; selve rapportens grundstruktur/fund-liste er ikke genkørt siden juni)  
 **Udført af:** Claude (Sonnet 4.6) via /superpowers  
 **Metode:** Manuel parallel agentgennemgang (4 agenter: auth/RBAC, API-endpoints, kodekvalitet, frontend)  
-**Status ved rapport-afslutning:** Alle Kritisk/Høj/Middel-fund rettet undtagen ét (se note)
+**Status ved rapport-afslutning:** Alle Kritisk/Høj/Middel-fund rettet undtagen ét (se note)  
+**OBS:** Linjenummer-referencer nedenfor (fx "app/main.py:30-34") blev korrekte på rettelsestidspunktet, men filerne har ændret sig siden – brug dem som omtrentlig retning, ikke som eksakte koordinater. Se også `docs/build_security_report.py`, som genererer en parallel PDF-udgave af en delmængde af disse fund og bør holdes i sync med denne fil.
 
 ---
 

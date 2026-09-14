@@ -19,7 +19,7 @@ Et webbaseret lønsystem til behandling af tachografdata (.ddd-filer) og lønber
 | Backend | Python 3.11+ / FastAPI |
 | Database | SQLite (WAL-mode) |
 | Frontend | HTML + Vanilla JS + CSS / Jinja2 |
-| .ddd-parsing | Python (bibliotek TBD) |
+| .ddd-parsing | Selvskrevet binær parser, ingen ekstern pakke (`app/parsers/ddd_parser.py`) |
 | Excel-output | openpyxl |
 | CSV-output | Python stdlib |
 
@@ -62,7 +62,7 @@ nuværende kode.
 
 ## Farvestatus for aktiviteter (bjælker)
 
-| Farve | Status | Bedeutning |
+| Farve | Status | Betydning |
 |-------|--------|------------|
 | 🔴 Rød | `deactivated` | Kræver handling (split eller deaktivering) |
 | 🟢 Grøn | `approved` | Godkendt af medarbejder med initialer |
@@ -82,9 +82,9 @@ Alle bjælker skal være 🟢 grønne eller 🔴 røde (ikke 🔵 blå/`pending`
 
 ## CSV til Danløn
 
-Kolonner: A=CVR (13246505), B=medarbejdernr, C=Danløn-kode, D=timer, E=sats, F=afspadsering
+Kolonner (6 felter, semikolon-separeret): CVR (13246505), medarbejdernr, Danløn-kode, antal (timer/antal), sats, total. Sats/total er valgfrie pr. løntype – se `docs/aendringer-danloen.md` for det præcise, gældende format (bl.a. hvornår afsluttende semikolon skrives).
 
-**Danløn-koder: midlertidigt alle sat til "1"** – opdateres når koderne kendes.
+**Danløn-koder er ikke længere hardkodede.** De konfigureres pr. løntype i Stamdata → Løntypekoder (`master_pay_types`, DB er authoritative). Ved allerførste seeding sættes de fleste standardkoder dog stadig til placeholder-værdien `"1"` (`calculators/pay_rates.py: DANLOEN_CODE_*`), fordi de rigtige koder ikke var kendt da systemet blev bygget – de skal derfor gennemgås og rettes i Stamdata pr. installation før produktionsbrug. Undtaget er søgnehelligdagskoderne (4/63) og feriefri-koden for fuldlønnede (5), som er reelle koder fra start.
 
 ---
 
@@ -126,11 +126,18 @@ Lønsystem/
 
 ## Åbne spørgsmål (spørg bruger – gæt aldrig)
 
-- Sti til .ddd inputmappe
-- Sti til disponentgrupper Excel-fil
-- Output-mapper for CSV og Excel
-- Danløn-koder (sættes til "1" indtil de kendes)
-- Python-bibliotek til .ddd-parsing
-- Overtid: beregnes dagligt eller ugentligt?
-- Afspadsering (CSV kolonne F): hvad skal stå?
-- Serverens IP/hostname og port
+Følgende er stadig reelt uafklarede/miljøspecifikke punkter. Se `deploy/PRODUKTION_OPSAETNING.md`
+for hvordan de faktisk besvares på den konkrete produktionsserver (IP/port/backup/autostart er
+alle løst der, blot ikke hardkodet nogen steder i kildekoden):
+
+- Serverens konkrete IP/hostname og port ved en ny installation (default port 8000, men den
+  faktiske IP er miljøspecifik).
+- Om `.ddd`-inputmappen og output-mapperne på en given installation skal justeres væk fra
+  standardplaceringen (`app/ddd_input/`, `app/output/`).
+
+Følgende er AFKLARET og skal ikke længere gættes på eller genåbnes:
+
+- Danløn-koder konfigureres pr. løntype i Stamdata → Løntypekoder, ikke hardkodet – se afsnittet "CSV til Danløn" ovenfor.
+- .ddd-parsing bruger en selvskrevet binær parser (`app/parsers/ddd_parser.py`), intet eksternt bibliotek.
+- Overtid beregnes dagligt for `hourly_fixed`-medarbejdere og ugentligt (37t+5t, fælles pulje mandag–søndag) for `hourly_flexible`-medarbejdere – se `docs/OVERTIME_RULES.md`.
+- Afspadsering indgår i CSV'en under sin egen løntypekode (AFSPADSERING), konfigureret som alle andre løntyper i Stamdata.

@@ -86,9 +86,13 @@ Lønsystem/
 
 ---
 
-## Åbne punkter
+## Drift og deployment
 
-- [ ] IP-adresse/hostname på server
-- [ ] Port (default: 8000)
-- [ ] Backup-strategi for database-filen
-- [ ] Windows Service setup (autostart)
+De oprindelige åbne punkter (IP/hostname, port, backup-strategi, autostart) er alle besvaret i
+den nuværende produktionsopsætning – se **[deploy/PRODUKTION_OPSAETNING.md](../deploy/PRODUKTION_OPSAETNING.md)**
+for den fulde, aktuelle runbook:
+
+- **Port**: 8000 (default, `--host 0.0.0.0`)
+- **Autostart**: Windows Task Scheduler-opgaver (server, auto-deploy hvert 5. min, natlig genstart kl. 23:00) – ikke NSSM/Windows Service, som tidligere antaget her
+- **Backup**: `backup/backup.py` kører 4 gange dagligt via egen Task Scheduler-opgave, se kapitel 11 i Teknisk dokumentation
+- **IP-adresse/hostname**: miljøspecifikt pr. installation, konfigureres ikke i kildekoden

@@ -110,7 +110,7 @@ Kolonnestruktur:
 |---------|---------|
 | A | CVR-nummer |
 | B | Medarbejdernummer |
-| C | Danløn-kode (AFKLARES – koder kendes endnu ikke) |
+| C | Danløn-kode (konfigureres pr. løntype i Stamdata → Løntypekoder – seedet med placeholder "1" for de fleste typer indtil lønafdelingen oplyser de rigtige koder på hver installation) |
 | D | Antal timer |
 | E | Timesats / tillægssats |
 | F | Afspadsering |
@@ -172,14 +172,17 @@ Dage der er helligdage fremhæves med grøn baggrundsfarve (`#056a10`) i aktivit
 
 ## Åbne punkter (AFKLARES)
 
-- [ ] Sti til disponentgrupper-Excel
-- [ ] Sti til .ddd-filer inputmappe
-- [ ] Output-mapper til CSV og Excel
-- [ ] Danløn-koder (midlertidigt "1" for alle)
-- [ ] Afspadsering (CSV kolonne F) – hvad skal stå?
-- [ ] Overtid: beregnes dagligt eller ugentligt?
-- [ ] Serverens IP/hostname og port til deployment
-- [ ] Python-bibliotek til .ddd-parsing (bekræftes)
+Kun miljøspecifikke punkter er reelt stadig åbne – se `deploy/PRODUKTION_OPSAETNING.md` for
+hvordan de besvares på den konkrete server:
+
+- [ ] Serverens IP/hostname og port til den enkelte installation (default port 8000)
+- [ ] Eventuel justering af .ddd-inputmappe/output-mapper væk fra standardplaceringen
+
+Følgende punkter er siden afklaret og flyttet til "Afklarede punkter" nedenfor:
+disponentgrupper (nu en databasetabel, ikke en Excel-fil), Danløn-koder (nu
+Stamdata-konfigurerede pr. løntype), afspadsering (egen løntypekode i CSV'en), overtidsregel
+(dagligt for hourly_fixed, ugentligt for hourly_flexible) og .ddd-parsing (selvskrevet binær
+parser, intet eksternt bibliotek).
 
 ## Afklarede punkter
 
@@ -190,7 +193,10 @@ Dage der er helligdage fremhæves med grøn baggrundsfarve (`#056a10`) i aktivit
 - [x] **Split**: Den oprindelige aktivitet deaktiveres; del 1 og del 2 oprettes som nye, begge afventende (skal godkendes hver for sig) – bruges ved fejl i starttid
 - [x] **Minimum 4 timer**: Markeres med advarselsikon (forbliver afventende, ikke deaktiveret), kræver manuel godkendelse med initialer og begrundelse
 - [x] **Overarbejde**: Håndteres (se OVERTIME_RULES.md) – tidsrumsbaseret (kl. 05-06, 18-21 samt timer ud over normaltidsloftet i kl. 06-18, kl. 21-05), ikke akkumulerede timer
-- [x] **Danløn-koder**: Midlertidigt alle "1"
+- [x] **Danløn-koder**: Konfigureres pr. løntype i Stamdata → Løntypekoder (DB er authoritative); seedet med placeholder "1" for de fleste typer, skal gennemgås pr. installation
+- [x] **.ddd-parsing**: Selvskrevet binær parser (`app/parsers/ddd_parser.py`), intet eksternt bibliotek
+- [x] **Disponentgrupper**: Databasetabel (`dispatcher_groups`), administreres i Stamdata – ikke længere en Excel-fil
+- [x] **Overtid**: `hourly_fixed`-medarbejdere har et dagligt loft, `hourly_flexible`-medarbejdere et ugentligt, fælles loft (37t normaltid + 5t OT-1-3, mandag–søndag)
 - [x] **CVR-nummer**: 13246505
 - [x] **Medarbejdertyper**: Der er ikke længere en fast type-enum (trainee/driver/driver_senior/driver_qualified) – i stedet en Stamdata-styret `agreement_kind` (systemnøgler `hourly_fixed`/`hourly_flexible`) + fritekst `agreement_type` fra Excel/Stamdata, med tilhørende timesats
 - [x] **Pop-up anciennitet**: Vises ved programopstart med knapper "Luk" / "Gå til medarbejder for at ændre timesats"

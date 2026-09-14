@@ -3,6 +3,7 @@ Genererer Sikkerhedsrapport.pdf til docs/-mappen.
 Kør med: python build_security_report.py
 """
 from pathlib import Path
+from datetime import datetime
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
@@ -14,6 +15,16 @@ from reportlab.platypus import (
 from reportlab.lib.enums import TA_LEFT, TA_CENTER
 
 OUT = Path(__file__).parent / "Sikkerhedsrapport.pdf"
+
+_DANSKE_MAANEDER = [
+    "januar", "februar", "marts", "april", "maj", "juni",
+    "juli", "august", "september", "oktober", "november", "december",
+]
+# Regenereringsdato – vises på forsiden og i footer, så PDF'en aldrig fremstår ældre end den
+# faktisk er. Selve indholdet (fund-listen) er stadig baseret på gennemgangen fra juni 2026,
+# se docs/SECURITY_RAPPORT.md for den fulde, løbende opdaterede fund-liste.
+_now = datetime.now()
+GENERERINGSDATO = f"{_now.day}. {_DANSKE_MAANEDER[_now.month - 1]} {_now.year}"
 
 # ── Farver ────────────────────────────────────────────────────────────────────
 GREEN       = colors.HexColor("#317423")
@@ -100,7 +111,7 @@ def build():
     story.append(Paragraph("Lønsystem", title_style))
     story.append(Paragraph("Sikkerhedsrapport", subtitle_style))
     story.append(Paragraph("Poul Schou A/S  ·  CVR 13246505", date_style))
-    story.append(Paragraph("22. juni 2026", date_style))
+    story.append(Paragraph(GENERERINGSDATO, date_style))
     story.append(Spacer(1, 8 * mm))
     story.append(hr())
     story.append(Spacer(1, 4 * mm))
@@ -342,8 +353,8 @@ def build():
                    "kan opgradere sig selv til administrator og dermed opnå fuld adgang "
                    "til alle funktioner, inkl. Stamdata og lønkørsel.", label_cell)],
         [Paragraph("Berørte filer", label_cell),
-         Paragraph("routers/users.py (update_user, linje ~96–100)\n"
-                   "Der er allerede en guard mod at slette sin egen bruger (linje ~120), "
+         Paragraph("routers/users.py (update_user, linje ~79 og frem – linjetal drifter over tid, verificér ved tvivl)\n"
+                   "Der er allerede en guard mod at slette sin egen bruger (linje ~122), "
                    "men ingen tilsvarende guard mod at ændre sin egen rolle.", label_cell)],
         [Paragraph("Mulig løsning A", label_cell),
          Paragraph("Blokér at en bruger ændrer sin egen rolle:\n"
@@ -423,7 +434,7 @@ def build():
 
     story.append(Spacer(1, 4 * mm))
     story.append(Paragraph(
-        "Rapport genereret automatisk · Poul Schou A/S Lønsystem · Juni 2026",
+        f"Rapport genereret automatisk · Poul Schou A/S Lønsystem · {GENERERINGSDATO}",
         ParagraphStyle("footer", parent=styles["Normal"],
             fontSize=8, textColor=GRAY, fontName="Helvetica",
             alignment=TA_CENTER)))

@@ -3,6 +3,7 @@ Bygger Teknisk dokumentation.docx og Brugervejledning.docx til Lønsystemet.
 Kør med: python build_docs.py
 """
 from pathlib import Path
+from datetime import datetime
 from docx import Document
 from docx.shared import Pt, Cm, RGBColor, Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
@@ -12,6 +13,18 @@ from docx.oxml import OxmlElement
 import copy
 
 OUT = Path(__file__).parent
+
+_DANSKE_MAANEDER = [
+    "Januar", "Februar", "Marts", "April", "Maj", "Juni",
+    "Juli", "August", "September", "Oktober", "November", "December",
+]
+
+
+def genereringsdato() -> str:
+    """Forsidedato = det faktiske tidspunkt scriptet køres, ikke en hardkodet værdi.
+    Dokumenterne opdateres løbende, så coverdatoen skal altid afspejle seneste regenerering."""
+    now = datetime.now()
+    return f"{_DANSKE_MAANEDER[now.month - 1]} {now.year}"
 
 DARK_BLUE = RGBColor(0x1B, 0x3A, 0x6B)
 MID_BLUE  = RGBColor(0x2E, 0x6D, 0xB8)
@@ -207,7 +220,7 @@ def build_teknisk():
         section.top_margin  = section.bottom_margin = Cm(2.5)
 
     # Forside
-    cover(doc, "Lønsystem", "Teknisk dokumentation", "Juni 2026")
+    cover(doc, "Lønsystem", "Teknisk dokumentation", genereringsdato())
 
     # ── 1. Systemarkitektur ────────────────────────────────────────────────
     heading(doc, "Systemarkitektur", 1, "1")
@@ -232,7 +245,24 @@ def build_teknisk():
         [Cm(3), Cm(5), Cm(8.5)]
     )
 
-    heading(doc, "Mappestruktur", 2, "1.2")
+    heading(doc, "Autentificering", 2, "1.2")
+    body(doc, (
+        "Login foregår på to måder, begge understøttet samtidig: almindeligt login med "
+        "initialer + adgangskode (SessionMiddleware, session-cookie med 24 timers levetid), "
+        "eller 'Log ind med Microsoft' via Microsoft Entra ID (SSO). SSO verificerer et "
+        "id_token mod Entra ID's egen JWKS-nøgle og matcher herefter brugerens UPN "
+        "case-insensitivt mod AppUser.email – der oprettes IKKE en ny bruger automatisk ved "
+        "første SSO-login, brugeren skal allerede findes i systemet med den korrekte "
+        "mailadresse udfyldt."
+    ))
+    note_box(doc,
+        "SSO kræver ingen særskilt tilladelse ud over at være en oprettet, aktiv bruger. "
+        "Login-endepunktet (POST /api/auth/login) er derudover rate-begrænset til 5 forsøg "
+        "pr. IP-adresse pr. 60 sekunder for at modvirke brute-force-angreb.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Mappestruktur", 2, "1.3")
     body(doc, "Projektmappen er organiseret i fire hoveddele:")
     two_col_table(doc, [
         ["app/",          "Al Python-kode, statiske filer, database og Excel-satser"],
@@ -241,7 +271,7 @@ def build_teknisk():
         ["Rodmappen",     "Brugerdokumenter: overenskomst-PDF, kravdokument, statusmøde-pptx m.m."],
     ])
 
-    heading(doc, "Centrale filer i app/", 2, "1.3")
+    heading(doc, "Centrale filer i app/", 2, "1.4")
     two_col_table(doc, [
         ["main.py",                   "Applikationens indgangspunkt. Registrerer alle routere, monterer statiske filer og serverer index.html med cache-busting."],
         ["routers/activities.py",     "API-endepunkter for aktivitetshåndtering (opret, godkend, ret, opdel, fortryd)."],
@@ -289,6 +319,8 @@ def build_teknisk():
             ["fast_bil",              "Boolean",         "'Fast bil'-indstilling – foreslår medarbejderen som standardchauffør på en bestemt vogn i Dagsplan (kapitel 14)"],
             ["fast_bil_vehicle_id",   "Integer FK (opt.)","Den faste vogn – kun relevant når fast_bil=true. Ikke begrænset til medarbejderens egen disponentgruppe"],
             ["ot_extra_alle_timer",   "Boolean",         "Særaftale: alle arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn, uden dagligt loft – se afsnit 5.6"],
+            ["afloeser",              "Boolean, default false", "Afløser/substitutmedarbejder. Undertrykker søn-/helligdagstillæg (kode 4/63, afsnit 5.4) på søndage/helligdage MEDMINDRE der findes en godkendt 'normal tid'-aktivitet den dag – findes der kørsel, gælder de almindelige SH-regler uændret. Påvirker intet på almindelige hverdage/lørdage. Medarbejderen farvemarkeres separat i Medarbejderlisten, Vagtplan og Aktivitetsoversigten"],
+            ["paragraf_56 / paragraf_56_start_date / paragraf_56_end_date", "Boolean / Date (opt.) / Date (opt.)", "§56-aftale (se afsnit 6.5) – begge datoer er påkrævede når paragraf_56=true, nulstilles til NULL server-side når feltet slås fra"],
         ]
     )
     body(doc, (
@@ -515,6 +547,21 @@ def build_teknisk():
         "– det er en begrænsning i kortets egne data, ikke en fejl i importen.",
         "GODT AT VIDE"
     )
+    note_box(doc,
+        "Videreudviklet 2026-09: matching mod eksisterende aktiviteter bruger nu tidsoverlap "
+        "(ikke eksakt lighed i starttid), og sammenligner altid mod den oprindeligt importerede "
+        "original_*-værdi frem for evt. manuelt rettede tider – så en manuel korrektion aldrig "
+        "utilsigtet bliver overskrevet af en senere genimport af samme fil. Findes der BÅDE en "
+        "godkendt/deaktiveret linje og en afventende rettelseslinje der overlapper det samme "
+        "tidsrum, foretrækker systemet altid den afventende rettelseslinje – rettet efter en fejl "
+        "der i praksis havde skabt 1.273 dublet-aktiviteter (fundet og rettet 2026-09-11). En "
+        "allerede godkendt/deaktiveret aktivitet ændres ALDRIG direkte af en genimport; afviger "
+        "den nye udlæsning, oprettes i stedet en ny, separat afventende linje. Opstår der en fejl "
+        "midt i importen af én aktivitet, rulles hele databasetransaktionen for den fil tilbage "
+        "(ikke kun den ene aktivitet springes over), for at forhindre at én defekt post får "
+        "efterfølgende poster til at fejle i kaskade.",
+        "TEKNISK NOTE"
+    )
 
     heading(doc, "Import-flow", 2, "4.2")
     body(doc, (
@@ -536,6 +583,15 @@ def build_teknisk():
         "via log_action(), med samme opdelte opsummering i tekstform i details-feltet – så "
         "årsager til sprungne aktiviteter kan slås op bagefter, ikke kun ses i pop-up'en "
         "lige efter kørslen."
+    ))
+    body(doc, (
+        "Hører et importeret skifts dato til en allerede LUKKET lønperiode, importeres det ikke "
+        "automatisk. I stedet returneres det som 'pending_closed_period', og frontenden beder "
+        "brugeren bekræfte om skiftet alligevel skal importeres (ind i den efterfølgende, åbne "
+        "periode). Afviser brugeren, huskes afvisningen permanent i tabellen DeclinedImport "
+        "(nøglet på medarbejder + starttidspunkt), så samme skift ikke bliver spurgt om igen ved "
+        "en senere geninport af samme mappe. Bekræftelsen sendes via "
+        "POST /api/decline-closed-period-import."
     ))
 
     # ── 5. Overtidsberegning ──────────────────────────────────────────────
@@ -575,6 +631,18 @@ def build_teknisk():
         "VIGTIGT"
     )
     note_box(doc,
+        "Det REGISTREREDE normaltids-loft er ikke den samme størrelse for alle medarbejdere: for "
+        "agreement_kind='hourly_fixed' er loftet DAGLIGT (medarbejderens timefordeling for den "
+        "pågældende ugedag, nulstilles hver dag). For agreement_kind='hourly_flexible' er loftet i "
+        "stedet UGENTLIGT og FÆLLES for hele ugen: 37 timer normaltid + 5 timer OT_13, delt på "
+        "tværs af alle vagter mandag–søndag og først nulstillet den følgende mandag. Forskellen "
+        "afgøres i _calculate_employee() (payroll_router.py), som enten videresender et dagligt "
+        "restloft (next_day_normal_hours) til calculate_overtime() ved midnatsovergange for "
+        "hourly_fixed, eller lader det ugentlige loft løbe uændret videre for hourly_flexible – se "
+        "afsnit 5.3 for hvordan denne forskel konkret udmønter sig ved vagter der krydser midnat.",
+        "VIGTIGT"
+    )
+    note_box(doc,
         "Frem til 2026-07-02 fortærede nat-, før- og aftentimer også normaltids-loftet, hvilket "
         "gjorde for mange senere dagtimer til overarbejde for medarbejdere med tidlig morgenstart. "
         "Reglen er rettet, og calculate_overtime() kan nu tage imod og videresende det resterende "
@@ -608,6 +676,16 @@ def build_teknisk():
         "uanset hvor mange kalenderdage vagten strækker sig over (bekræftet af bruger 2026-07-02).",
         "TEKNISK NOTE"
     )
+    note_box(doc,
+        "Den beskrevne loft-videreførsel hen over midnat gælder kun for hourly_fixed (dagligt "
+        "loft) – dér gives det NÆSTE døgns egne garanterede timer eksplicit videre som "
+        "next_day_normal_hours, netop for at undgå at et ubrugt loft fra én dag fejlagtigt "
+        "dækker en helt anden dags arbejde (den konkrete fejlrettelse er kendt internt som "
+        "'Jesper Rosengreen-sagen', 2026-08-17). For hourly_flexible findes intet dagsskift at "
+        "videreføre overhovedet – loftet er allerede ét sammenhængende, ugentligt loft (37 t + "
+        "5 t OT_13) der løber uændret fra mandag til søndag, se afsnit 5.2.",
+        "TEKNISK NOTE"
+    )
 
     heading(doc, "Lørdage, søndage og helligdage (SH-betaling)", 2, "5.4")
     body(doc, (
@@ -629,6 +707,14 @@ def build_teknisk():
         "Se afsnit 5.3 for hvordan vagter der krydser midnat ind i/ud af disse dage håndteres.",
         "BEMÆRK"
     )
+    body(doc, (
+        "Undtagelse – Employee.afloeser (2026-08-27): en medarbejder markeret som afløser "
+        "får IKKE de garanterede SH-timer (kode 4/63) på en søndag/helligdag, medmindre der "
+        "samme dag findes en godkendt 'normal tid'-aktivitet (dvs. vedkommende faktisk har "
+        "kørt). Er der kørsel, gælder ovenstående regler helt uændret – flaget suspenderer "
+        "kun den ellers automatiske garantibetaling på dage uden kørsel. Flaget påvirker intet "
+        "på almindelige hverdage eller lørdage."
+    ))
 
     heading(doc, "Aftale-typer uden fast overtidsregel", 2, "5.5")
     body(doc, (
@@ -746,6 +832,18 @@ def build_teknisk():
         "Helligdage-fanen kræver desuden 'manage_holidays'-rettighed.",
         "BEMÆRK"
     )
+    note_box(doc,
+        "Opretter en admin en HELT NY overtids- eller tillægssats (en ny RÆKKE i "
+        "Overtidssatser/Tillæg-fanerne, ud over de faste satser systemet allerede kender), "
+        "gemmes den i databasen, men beregningsmotoren (calculate_overtime()/day_type.py) "
+        "bruger den IKKE automatisk nogen steder – den nye sats har reelt kun effekt, hvis den "
+        "efterfølgende også kobles på en løntypekode via feltet 'Sats-kilde' i Stamdata → "
+        "Løntypekoder (afsnit 6.1, dynamisk id-baseret opslag i _resolve_rate()), og selv da "
+        "kun for CSV-eksporten – IKKE for selve lønberegningen/visningen i prøvekørsel og "
+        "PDF-timesedler. En helt ny form for tillæg (fx et nyt tidsvindue eller en ny dagtype-"
+        "regel) kræver udviklerarbejde i calculators/overtime.py eller day_type.py.",
+        "VIGTIGT"
+    )
 
     heading(doc, "Helligdage – API-endepunkter", 2, "6.3")
     header_table(doc,
@@ -831,6 +929,35 @@ def build_teknisk():
         "(hentet via GET /active/{id}) – feltet kan ikke redigeres eller udfyldes derfra, kun under fanen 'Tillæg'."
     ))
 
+    heading(doc, "§56-aftale og advarsler", 2, "6.5")
+    body(doc, (
+        "Employee.paragraf_56 (Boolean) markerer at en medarbejder har en §56-aftale, med "
+        "paragraf_56_start_date og paragraf_56_end_date som begge er påkrævede felter når "
+        "flaget er sat. Sættes flaget til false (via medarbejder-modalen eller automatisk, se "
+        "nedenfor), nulstiller serveren begge datofelter til NULL. Feltet har PT. ingen direkte "
+        "kobling til selve lønberegningen eller den eksisterende fraværstype '§56 syg' – det er "
+        "et rent stamdata-/varslingsfelt."
+    ))
+    body(doc, (
+        "En daglig baggrundstjek (kørt ved hvert kald til GET /api/employees, "
+        "_sweep_expired_paragraf_56()) slår automatisk paragraf_56 fra for enhver medarbejder "
+        "hvis paragraf_56_end_date er overskredet – datoerne bevares uændret, kun det aktive "
+        "flag ryddes. Brugere med rettigheden paragraf_56_alert advares to steder:"
+    ))
+    for step in [
+        "GET /api/employees/paragraf56-alerts returnerer medarbejdere hvis slutdato ligger inden for 30 dage (kommende udløb) og medarbejdere der netop er auto-deaktiveret (nyligt udløbet).",
+        "Frontend viser popup ved login for begge kategorier. Afvisning gemmes pr. bruger og pr. alert-type (Paragraf56AlertDismissal-tabellen) via POST /api/employees/{id}/dismiss-paragraf56-alert – IKKE globalt: en kollega uden afvisning ser stadig advarslen.",
+        "Ændres paragraf_56_end_date på medarbejderen, nulstilles ALLE brugeres afvisninger for den medarbejder automatisk, så advarslen kan dukke op igen.",
+    ]:
+        bullet(doc, step)
+    note_box(doc,
+        "Oprettes en 'Sygdom'-aktivitet manuelt for en medarbejder med aktivt paragraf_56-flag, "
+        "viser frontend (ikke backend) et bekræftelsesvalg: fortsæt som almindelig 'Sygdom', "
+        "eller konvertér til den eksisterende fraværstype '§56 syg' i stedet. Der er ingen "
+        "automatisk konvertering – begge veje kræver et aktivt valg fra brugeren.",
+        "TEKNISK NOTE"
+    )
+
     # ── 7. Lønkørsel ─────────────────────────────────────────────────────
     doc.add_page_break()
     heading(doc, "Lønkørsel", 1, "7")
@@ -847,8 +974,15 @@ def build_teknisk():
             ["/api/payroll/proevekoersel-gem","POST","Genererer Excel-fil med prøvekørsel og downloader den til browseren (siden 2026-09-09 – tidligere blev filen gemt i en brugervalgt mappe på serveren)."],
             ["/api/payroll/export-csv",      "POST", "Genererer Danløn CSV-fil og downloader den til browseren. Afviser (400) hvis perioden allerede er låst, eller der er afventende aktiviteter i perioden."],
             ["/api/payroll/pdf-timesedler",  "POST", "Genererer PDF-timesedler og downloader dem til browseren – én PDF direkte, eller en ZIP hvis flere medarbejdere har data."],
+            ["/api/payroll/reopen-period",   "POST", "Genåbner en lukket ('closed') periode til 'open' igen. Kræver 'reopen_period'-rettighed."],
         ]
     )
+    body(doc, (
+        "Genåbning sveiper desuden 'forvildede' aktiviteter: aktiviteter der er blevet oprettet, "
+        "mens perioden var lukket, bliver af get_billing_period() automatisk placeret i den "
+        "EFTERFØLGENDE periode i stedet (se kapitel 3). Ved genåbning flyttes disse aktiviteter "
+        "automatisk tilbage til den nu-genåbnede periode, så de igen indgår i dens beregning."
+    ))
 
     heading(doc, "Beregningslogik (_calculate_employee)", 2, "7.2")
     for step in [
@@ -927,6 +1061,61 @@ def build_teknisk():
         "Antal-type (Timer/Antal), Sats-kilde (timesats, overtidssatser, salttillæg, overnatning, dagpenge), "
         "Inkluder sats og Inkluder total."
     ))
+    note_box(doc,
+        "De fleste Danløn-koder der seedes automatisk ved allerførste opstart (fra "
+        "calculators/pay_rates.py's DANLOEN_CODE_*-konstanter) er STADIG placeholder-værdien "
+        "\"1\" – de rigtige koder var pt. ikke oplyst af lønafdelingen da systemet blev bygget. "
+        "Eneste undtagelser med reelle koder fra start er søgnehelligdagskoderne (4/63) og "
+        "feriefri-koden for fuldlønnede (5). FØR systemet tages i egentlig produktionsbrug, skal "
+        "hver enkelt løntypekode under Stamdata → Løntypekoder derfor gennemgås og rettes til den "
+        "faktiske Danløn-kode – ellers vil flere forskellige lønarter blive eksporteret under "
+        "samme (forkerte) kode \"1\".",
+        "VIGTIGT"
+    )
+
+    heading(doc, "Timeseddel-udsendelse pr. mail", 2, "7.5")
+    body(doc, (
+        "Ud over PDF-download (afsnit 7.1/7.3) kan PDF-timesedler sendes direkte til "
+        "medarbejderens registrerede mailadresse via routers/timeseddel_router.py."
+    ))
+    header_table(doc,
+        ["Endepunkt", "Metode", "Beskrivelse"],
+        [
+            ["/api/timeseddel/{id}/pdf",   "GET",  "Download én medarbejders PDF-timeseddel for en periode."],
+            ["/api/timeseddel/{id}/send",  "POST", "Mailer PDF-timesedlen til medarbejderens registrerede e-mail. Fejler pænt (uden at afsløre SMTP-detaljer for brugeren) hvis medarbejderen ikke har en e-mailadresse registreret."],
+            ["/api/timeseddel/send-all",   "POST", "Bulk-udsendelse for en periode (evt. filtreret til én medarbejder). Returnerer en opdelt status: sendt / sprunget over (ingen mail) / sprunget over (ingen aktiviteter) / fejlet."],
+        ]
+    )
+    note_box(doc,
+        "Alle tre endepunkter kræver 'payroll'-rettigheden. Fejl ved selve mailafsendelsen "
+        "(fx forkert SMTP-opsætning) logges internt med medarbejderens navn/id, mens brugeren "
+        "kun ser en generisk fejlbesked – hærdet 2026-08-29 for ikke at lække interne "
+        "SMTP-fejldetaljer. SMTP-opsætningen (server, port, afsenderadresse, adgangskode) "
+        "konfigureres i .env-filen, ikke i Stamdata.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Springertillæg", 2, "7.6")
+    body(doc, (
+        "Springertillæg (2026-08-14) er en løntypekode (SPRINGERTILLAEG) der giver samme "
+        "timetal som løntypekode 1 (Normal tid), men KUN for de medarbejdere der i den enkelte "
+        "lønperiode har fået sat et flueben i aktivitetsoversigten – ét flueben under "
+        "medarbejderens navn, ét pr. medarbejder pr. periode. Fluebenet nulstilles automatisk "
+        "hver ny periode (ingen række i employee_springer_flags = ikke sat) og kan ikke ændres "
+        "når perioden er låst."
+    ))
+    body(doc, (
+        "Tilladelsen toggle_springer styrer hvem der må sætte/fjerne fluebenet – den gives som "
+        "standard til alle roller (se afsnit 11.3 i Brugervejledningen). Satsen konfigureres i "
+        "Stamdata → Tillæg (label 'Springertillæg') ligesom salttillæg/overnatning."
+    ))
+    header_table(doc,
+        ["Endepunkt", "Metode", "Beskrivelse"],
+        [
+            ["/api/activities/springer-flags?pay_period_id=", "GET",  "Returnerer {employee_id: true} for alle medarbejdere med fluebenet sat i perioden. Kræver kun login."],
+            ["/api/activities/springer-flag",                  "POST", "Upsert på (employee_id, pay_period_id). Kræver toggle_springer. Afvises (400) hvis perioden er lukket."],
+        ]
+    )
 
     # ── 8. Aktivitetshåndtering ───────────────────────────────────────────
     heading(doc, "Aktivitetshåndtering", 1, "8")
@@ -1179,7 +1368,7 @@ def build_teknisk():
         "Python 3.13 installeret på serveren.",
         "Koden og databasefilen kopieret til serveren (uden for en cloud-synkroniseret mappe).",
         "En fast lokal IP-adresse på servermaskinen (konfigureres i router eller af IT).",
-        "Serveren sat op til at starte uvicorn automatisk ved opstart – anbefalet via NSSM (gratis Windows-værktøj der kører uvicorn som en Windows-tjeneste).",
+        "Serveren sat op til at starte uvicorn automatisk ved opstart – på den nuværende produktionsserver løst via Windows Task Scheduler-opgaver (ikke en egentlig Windows-tjeneste/NSSM), se deploy/PRODUKTION_OPSAETNING.md for den fulde, trin-for-trin opsætning inkl. auto-deploy og natlig genstart.",
         "Ansatte åbner browseren og går til serverens IP-adresse og port, f.eks. http://192.168.1.50:8000.",
     ]:
         bullet(doc, step)
@@ -1494,6 +1683,117 @@ def build_teknisk():
         "TEKNISK NOTE"
     )
 
+    # ── 15. Vagtplan ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Vagtplan", 1, "15")
+    body(doc, (
+        "Vagtplan (routers/vagtplan_comments.py, 2026-08-21) er en 4-ugers oversigt over alle "
+        "medarbejderes fravær og frie kommentarer, bygget oven på de samme render-funktioner som "
+        "Aktivitetsoversigten (renderCellActivity, openManualActivityModal, openActivityDetail) i "
+        "stedet for at duplikere dem. Backend er additivt: én ny tabel (vagtplan_comments) og én "
+        "ny forespørgselstilstand på det eksisterende GET /api/activities-endepunkt."
+    ))
+
+    heading(doc, "Datamodel", 2, "15.1")
+    header_table(doc,
+        ["Felt", "Type", "Beskrivelse"],
+        [
+            ["employee_id", "FK → Employee", "Tilknyttet medarbejder"],
+            ["date",        "Date",          "Den dag kommentaren gælder for"],
+            ["comment",     "Text",          "Fri tekst"],
+        ]
+    )
+    body(doc, (
+        "Unik constraint på (employee_id, date) – kun én kommentar pr. medarbejder pr. dag. "
+        "POST fungerer som upsert (opret/overskriv)."
+    ))
+
+    heading(doc, "API-endepunkter", 2, "15.2")
+    header_table(doc,
+        ["Endepunkt", "Metode", "Rettighed", "Beskrivelse"],
+        [
+            ["/api/vagtplan-comments?from=&to=&employee_id=", "GET",    "vagtplan_view",                       "Kommentarer i en datointerval, valgfrit filtreret på medarbejder."],
+            ["/api/vagtplan-comments",                        "POST",   "vagtplan_edit_own / vagtplan_edit_all", "Opret/overskriv kommentar (upsert). 'edit_own' tillader kun brugerens egen række (matches på initialer mod medarbejderens initials-felt)."],
+            ["/api/vagtplan-comments/{id}",                   "DELETE", "vagtplan_edit_own / vagtplan_edit_all", "Slet kommentar."],
+            ["/api/activities?date_from=&date_to=",           "GET",    "vagtplan_view",                       "Ny forespørgselstilstand på det eksisterende aktivitets-endepunkt: frit datointerval i stedet for period_start – bruges kun af Vagtplan."],
+        ]
+    )
+    note_box(doc,
+        "'Redigér egen linje' (vagtplan_edit_own) matcher udelukkende på Employee.initials mod "
+        "den indloggede brugers AppUser.initials – der er INGEN eksplicit kobling mellem en "
+        "AppUser-konto og et Employee-id ud over dette tekstmatch. Stemmer initialerne ikke "
+        "overens, kan brugeren ikke redigere sin egen linje, selv med vagtplan_edit_own.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Frontend", 2, "15.3")
+    body(doc, (
+        "Griddet viser 4 uger (28 dage) med ISO-ugenummer i kolonneoverskriften. Klik på en tom "
+        "celle åbner samme opret-aktivitet-modal som Aktivitetsoversigten, men med en ekstra "
+        "aktivitetstype 'Ingen (kun kommentar)' der IKKE opretter en Activity-række, kun en "
+        "VagtplanComment. Klik på en eksisterende fraværs- eller kommentarcelle åbner hhv. den "
+        "almindelige aktivitetsdetalje eller en dedikeret rediger/slet-kommentar-modal."
+    ))
+    body(doc, (
+        "'Fravær i morgen'-knappen viser en opsummeringsmodal med alle medarbejdere (inden for "
+        "det valgte disponentgruppe-filter) der har fravær eller en kommentar registreret på "
+        "dagen efter dags dato – et hurtigt overblik uden at skulle bladre til næste uge."
+    ))
+
+    # ── 16. Fraværsoversigt ──────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Fraværsoversigt", 1, "16")
+    body(doc, (
+        "Fraværsoversigt (routers/absence_overview_router.py) viser aggregerede fraværstimer/"
+        "-dage pr. medarbejder og pr. fraværstype over en valgfri datointerval, uafhængigt af "
+        "lønperiodeinddelingen. Al data beregnes af de samme underliggende fraværs-summeringer "
+        "som lønkørslen bruger – ingen duplikeret logik."
+    ))
+
+    heading(doc, "API-endepunkter", 2, "16.1")
+    header_table(doc,
+        ["Endepunkt", "Metode", "Beskrivelse"],
+        [
+            ["/api/absence-overview/data",                "GET", "Fraværstotaler (timer/dage) pr. medarbejder og -type for en fra/til-datointerval."],
+            ["/api/absence-overview/employee-options",    "GET", "Medarbejdere + disponentgrupper til filterdropdowns."],
+            ["/api/absence-overview/export-per-employee", "GET", "Excel-eksport: én række pr. kalenderdag med fravær pr. medarbejder. Filtreres på alle/disponentgruppe/enkelt medarbejder."],
+            ["/api/absence-overview/export-per-type",     "GET", "Excel-eksport aggregeret pr. fraværstype. Filtreres på hvilke fraværstyper der skal medtages."],
+        ]
+    )
+    body(doc, "Alle fire endepunkter kræver rettigheden 'absence_overview'.")
+
+    # ── 17. Vognpark ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Vognpark", 1, "17")
+    body(doc, (
+        "Vognpark-siden (routers/vehicles.py) administrerer køretøjer. Databasemodellen er "
+        "beskrevet i afsnit 2.7; dette kapitel dækker selve administrationsfladen."
+    ))
+    header_table(doc,
+        ["Endepunkt", "Metode", "Rettighed", "Beskrivelse"],
+        [
+            ["/api/vehicles",       "GET",    "login",           "Liste over alle køretøjer."],
+            ["/api/vehicles",       "POST",   "manage_vehicles", "Opret. Registration_number skal være unikt."],
+            ["/api/vehicles/{id}",  "PATCH",  "manage_vehicles", "Rediger."],
+            ["/api/vehicles/{id}",  "DELETE", "manage_vehicles", "Slet – blokeres (400) hvis vognens registration_number bruges af eksisterende aktiviteter."],
+        ]
+    )
+    body(doc, (
+        "Fra og med 2026-09-11 har hver vogn et boolean-felt 'vognpark' (default false). "
+        "Vognpark-siden har to underfaner: 'Vognpark' (kun vogne med vognpark=true, standard-"
+        "visningen) og 'Alle' (alle vogne, inkl. dem der reelt er afdelinger/interne poster). "
+        "Dagsplans vognliste (kapitel 14) og medarbejder-modalens 'Fast bil'-dropdown filtreres "
+        "BEGGE til kun vognpark=true – nyoprettede vogne vises derfor ikke i Dagsplan før feltet "
+        "aktivt sættes. 'Meld materielt fravær'-vognsøgningen (afsnit 14.2) er upåvirket og viser "
+        "fortsat alle vogne."
+    ))
+    note_box(doc,
+        "Da default-værdien for vognpark er false, vil Dagsplans vognkolonne fremstå tom for "
+        "alle vogne der er oprettet før denne funktion, indtil en administrator aktivt "
+        "gennemgår Vognpark → fanen 'Alle' og markerer de relevante vogne.",
+        "VIGTIGT"
+    )
+
     doc.save(OUT / "Teknisk dokumentation.docx")
     print("Teknisk dokumentation.docx gemt.")
 
@@ -1511,7 +1811,7 @@ def build_bruger():
         section.left_margin = section.right_margin = Cm(2.5)
         section.top_margin  = section.bottom_margin = Cm(2.5)
 
-    cover(doc, "Lønsystem", "Brugervejledning", "Juni 2026")
+    cover(doc, "Lønsystem", "Brugervejledning", genereringsdato())
 
     # ── Introduktion ───────────────────────────────────────────────────────
     heading(doc, "Introduktion", 1, "1")
@@ -1524,6 +1824,12 @@ def build_bruger():
     body(doc, (
         "Systemet tilgås via en almindelig webbrowser – der er ingen installation nødvendig "
         "på den enkelte computer. Åbn browseren og gå til systemets adresse på det lokale netværk."
+    ))
+    body(doc, (
+        "Log ind med initialer og adgangskode, eller med knappen 'Log ind med Microsoft' hvis "
+        "virksomhedens IT har aktiveret single sign-on (Microsoft Entra ID). SSO-login kræver "
+        "stadig at du allerede er oprettet som bruger i systemet med den korrekte mailadresse "
+        "udfyldt – der oprettes ikke automatisk en ny bruger ved første SSO-login."
     ))
 
     heading(doc, "Tre hovedområder", 2, "1.1")
@@ -1652,6 +1958,14 @@ def build_bruger():
         "af aktiviteten er importeret korrekt.",
         "GODT AT VIDE"
     )
+    note_box(doc,
+        "Hører et importeret skift til en periode der allerede er kørt løn på (status "
+        "'Lukket'), importeres det ikke stiltiende. Systemet spørger i stedet om det skal "
+        "importeres ind i den EFTERFØLGENDE, åbne periode. Svarer du nej, husker systemet dit "
+        "svar permanent – samme skift bliver ikke spurgt om igen ved en senere import af samme "
+        "mappe.",
+        "BEMÆRK"
+    )
 
     # ── 4. Aktivitetstabellen ─────────────────────────────────────────────
     heading(doc, "Aktivitetstabellen", 1, "4")
@@ -1705,6 +2019,17 @@ def build_bruger():
         "stedet for at blive afvist. Det gælder både manuel oprettelse/rettelse og import af .ddd-filer.",
         "BEMÆRK"
     )
+
+    heading(doc, "Springertillæg-flueben", 2, "4.5")
+    body(doc, (
+        "Under hver medarbejders navn i aktivitetstabellen findes et lille flueben "
+        "'Springertillæg'. Er det sat for en medarbejder, får vedkommende springertillæg for hele "
+        "den viste lønperiode – samme timetal som Normal tid, men udbetalt under sin egen "
+        "lønkode. Kræver rettigheden 'Sæt springertillæg' (gives som standard til alle roller)."
+    ))
+    bullet(doc, "Fluebenet gælder KUN den periode du står i – det nulstilles automatisk ved næste periode og skal sættes igen.")
+    bullet(doc, "Fluebenet kan ikke ændres når perioden er låst (der er kørt løn).")
+    bullet(doc, "Beløbet vises særskilt i prøvekørslen (' (springer)' efter navnet, afsnit 9.1) og i Lønafregning (afsnit 12.2) – ikke som en synlig linje i selve Aktivitetsoversigten.")
 
     # ── 5. Aktivitetsdetaljer og godkendelse ──────────────────────────────
     doc.add_page_break()
@@ -1861,6 +2186,7 @@ def build_bruger():
             ["Disponentgruppe",     "Nej","Afdeling – dropdown, en medarbejder kan højst tilhøre én gruppe ad gangen. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten."],
             ["Fast bil",            "Nej","Afkryds for at medarbejderen skal foreslås som standardchauffør på en bestemt vogn i Dagsplan (kapitel 13). Vises herefter et søgbart vognnummer-felt, ikke begrænset til egen disponentgruppe."],
             ["Særaftale: Øvrig overtid for alle timer", "Nej", "Afkryds KUN for en medarbejder med en individuel aftale om at alle arbejdstimer skal give Øvrig overtid oveni normal løn, uden dagligt loft (se afsnit 9.6). Berører lønberegningen direkte – brug med omtanke."],
+            ["Afløser",             "Nej", "Afkryd for en afløser/substitutmedarbejder. Medarbejderen får IKKE søgnehelligdagsbetaling (kode 4/63) på søndage/helligdage medmindre vedkommende faktisk har kørt den dag – se afsnit 9.5. Farvemarkeres separat i medarbejderlisten, Vagtplan og Aktivitetsoversigten."],
             ["Lønnummer",           "Ja", "Unikt lønnummer (bruges i Danløn-eksporten)."],
             ["Førerkortnummer",     "Nej","EU-førerkortnummer – påkrævet for at importere .ddd-filer korrekt."],
             ["Navn",                "Ja", "Fornavn og efternavn."],
@@ -1880,6 +2206,16 @@ def build_bruger():
         "Vælges en type der ikke kræver Overenskomsttype, forsvinder den røde stjerne ved feltet, "
         "og det kan stå tomt.",
         "GODT AT VIDE"
+    )
+    note_box(doc,
+        "Opret KUN en ny aftaletype hvis du er indforstået med konsekvensen: medarbejdere på "
+        "en aftaletype ud over de to oprindelige ('Timelønnet, fast arbejdstid' og 'Timelønnet, "
+        "ikke fastlagt arbejdstid') får IKKE noget overtidstillæg og INGEN søgnehelligdagsbetaling "
+        "overhovedet – kun almindelig timeløn for de faktisk arbejdede timer, uanset tidspunkt "
+        "eller dagtype. Den konkrete beregningsregel for en ny aftaletype skal udvikles særskilt, "
+        "hvis den overhovedet skal afvige fra flad timeløn. Kontakt systemudvikler før en ny "
+        "aftaletype tages i brug til en medarbejder, hvis der forventes overtid/SH-betaling.",
+        "VIGTIGT"
     )
     note_box(doc,
         "Hvis navn (for- og efternavn) eller førerkortnummer allerede findes på en anden medarbejder "
@@ -1991,6 +2327,21 @@ def build_bruger():
         "BEMÆRK"
     )
 
+    heading(doc, "§56-oversigt", 2, "7.7")
+    body(doc, (
+        "Klik på knappen '§56' i toolbaren på Medarbejdere-siden for at åbne en read-only liste "
+        "over alle aktive medarbejdere der aktuelt har §56 afkrydset – med navn, startdato og "
+        "slutdato. Listen følger det afdelingsfilter der er valgt på siden (afsnit 7.1), men "
+        "ignorerer søgefeltet og 'Vis inaktive'."
+    ))
+    note_box(doc,
+        "Opretter du en 'Sygdom'-aktivitet for en medarbejder der har §56 afkrydset, spørger "
+        "systemet om aktiviteten skal forblive almindelig 'Sygdom', eller i stedet oprettes som "
+        "den eksisterende fraværstype '§56 syg'. Fortryder du dialogen (klik uden for/Annuller), "
+        "oprettes ingen aktivitet overhovedet.",
+        "GODT AT VIDE"
+    )
+
     # ── 8. Helligdagskalender ─────────────────────────────────────────────
     heading(doc, "Helligdagskalender", 1, "8")
     body(doc, (
@@ -2069,6 +2420,15 @@ def build_bruger():
     bullet(doc, "Klik 'Dan PDF'er'.")
     bullet(doc, "Vælg fra/til-dato og evt. en bestemt medarbejder.")
     bullet(doc, "Klik 'Dan PDF'er'. Filen(erne) downloades til din computer.")
+    note_box(doc,
+        "Ud over download kan timesedler sendes direkte pr. mail til medarbejderens "
+        "registrerede mailadresse – enten enkeltvis fra den relevante medarbejders linje i "
+        "lønkørsel-visningen, eller samlet for alle med knappen 'Send timesedler' i "
+        "PDF-modalen. Medarbejdere uden en registreret mailadresse springes automatisk over, "
+        "og fejl ved selve afsendelsen (fx forkert mailopsætning) vises som en generel "
+        "fejlbesked uden tekniske detaljer.",
+        "GODT AT VIDE"
+    )
 
     heading(doc, "Kør løn (Danløn CSV)", 2, "9.3")
     body(doc, (
@@ -2091,6 +2451,20 @@ def build_bruger():
         "låst periode kan genåbnes under 'Administration' (kræver rettigheden 'Åbn låst lønperiode'), hvis "
         "der skal foretages ændringer og køres løn igen."
     ))
+    note_box(doc,
+        "Genåbner du en låst periode, henter systemet automatisk eventuelle aktiviteter der i "
+        "mellemtiden er registreret for den periodes datoer (og som derfor blev lagt i den "
+        "efterfølgende periode, se afsnit 3.2) tilbage til den nu-genåbnede periode. Du behøver "
+        "ikke selv flytte dem.",
+        "GODT AT VIDE"
+    )
+    note_box(doc,
+        "Kontrollér Danløn-koderne i Stamdata → Løntypekoder inden systemet tages i "
+        "produktionsbrug: en del koder er ved leveringen sat til en midlertidig placeholder "
+        "('1') indtil lønafdelingen oplyser de rigtige Danløn-koder. Bruges systemet med "
+        "placeholder-koder, kan flere forskellige lønarter havne under samme kode i Danløn.",
+        "VIGTIGT"
+    )
 
     heading(doc, "CSV-kolonneopsætning per løntypekode", 2, "9.3.1")
     body(doc, (
@@ -2149,6 +2523,13 @@ def build_bruger():
         "almindelig hverdag/lørdag vises derimod stadig som én sammenhængende linje.",
         "GODT AT VIDE"
     )
+    note_box(doc,
+        "En medarbejder markeret som 'Afløser' (afsnit 7.2) får IKKE de garanterede "
+        "søgnehelligdagstimer på en søndag/helligdag, medmindre vedkommende faktisk har en "
+        "godkendt kørselsaktivitet den dag. Har afløseren kørt, gælder alle reglerne ovenfor "
+        "helt som normalt.",
+        "BEMÆRK"
+    )
 
     heading(doc, "Særaftale: Øvrig overtid for alle timer", 2, "9.6")
     body(doc, (
@@ -2204,6 +2585,16 @@ def build_bruger():
         "Rediger ikke Excel-filerne med forventning om at ændringerne slår igennem. "
         "Excel bruges KUN til den initiale seeding af databasen ved første opstart. "
         "Al efterfølgende konfiguration sker via Stamdata-modulet.",
+        "VIGTIGT"
+    )
+    note_box(doc,
+        "Opretter du en helt ny SATS (en ny række i Overtidssatser eller Tillæg, ikke bare en "
+        "ny værdi på en eksisterende), har den IKKE automatisk nogen effekt på lønberegningen – "
+        "kun eksisterende, kendte tillægstyper beregnes automatisk. En ny sats skal derefter "
+        "kobles på en løntypekode via 'Sats-kilde' i Stamdata → Løntypekoder for i det hele "
+        "taget at kunne komme med i CSV-eksporten, og selv da påvirker den ikke selve "
+        "lønberegningen/prøvekørslen. Skal en helt ny tillægsregel indgå i selve "
+        "lønberegningen, kræver det udviklerarbejde – kontakt systemudvikler.",
         "VIGTIGT"
     )
 
@@ -2480,6 +2871,83 @@ def build_bruger():
         "fanens valgte dato), en valgfri 'Til dato' (tom betyder étdags-fravær) samt en kommentar. "
         "Tabellen nedenfor viser dagens meldte fravær med en slet-knap."
     ))
+
+    # ── 14. Vagtplan ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Vagtplan", 1, "14")
+    body(doc, (
+        "Klik på '🗓️ Vagtplan' i venstre menu for at se en 4-ugers oversigt over alle "
+        "medarbejderes fravær og kommentarer, med ugenummer i kolonneoverskriften. Kræver "
+        "rettigheden 'Se vagtplan'; redigering kræver desuden enten 'Redigér egen linje i "
+        "vagtplan' (kun din egen række) eller 'Redigér alle linjer i vagtplan'."
+    ))
+
+    heading(doc, "Registrering", 2, "14.1")
+    body(doc, "Klik på en tom celle for at registrere fravær eller en kommentar for medarbejderen den dag:")
+    bullet(doc, "Vælg en almindelig fraværstype (ferie, sygdom osv.) for at oprette en rigtig aktivitet – nøjagtig samme modal som i Aktivitetsoversigten (kapitel 6).")
+    bullet(doc, "Vælg 'Ingen (kun kommentar)' for blot at skrive en fri tekstnote uden at oprette nogen aktivitet – bruges fx til 'ringer ind kl. 10' eller lignende driftsnoter.")
+    body(doc, "Klik på en udfyldt celle for at se/redigere den. Fraværsaktiviteter åbner samme aktivitetsdetalje som i Aktivitetsoversigten; rene kommentarer åbner en lille rediger/slet-boks.")
+
+    heading(doc, "Filtrering og 'Fravær i morgen'", 2, "14.2")
+    body(doc, (
+        "Afdelingsfiltret er en flervalgsliste (klik for at vælge flere grupper ad gangen; "
+        "klik 'Vælg alle' først for kun at isolere én gruppe). Knappen 'Fravær i morgen' åbner "
+        "en hurtig opsummering af alle medarbejdere (inden for det valgte filter) der har "
+        "fravær eller en kommentar registreret på dagen efter i dag – uden at du behøver bladre "
+        "en hel uge frem."
+    ))
+    note_box(doc,
+        "Vagtplan og Aktivitetsoversigten viser samme underliggende data – opretter du en "
+        "fraværsaktivitet i Vagtplan, ses den også i Aktivitetsoversigten, og omvendt.",
+        "GODT AT VIDE"
+    )
+
+    # ── 15. Fraværsoversigt ──────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Fraværsoversigt", 1, "15")
+    body(doc, (
+        "Klik på '📊 Fraværsoversigt' i venstre menu for et samlet overblik over fravær pr. "
+        "medarbejder og pr. fraværstype over en valgfri periode – uafhængig af de faste "
+        "14-dages lønperioder. Kræver rettigheden 'Fraværsoversigt'."
+    ))
+    bullet(doc, "Vælg en fra- og til-dato for den ønskede periode.")
+    bullet(doc, "Tabellen viser fraværstimer/-dage summeret pr. medarbejder og pr. fraværstype.")
+
+    heading(doc, "Eksport", 2, "15.1")
+    body(doc, "To eksportknapper downloader Excel-filer med samme datointerval som den valgte visning:")
+    bullet(doc, "Eksporterer én række pr. kalenderdag med fravær, valgfrit afgrænset til alle medarbejdere, én disponentgruppe eller én enkelt medarbejder.", "Eksportér pr. medarbejder: ")
+    bullet(doc, "Eksporterer summeret pr. fraværstype – vælg i en afkrydsningsliste hvilke fraværstyper der skal med (eller markér 'alle').", "Eksportér pr. fraværstype: ")
+
+    # ── 16. Vognpark ─────────────────────────────────────────────────────
+    doc.add_page_break()
+    heading(doc, "Vognpark", 1, "16")
+    body(doc, (
+        "Klik på '🚛 Vognpark' i venstre menu for at se og redigere køretøjer. Kræver mindst "
+        "'Se vognpark'; opret/rediger/slet kræver 'Tilføj vogn'."
+    ))
+    header_table(doc,
+        ["Felt", "Beskrivelse"],
+        [
+            ["Nummerplade",     "Registreringsnummer, fx 'DF67671'."],
+            ["Vognnummer",      "Internt vognnummer."],
+            ["Beskrivelse",     "Fri tekst, vises som ekstra kolonne i Dagsplan (kapitel 13)."],
+            ["Disponentgruppe", "Valgfri – knytter vognen til en afdeling."],
+            ["Vognpark",        "Afkryds for at vognen skal vises i Dagsplans vognkolonne og kunne vælges som 'Fast bil' på en medarbejder (se nedenfor)."],
+        ]
+    )
+    body(doc, (
+        "Siden har to underfaner: 'Vognpark' viser kun de vogne der har fluebenet 'Vognpark' "
+        "sat – det er dem der reelt kører gods og indgår i Dagsplan og 'Fast bil'-valget. 'Alle' "
+        "viser samtlige oprettede vogne, inklusive interne poster/afdelinger der ikke skal med i "
+        "den daglige vognfordeling."
+    ))
+    note_box(doc,
+        "Nyoprettede vogne har som udgangspunkt IKKE fluebenet 'Vognpark' sat og vises derfor "
+        "ikke i Dagsplan, før du aktivt går ind under fanen 'Alle' og krydser feltet af. "
+        "'Meld materielt fravær' (kapitel 13.2) og medarbejder-modalens 'Fast bil'-søgning viser "
+        "i øvrigt alle vogne uanset dette flueben.",
+        "BEMÆRK"
+    )
 
     doc.save(OUT / "Brugervejledning.docx")
     print("Brugervejledning.docx gemt.")

@@ -135,10 +135,7 @@ I kalender-visningen: knap **"Auto-godkend egnede"** kører `POST /api/activitie
 ## Kendte begrænsninger
 
 **Natskiftsarbejde (midnight-wraparound)**
-Starttids-baseline beregnes som decimaltal. Chaufføre der konsekvent starter tæt på midnat (fx 23:30) vil have en mean-starttid der ikke giver mening, og aktiviteterne auto-godkendes aldrig. De sættes til `pending` med en forklarende besked.
-
-**Natskiftsarbejde (midnight-wraparound)**
-Starttids-baseline beregnes som decimaltal. Chaufføre der konsekvent starter tæt på midnat vil have en mean-starttid der ikke giver mening. Disse aktiviteter sættes til `pending` med en forklarende besked og skal godkendes manuelt.
+Starttids-baseline beregnes som decimaltal. Chaufføre der konsekvent starter tæt på midnat (fx 23:30) vil have en mean-starttid der ikke giver mening, og aktiviteterne auto-godkendes derfor aldrig. De sættes til `pending` med en forklarende besked og skal godkendes manuelt.
 
 ---
 

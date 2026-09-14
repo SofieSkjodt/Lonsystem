@@ -1,54 +1,31 @@
-# Fejl i danløn-CSV filen og generelle rettelser
+# Fejl i danløn-CSV filen og generelle rettelser (HISTORISK – LØST)
 
-Formål: beskrive de gentagne strukturelle fejl, der er fundet i danløn-eksporter, og hvad der generelt skal ændres, så filerne matcher Tacholøn-formatet.
+> **OBS:** Dette dokument beskriver en oprindelig fejlobservation. Den gældende, korrekte
+> adfærd er siden blevet afklaret og er **modsat** af det, der oprindeligt blev antaget her
+> — se **[docs/aendringer-danloen.md](docs/aendringer-danloen.md)**, som er den autoritative
+> kilde til CSV-formatkravene. Dette dokument bevares kun som historik og må ikke bruges som
+> grundlag for at "rette" den nuværende eksport.
 
-## Fundne fejl
+Formål (oprindeligt): beskrive de gentagne strukturelle fejl, der blev fundet i danløn-eksporter, og hvad der dengang blev antaget skulle ændres, så filerne matcher Tacholøn-formatet.
 
-### 1. Manglende afsluttende semikolon på linjerne
+## Hvad der oprindeligt blev observeret
 
-De fleste linjer i danløn-filen slutter **uden** semikolon efter sidste felt:
+Nogle linjer i danløn-filen så ud til at mangle et afsluttende semikolon eller et sidste felt, sammenlignet med Tacholøn-filens format.
 
-```
-medarbejder-id;løn-id;kode;beløb;lønart
-```
+## Hvorfor det IKKE er en fejl
 
-I Tacholøn-filen slutter linjerne konsekvent **med** semikolon:
+Efter bekræftelse fra bruger (opdateret 2026-09, se `docs/aendringer-danloen.md`) er den nuværende eksport (`app/routers/payroll_router.py`) **tilsigtet**:
 
-```
-medarbejder-id;løn-id;kode;beløb;lønart;
-```
+- Hver linje har **6 felter** (CVR, medarbejdernr, kode, antal, sats, total) – ikke 5, som antaget her oprindeligt.
+- Et afsluttende semikolon skrives **kun** når linjens sidste felt (total-kolonnen) er tomt for den pågældende løntype – ikke altid.
+- Om sats/total er udfyldt eller tomt styres pr. løntype i Stamdata → Løntypekoder (`csv_include_rate`/`csv_include_total`).
 
-Kun ganske få linjer i danløn-filen har den afsluttende semikolon — det er derfor en systematisk fejl i eksporten, ikke en enkeltstående afvigelse.
+**Konklusion:** eksportlogikken skal IKKE ændres på baggrund af dette dokument. Se `docs/aendringer-danloen.md` for den gældende beskrivelse.
 
-### 2. Linjer med for få felter
+## Verifikation af den faktiske, korrekte adfærd
 
-Nogle linjer mangler et felt (typisk det sidste, lønart), fordi et tomt felt i slutningen af linjen bliver **droppet** i stedet for skrevet som et tomt felt:
-
-```
-medarbejder-id;løn-id;kode;beløb;
-```
-
-Der er kun 4 felter her i stedet for 5. Det korrekte ville være at bevare det tomme felt eksplicit:
-
-```
-medarbejder-id;løn-id;kode;beløb;;
-```
-
-## Root cause
-
-Begge fejl peger på samme underliggende problem: eksportlogikken **trimmer/dropper afsluttende tomme værdier**, i stedet for at skrive dem ud som tomme felter og altid afslutte linjen med semikolon. Tacholøn-filen viser, at det korrekte mønster er at bevare tomme felter som `;;` og altid have en afsluttende `;` for hver linje.
-
-## Hvad der generelt skal ændres
-
-- [ ] Eksportlogikken skal **altid** skrive det fulde antal felter (5) pr. linje, uanset om en værdi er tom
-- [ ] En tom værdi skal skrives som et tomt felt mellem semikoloner (`;;`), aldrig udelades
-- [ ] Hver linje skal **altid** afsluttes med et semikolon efter sidste felt
-- [ ] Encoding (uden BOM) og linjeskift (CRLF) skal bibeholdes, som de allerede fungerer korrekt
-
-## Verifikation efter rettelse
-
-For at kontrollere at en fremtidig eksport er korrekt, bør man tjekke:
-- At alle linjer har præcis 5 datafelter (ingen linjer med færre)
-- At alle linjer ender med et afsluttende semikolon
-- At filen ikke indeholder en UTF-8 BOM
-- At linjeskift er CRLF
+For at kontrollere at en eksport er korrekt, tjek i stedet:
+- At alle linjer har præcis 6 datafelter.
+- At et afsluttende semikolon KUN optræder når total-kolonnen er tom for den løntype.
+- At filen ikke indeholder en UTF-8 BOM.
+- At linjeskift er CRLF.
