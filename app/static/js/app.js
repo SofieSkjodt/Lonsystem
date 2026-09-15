@@ -214,13 +214,21 @@ function setView(view) {
   if (view === "dagsplan")          loadDagsplan();
 }
 
-const DAYS_PER_VAGTPLAN_VIEW = 28;
+const DAYS_PER_VAGTPLAN_VIEW = 21; // 3 uger: forrige, nuværende, næste
 
 function _mondayOf(d) {
   const copy = new Date(d);
   const dow = (copy.getDay() + 6) % 7; // 0=Mandag
   copy.setDate(copy.getDate() - dow);
   return copy;
+}
+
+// Default-vindue: ugen før den nuværende, så nuværende uge lander i midten af
+// de 3 viste uger (forrige/nuværende/næste).
+function _vagtplanDefaultWeekStart() {
+  const monday = _mondayOf(new Date());
+  monday.setDate(monday.getDate() - 7);
+  return monday;
 }
 
 function _isoOfDate(d) {
@@ -240,7 +248,7 @@ function _vagtplanDays() {
 
 async function loadVagtplan() {
   if (!state.vagtplan.weekStart) {
-    state.vagtplan.weekStart = _isoOfDate(_mondayOf(new Date()));
+    state.vagtplan.weekStart = _isoOfDate(_vagtplanDefaultWeekStart());
   }
   setLoading(true);
   try {
@@ -262,13 +270,13 @@ async function loadVagtplan() {
 
 function navigateVagtplan(direction) {
   const start = new Date(state.vagtplan.weekStart + "T00:00:00");
-  start.setDate(start.getDate() + (direction === "prev" ? -DAYS_PER_VAGTPLAN_VIEW : DAYS_PER_VAGTPLAN_VIEW));
+  start.setDate(start.getDate() + (direction === "prev" ? -7 : 7));
   state.vagtplan.weekStart = _isoOfDate(start);
   loadVagtplan();
 }
 
 function jumpToVagtplanToday() {
-  state.vagtplan.weekStart = _isoOfDate(_mondayOf(new Date()));
+  state.vagtplan.weekStart = _isoOfDate(_vagtplanDefaultWeekStart());
   loadVagtplan();
 }
 
