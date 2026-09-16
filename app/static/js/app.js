@@ -1152,20 +1152,28 @@ async function refreshActivities() {
 // anderledes) datointerval – opdater den rigtige liste og gentegn kun den synlige visning.
 function applyActivityLocally(updated) {
   if (!updated) return;
+  // Aktivitetsoversigtens periode (14 dage) og Vagtplans vindue (3 uger) overlapper
+  // ofte i dato, så den samme aktivitet kan ligge i BEGGE lister samtidig – opdatér
+  // dem alle steder den findes, og gentegn kun den visning der rent faktisk er
+  // synlig. Tidligere returnerede funktionen så snart den fandt aktiviteten i
+  // state.activities, uden at røre state.vagtplan.activities – hvis man sad i
+  // Vagtplan og godkendte/deaktiverede/genåbnede en aktivitet, der TILFÆLDIGVIS
+  // også lå cachet i Aktivitetsoversigtens liste, blev Vagtplan-griddet aldrig
+  // gentegnet, og badge-farven virkede "fastfrosset" indtil næste fulde genindlæsning.
+  let foundAnywhere = false;
   const idx = state.activities.findIndex(x => x.id === updated.id);
   if (idx !== -1) {
     state.activities[idx] = updated;
-    renderActivitiesTable();
-    return;
+    foundAnywhere = true;
   }
   const vIdx = state.vagtplan.activities.findIndex(x => x.id === updated.id);
   if (vIdx !== -1) {
     state.vagtplan.activities[vIdx] = updated;
-    if (state.currentView === "vagtplan") renderVagtplanTable();
-    return;
+    foundAnywhere = true;
   }
-  state.activities.push(updated);
-  renderActivitiesTable();
+  if (!foundAnywhere) state.activities.push(updated);
+  if (state.currentView === "vagtplan") renderVagtplanTable();
+  else renderActivitiesTable();
 }
 
 // Aktiviteten kan være indlæst i Aktivitetsoversigtens periode (state.activities) eller
