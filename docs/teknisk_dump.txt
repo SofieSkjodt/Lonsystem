@@ -1,0 +1,657 @@
+Lønsystem
+Teknisk dokumentation
+Poul Schou A/S  ·  CVR 13246505
+September 2026
+
+1  Systemarkitektur
+Lønsystemet er en webbaseret applikation til registrering og lønberegning for lastbilchauffører hos Poul Schou A/S. Systemet kører på én central server og tilgås via en webbrowser på det lokale netværk.
+1.1  Teknologistack
+
+1.2  Autentificering
+Login foregår på to måder, begge understøttet samtidig: almindeligt login med initialer + adgangskode (SessionMiddleware, session-cookie med 24 timers levetid), eller 'Log ind med Microsoft' via Microsoft Entra ID (SSO). SSO verificerer et id_token mod Entra ID's egen JWKS-nøgle og matcher herefter brugerens UPN case-insensitivt mod AppUser.email – der oprettes IKKE en ny bruger automatisk ved første SSO-login, brugeren skal allerede findes i systemet med den korrekte mailadresse udfyldt.
+TEKNISK NOTE: SSO kræver ingen særskilt tilladelse ud over at være en oprettet, aktiv bruger. Login-endepunktet (POST /api/auth/login) er derudover rate-begrænset til 5 forsøg pr. IP-adresse pr. 60 sekunder for at modvirke brute-force-angreb.
+1.3  Mappestruktur
+Projektmappen er organiseret i fire hoveddele:
+
+1.4  Centrale filer i app/
+
+
+2  Databasemodel
+Databasen er SQLite og oprettes automatisk ved første opstart. WAL-mode (Write-Ahead Logging) aktiveres, så flere samtidige læsere kan tilgå databasen mens en skrivning foregår.
+2.1  Employee – medarbejdere
+
+Disponentgruppe (afdeling) er ét enkelt, valgfrit felt på medarbejderen (dispatcher_group_id, FK til dispatcher_groups) – ikke en mange-til-mange-relation. En medarbejder tilhører højst 0-1 gruppe ad gangen og vælges via en dropdown i medarbejder-modalen, ikke afkrydsningsbokse. Grupperne selv (navn, beskrivelse) administreres under Stamdata → Disponentgrupper (opret/omdøb/slet). Feltet har historisk skiftet form to gange: oprindeligt en enkelt tekststreng, dernæst (fra 27. juli 2026) en mange-til-mange-relation via en EmployeeDispatcherGroup-jointabel, og siden igen erstattet af den nuværende enkelte FK – begge tidligere ordninger er fjernet fra databasen.
+2.2  Activity – aktiviteter
+
+2.3  PayPeriod – lønperioder
+
+2.4  PayrollRun – lønkørsler
+
+2.5  Stamdata – masterdatatabeller
+Seks tabeller holder systemets masterdata. De fleste seedes automatisk fra Excel-filerne ved første opstart (Excel-filerne bruges herefter kun som fallback hvis en tabel er tom); master_agreement_kinds seedes i stedet fra to faste, hardkodede systemrækker (se nedenfor). Alle tabeller redigeres derefter via Stamdata-modulet i systemets brugerflade.
+
+Normaliserede nøgler i master_absence_types genereres én gang ved oprettelse og ændres ikke efterfølgende – de bruges internt i beregnings- og aktivitetslogikken. Alle fraværstyper kan slettes via Stamdata-UI'et.
+master_agreement_kinds seedes ved opstart med de to systemrækker hourly_fixed og hourly_flexible (is_user_created=False) – de kan ikke slettes, men deres label kan redigeres frit. key sættes kun ved oprettelse og kan ALDRIG ændres bagefter (heller ikke for brugeroprettede rækker), fordi overtidsberegningen i overtime.py/payroll_router.py grener direkte på strengværdierne hourly_fixed/hourly_flexible – se afsnit 5.5. Feltet requires_agreement_type styrer om Overenskomsttype er påkrævet for medarbejdere med den pågældende aftaletype (håndhæves i routers/employees.py).
+2.6  Holidays – helligdagskalender
+Holidays-tabellen gemmer danske helligdage og administreres separat fra de Excel-seedede masterdatatabeller. Den seedes automatisk ved serveropstart via _seed_holidays() i session.py.
+
+5 løbende år genereres ved opstart (indeværende år + 4 fremover).
+Seeding er idempotent – eksisterende datoer springes over.
+Påskedato beregnes via anonym Gregoriansk Computus-algoritme i app/calculators/holidays.py.
+Deduplicering: faste helligdage vinder over bevægelige ved datokollision (fx 2028: 2. pinsedag og Grundlovsdag falder begge den 5. juni – Grundlovsdag bevares).
+Store Bededag medtages ikke (afskaffet fra 2024).
+TEKNISK NOTE: half_day_from-feltet er forberedt til brug i fremtidig lønberegning (helligdagstillæg). Feltet bruges allerede i aktivitetskalenderens '½ fra HH:MM'-badge.
+2.7  Vehicle – køretøjer
+
+description og dispatcher_group_id sættes/redigeres i den eksisterende Vognpark-sides opret/rediger-vogn-modal (kræver fortsat 'manage_vehicles').
+2.8  Dagsplan – tabeller
+Tre tabeller understøtter Dagsplan-siden (kapitel 14): daglig vogn/chauffør-tildeling, de 10 faste 'EKSTRA'-rækker og materielt fravær pr. vogn.
+
+TEKNISK NOTE: Forsøges en medarbejder tildelt en vogn/EKSTRA-plads, mens vedkommende allerede har en anden effektiv tildeling samme dag (eller har registreret fravær den dag), blokeres handlingen ikke – i stedet vises en advarsel (409 med menneskelæsbar besked), som brugeren kan bekræfte for at gennemføre dobbelttildelingen alligevel.
+
+3  Lønperioder
+Lønperioderne er faste 14-dages intervaller fra mandag til søndag. Systemet bruger en ankerperiode til at beregne alle andre perioder.
+
+get_billing_period() i pay_period.py bestemmer hvilken periode en NY eller RETTET aktivitet skal placeres i: hører datoen til en periode der allerede har status 'closed' (der er kørt løn), returneres i stedet den efterfølgende periode (get_or_create_period_for_date() kaldt på periodens slutdato + 1 dag). Bruges ved oprettelse af aktivitet, rettelse af starttid og DDD-import. Genåbning af en allerede placeret aktivitet ændrer bevidst ikke dens pay_period_id – kun oversigtsvisningen (se afsnit 4.4 i Brugervejledningen) sørger for at den stadig ses korrekt.
+Timefordelingen på medarbejderen skelner mellem 'lige' og 'ulige' uger. Dette bestemmes af is_even_week(d): ISO-ugenummer % 2 == 0 → 'even' (lige uge). Mandag 1. juni 2026 er i ISO-uge 23 (ulige), så 'even'-skemaet bruges i ISO-uge 24, 26 osv.
+4  DDD-filparsing (tachografdata)
+EU-tachografer gemmer data i .ddd-filer (EU Forordning 165/2014). Filen er binær og indeholder daglige poster med tidsstempler og aktivitetsskift.
+4.1  Parsingsflow
+1. Filidentifikation: Kortnummeret matches som landekode (2 bogstaver) + 14 cifre (fx DK00000012666013), men kun de første 14 tegn (landekode + 12 cifre = driverIdentification) er det stabile kortnummer der bruges til medarbejder-matching. De sidste 2 cifre er cardReplacementIndex + cardRenewalIndex og ændrer sig når kortet udskiftes/fornys.
+2. Lokalisering af poster: Heuristisk søgning efter timestamp-mønstre identificerer starten på daglige poster.
+3. Afkodning af ActivityChangeInfo: 2-byte records afkodes bit-for-bit: slot (bit 15-14), aktivitetstype (bit 13-11), minutter fra midnat (bit 10-0). Dato og minutter er UTC.
+4. Aktivitetstyper: Rest (hvil), Availability (rådighedstid), Work (andet arbejde), Driving (kørsel).
+5. Dagsstart: Hver dags aktivitetsarray starter altid med en hvil-post ved minut 0 (videreført status fra dagen før, ikke en reel pause). Findes der en ekstra hvil-post lige derefter, er det chaufførens faktiske dagsstart – en kort pause inden arbejdet begynder – og den bruges som visningsstart for dagen.
+6. Tidszonekonvertering: Start/sluttid, segmenter og pauseintervaller konverteres fra UTC til dansk lokal tid (Europe/Copenhagen, DST-korrekt via Python-modulet zoneinfo) inden de gemmes.
+7. Bygning af ParsedActivity: Start/sluttid, procentfordelinger, pauseintervaller og segmenter samles til et ParsedActivity-objekt.
+8. Duplikat-tjek/udvidelse: Findes der allerede en aktivitet med samme medarbejder + starttid, opdateres km-data hvis de mangler. Har den nye fil desuden et SENERE sluttidspunkt end den eksisterende aktivitet (fx fordi kortet først blev læst af midt på en vagt og senere igen efter vagtens afslutning), udvides aktiviteten (sluttid, segmenter, pauser, procentfordeling) i stedet for at blive sprunget over – ellers ville den ekstra tid gå tabt for altid. Var aktiviteten allerede godkendt/deaktiveret, genåbnes den til 'afventende', så den udvidede tid skal godkendes igen (rettet 2026-07-02).
+9. Import af aktivitet: _import_activity() returnerer 'new' (ny aktivitet), 'updated' (eksisterende aktivitet fik km-data udfyldt og/eller blev udvidet med en senere sluttid), 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret, intet nyt at tilføje) – hver årsag tælles separat.
+10. Km-start/km-slut: _extract_daily_odometer() finder et separat array af (km, tidsstempel)-par i filen ved kæde-validering (mindst 5 elementer med præcis 20 bytes' afstand, ingen fast offset). km_start = km-standen tættest på dagens beregnede startminut; km_end = km_start + dagens egen kørte distance.
+TEKNISK NOTE: zoneinfo kræver på Windows Python-pakken tzdata (installeret via requirements.txt), da Windows ikke leverer sin egen IANA-tidszonedatabase.
+GODT AT VIDE: En indledende kort pause (fx 1-11 minutter) tælles med i den viste arbejdstid og fremgår af pause_intervals, men er stadig ubetalt – pause_intervals fratrækkes altid i lønberegningen uanset hvor i dagen de ligger.
+GODT AT VIDE: Førerkort gemmer kun et begrænset antal køretøjsbrug-poster, så km-tabellen dækker ikke nødvendigvis hele kortets historik. Ældre dage vil derfor mangle km-start/km-slut – det er en begrænsning i kortets egne data, ikke en fejl i importen.
+TEKNISK NOTE: Videreudviklet 2026-09: matching mod eksisterende aktiviteter bruger nu tidsoverlap (ikke eksakt lighed i starttid), og sammenligner altid mod den oprindeligt importerede original_*-værdi frem for evt. manuelt rettede tider – så en manuel korrektion aldrig utilsigtet bliver overskrevet af en senere genimport af samme fil. Findes der BÅDE en godkendt/deaktiveret linje og en afventende rettelseslinje der overlapper det samme tidsrum, foretrækker systemet altid den afventende rettelseslinje – rettet efter en fejl der i praksis havde skabt 1.273 dublet-aktiviteter (fundet og rettet 2026-09-11). En allerede godkendt/deaktiveret aktivitet ændres ALDRIG direkte af en genimport; afviger den nye udlæsning, oprettes i stedet en ny, separat afventende linje. Opstår der en fejl midt i importen af én aktivitet, rulles hele databasetransaktionen for den fil tilbage (ikke kun den ene aktivitet springes over), for at forhindre at én defekt post får efterfølgende poster til at fejle i kaskade.
+4.2  Import-flow
+Brugeren klikker 'Tjek ddd_input-mappe' i browsergrænsefladen, som kalder POST /api/import-ddd. Denne scanner ddd_input/-mappen (inkl. alle undermapper) på serveren, parser alle fundne .ddd-filer og gemmer nye aktiviteter i databasen.
+_process_import_results() i import_ddd.py samler resultatet af alle filer: antal importeret, opdateret (km-data udfyldt på en eksisterende aktivitet), samt sprunget over opdelt på årsag (ukendt førerkortnummer – med de konkrete kortnumre – eller allerede importeret). Filer der giver 0 aktiviteter og eventuelle parse-fejl (også ved mappe-scanning) indgår i samme resultat. Frontenden viser resultatet i en pop-up (modal-import-result): 'Importering succesfuld' hvis alt gik igennem uden sprungne aktiviteter/fejl, ellers en opdelt oversigt over årsagerne.
+Hver importkørsel logges som én hændelse (action 'ddd_import') i hændelsesloggen via log_action(), med samme opdelte opsummering i tekstform i details-feltet – så årsager til sprungne aktiviteter kan slås op bagefter, ikke kun ses i pop-up'en lige efter kørslen.
+Hører et importeret skifts dato til en allerede LUKKET lønperiode, importeres det ikke automatisk. I stedet returneres det som 'pending_closed_period', og frontenden beder brugeren bekræfte om skiftet alligevel skal importeres (ind i den efterfølgende, åbne periode). Afviser brugeren, huskes afvisningen permanent i tabellen DeclinedImport (nøglet på medarbejder + starttidspunkt), så samme skift ikke bliver spurgt om igen ved en senere geninport af samme mappe. Bekræftelsen sendes via POST /api/decline-closed-period-import.
+
+5  Overtidsberegning
+Beregningen udføres i calculators/overtime.py ved funktionen calculate_overtime(start, end, pause_intervals, normal_hours, rates). Satserne hentes fra Stamdata-databasen (master_overtime_rates). Excel bruges kun som fallback hvis DB-tabellen er tom.
+5.1  De tre tillægstyper
+
+5.2  Beregningsgang
+Pauseintervaller fratrækkes i de tidsrum de afholdes (korrekt placering i tillægsvindue).
+Arbejdstimerne opdeles i 4 vinduer: before (05-06), day (06-18), evening (18-21), night (21-05).
+Alle arbejdstimer tæller med i normal_hours (kode 1) uanset vindue – men det REGISTREREDE normaltids-loft (fra medarbejderens timefordeling, fx 7/7,5/8 t) kan kun forbruges af timer i day-vinduet (06-18). Nat-, før- og aftentimer er altid rent tillæg og fortærer ikke loftet (rettet 2026-07-02, se OBS nedenfor).
+Day-timer der overskrider det (uforbrugte) normaltids-loft går til OT_13, op til et loft på 3 timer – derefter evening-timer, i den rækkefølge de forekommer kronologisk.
+Resterende evening-timer (når OT_13-puljen på 3 timer er brugt op) og alle night-timer går til OT_EXTRA.
+Resultat: OvertimeResult med normal_hours, ot_before_hours, ot_13_hours, ot_extra_hours samt beregnede tillæg i kr.
+VIGTIGT: Pauser skal altid registreres korrekt, da de fratrækkes i det præcise tidsvindue de afholdes. En pause kl. 20:00 fratrækkes i OT_13-vinduet og reducerer dermed tillægget korrekt.
+VIGTIGT: Det REGISTREREDE normaltids-loft er ikke den samme størrelse for alle medarbejdere: for agreement_kind='hourly_fixed' er loftet DAGLIGT (medarbejderens timefordeling for den pågældende ugedag, nulstilles hver dag). For agreement_kind='hourly_flexible' er loftet i stedet UGENTLIGT og FÆLLES for hele ugen: 37 timer normaltid + 5 timer OT_13, delt på tværs af alle vagter mandag–søndag og først nulstillet den følgende mandag. Forskellen afgøres i _calculate_employee() (payroll_router.py), som enten videresender et dagligt restloft (next_day_normal_hours) til calculate_overtime() ved midnatsovergange for hourly_fixed, eller lader det ugentlige loft løbe uændret videre for hourly_flexible – se afsnit 5.3 for hvordan denne forskel konkret udmønter sig ved vagter der krydser midnat.
+TEKNISK NOTE: Frem til 2026-07-02 fortærede nat-, før- og aftentimer også normaltids-loftet, hvilket gjorde for mange senere dagtimer til overarbejde for medarbejdere med tidlig morgenstart. Reglen er rettet, og calculate_overtime() kan nu tage imod og videresende det resterende loft (normal_remaining/ot13_remaining) fra en tidligere aktivitet SAMME dag, så loftet deles pr. dag og ikke nulstilles pr. aktivitet (relevant når en dag er delt i flere godkendte aktiviteter, fx efter en opdeling).
+5.3  Vagter der krydser midnat
+Normaltids-/OT_13-loftet hører til vagten – den dag den startede – og fortsætter uændret hen over midnat, så længe det ikke er brugt op. Et eksempel: en vagt fra fredag kl. 20:30 til lørdag kl. 08:02 bruger fredagens loft for hele vagten; er fredagens 7 timer slet ikke rørt endnu (fordi aften/nat/'1 time før' aldrig fortærer det), fylder lørdagsmorgenens dagtimer bare videre op i det samme loft. Dette kræver ingen særlig kode – calculate_overtime()s kronologiske gennemløb af tidssegmenter håndterer det automatisk, når vagten IKKE splittes.
+Søndage og helligdage har derimod en loft-uafhængig regel (se afsnit 5.4): "alle kørte timer → kode 9, uanset tidspunkt". Den regel kan ikke deles med en efterfølgende hverdags tidsvindues-baserede beregning, så en vagt der STARTER på en søndag/helligdag splittes altid i to ved midnat – søndagsdelen får søndagens regel, resten falder tilbage til den følgende dags egne regler.
+TEKNISK NOTE: _split_into_day_pieces() i payroll_router.py udfører splittet. Om en aktivitet skal splittes afgøres af classify_day(aktivitetens startdato) – kun søndag og helligdage (inkl. halvdagshelligdage) udløser split. Lørdag og almindelige hverdage splittes ALDRIG, uanset hvor mange kalenderdage vagten strækker sig over (bekræftet af bruger 2026-07-02).
+TEKNISK NOTE: Den beskrevne loft-videreførsel hen over midnat gælder kun for hourly_fixed (dagligt loft) – dér gives det NÆSTE døgns egne garanterede timer eksplicit videre som next_day_normal_hours, netop for at undgå at et ubrugt loft fra én dag fejlagtigt dækker en helt anden dags arbejde (den konkrete fejlrettelse er kendt internt som 'Jesper Rosengreen-sagen', 2026-08-17). For hourly_flexible findes intet dagsskift at videreføre overhovedet – loftet er allerede ét sammenhængende, ugentligt loft (37 t + 5 t OT_13) der løber uændret fra mandag til søndag, se afsnit 5.2.
+5.4  Lørdage, søndage og helligdage (SH-betaling)
+Ud over de tre almindelige tillægstyper gælder særlige regler for lørdage, søndage og helligdage, implementeret i calculators/day_type.py. Dagtypen afgøres af classify_day() ud fra ugedag og helligdagskalenderen – en helligdag trumfer altid lørdag/søndag.
+
+BEMÆRK: Reglerne er bekræftet af bruger 2026-06-23 (søndag/helligdag) og 2026-07-02 (lørdag). Se afsnit 5.3 for hvordan vagter der krydser midnat ind i/ud af disse dage håndteres.
+Undtagelse – Employee.afloeser (2026-08-27): en medarbejder markeret som afløser får IKKE de garanterede SH-timer (kode 4/63) på en søndag/helligdag, medmindre der samme dag findes en godkendt 'normal tid'-aktivitet (dvs. vedkommende faktisk har kørt). Er der kørsel, gælder ovenstående regler helt uændret – flaget suspenderer kun den ellers automatiske garantibetaling på dage uden kørsel. Flaget påvirker intet på almindelige hverdage eller lørdage.
+5.5  Aftale-typer uden fast overtidsregel
+Fra og med indførelsen af Stamdata-fanen "Aftale" (se afsnit 2.5 og 6.2) kan der oprettes flere aftaletyper end de to oprindelige, hourly_fixed og hourly_flexible. Kun disse to nøgler er kendt af overtidsberegningen ovenfor (afsnit 5.1–5.4).
+For en medarbejder hvis agreement_kind IKKE er hourly_fixed eller hourly_flexible, springer _calculate_employee() (payroll_router.py) hele den daglige/ugentlige loft-beregning og alle tillæg over. I stedet kaldes calculate_flat_hours() (calculators/overtime.py), som blot summerer arbejdstiden minus pauser til normal_hours – ingen ot_before/ot_13/ot_extra, og ingen søndags-/helligdagstillæg (sh_kode8/sh_kode9). Dette gælder for ALLE dagtyper, ikke kun almindelige hverdage.
+TEKNISK NOTE: Dette er en bevidst, midlertidig afgrænsning: den konkrete beregningslogik for nye aftaletyper (hvis den overhovedet skal afvige fra flad normaltid) er endnu ikke defineret og er ikke en del af denne opgave. Se docs/superpowers/specs/2026-08-24-aftale-stamdata-design.md.
+5.6  Særaftale: Øvrig overtid for alle timer
+Employee.ot_extra_alle_timer (Boolean, default false) er et generisk, togglebart per-medarbejder-flag til én navngiven medarbejders individuelle særaftale: ALLE hans arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn – uanset tidspunkt, dagtype eller det sædvanlige daglige loft. Flaget er UAFHÆNGIGT af agreement_kind-branchingen i afsnit 5.5 – det virker ovenpå den almindelige beregning, ikke som en ny aftaletype.
+Erstatter de normale tidstillæg (nat/aften/'1 time før', OT 1-3/kode 8) i stedet for at lægge oveni dem.
+Intet dagligt loft: fuld normalløn (kode 1) for samtlige arbejdstimer, uanset det sædvanlige loft på 7/7,5/8 timer.
+Gælder alle dage – hverdag, lørdag, søndag og alle helligdagstyper (inkl. 1. maj og Grundlovsdag).
+Kode 8 (Overtid 1-3 timer) gives ALDRIG – kun kode 1 og kode 9, begge for samtlige arbejdstimer.
+Kode 4/63 (SH-garantibetaling, compute_sh_hours()) beregnes helt uændret – uafhængig af flaget.
+Implementeret som override_ot_extra_alle_timer() i overtime.py, kaldt fra _calculate_employee() (payroll_router.py) som et nyt, øverste tjek FØR den eksisterende agreement_kind-gren. Slår automatisk igennem alle steder der bruger _calculate_employee(): lønkørsel-preview, prøvekørsel, PDF-timesedler, Lønafregning-fanen og Danløn CSV.
+TEKNISK NOTE: Ingen ny løntypekode/Danløn-kode – genbruger den eksisterende kode 9-infrastruktur (OT_EXTRA_KEY). Ingen ændring af salttillæg, overnatningstillæg eller afløser-logik. Sættes via en checkbox i medarbejder-modalen ('Særaftale: Øvrig overtid for alle timer'), gated af samme manage_employees/stamdata-tilladelse som resten af modalen – ingen ny permission. Se docs/superpowers/specs/2026-09-10-ot-extra-alle-timer-design.md.
+6  Timesatser og overenskomst
+Alle timesatser og overenskomsttyper opbevares i Stamdata-databasen og redigeres via Stamdata-modulet i systemets brugerflade. Excel-filerne bruges kun til initial seeding af databasen ved første opstart og er derefter irrelevante for driften.
+6.1  Stamdata-tabeller og DB-funktioner
+
+
+rates_loader.py: load_agreement_types_from_db(db): returnerer dict {navn: Decimal sats}
+load_overtime_rates_from_db(db): returnerer dict {nøgle: Decimal sats}
+load_salt_supplement_rate_from_db(db): returnerer Decimal sats for salttillæg pr. time
+load_overnight_rate_from_db(db): returnerer Decimal sats for overnatning pr. forekomst
+seniority_variant_exists(type, db): tjekker om der findes en '9 mdr anciennitet'-variant i DB
+Alle _from_db-funktioner har Excel som fallback, der kun aktiveres hvis DB-tabellen er tom
+
+Anciennitetsvarsler: systemet kontrollerer løbende om aktive medarbejdere har ≥9 måneder og en tilsvarende 9-mdr-variant af overenskomsttypen – i så fald vises et varsel i UI. Varslet styres af tilladelsen 'anciennitet_alert' (checkAnciennitetsAlerts() returnerer tidligt hvis !state.currentUser.permissions.includes('anciennitet_alert')). Tilladelsen er som standard slået til for Administrator og Lønbogholder, og kan klikkes til/fra per rolle i Brugerstyring.
+6.2  Stamdata-modulet i brugerfladen
+Stamdata-menupunktet (⚙️ Stamdata) i venstre menu giver administratorer adgang til ti faner med CRUD-funktionalitet for alle masterdatatabeller:
+
+BEMÆRK: Alle handlinger i Stamdata-modulet kræver 'stamdata'-rettighed. Helligdage-fanen kræver desuden 'manage_holidays'-rettighed.
+VIGTIGT: Opretter en admin en HELT NY overtids- eller tillægssats (en ny RÆKKE i Overtidssatser/Tillæg-fanerne, ud over de faste satser systemet allerede kender), gemmes den i databasen, men beregningsmotoren (calculate_overtime()/day_type.py) bruger den IKKE automatisk nogen steder – den nye sats har reelt kun effekt, hvis den efterfølgende også kobles på en løntypekode via feltet 'Sats-kilde' i Stamdata → Løntypekoder (afsnit 6.1, dynamisk id-baseret opslag i _resolve_rate()), og selv da kun for CSV-eksporten – IKKE for selve lønberegningen/visningen i prøvekørsel og PDF-timesedler. En helt ny form for tillæg (fx et nyt tidsvindue eller en ny dagtype-regel) kræver udviklerarbejde i calculators/overtime.py eller day_type.py.
+6.3  Helligdage – API-endepunkter
+
+Helligdagsdata bruges i aktivitetskalenderens frontend: loadHolidaysForPeriod(startDate, endDate) kaldes parallelt med loadActivities() og gemmer resultatet i state.holidays[]. renderActivitiesTable() markerer helligdagskolonner med baggrundsfarven #056a10 (mørkegrøn). Halvdagshelligdage vises med et '½ fra HH:MM'-badge og helligdagsnavnet som tooltip. Hvis dagens dato falder på en helligdag, bevares today-indikatoren via border-bottom i accentfarven.
+6.4  Medarbejdertillæg (employee_supplements)
+Ud over overenskomsttypens timesats kan hver medarbejder have et individuelt kr/time-tillæg ('Ikke overenskomstmæssigt tillæg'), historisk sporet i en selvstændig tabel employee_supplements. Tabellen administreres fra det selvstændige sidebar-punktet 'Tillæg' (kræver rettigheden manage_employee_supplements) og påvirker selve lønberegningen – ikke kun visning.
+
+Status (Aktiv/Inaktiv) er IKKE et lagret felt – det beregnes ved hver visning ud fra om dags dato ligger i intervallet [start_date, end_date]. Et tillæg med fremtidig startdato vises derfor som Inaktiv, indtil startdatoen er nået.
+6.4.1  Livscyklus og satsopslag
+Oprettelse (POST /api/employee-supplements): den medarbejders eksisterende åbentstående række (end_date = 9999-12-31) får automatisk sin end_date sat til ny_start_dato − 1 dag, og en ny åbentstående række indsættes. Ny start_date skal være efter den forrige rækkes start_date, ellers afvises oprettelsen.
+Afslutning (POST /api/employee-supplements/{id}/end): sætter IKKE end_date til dags dato, men til slutdatoen for den lønperiode dags dato falder i (get_or_create_period_for_date()). Tillægget gælder derfor stadig resten af den igangværende lønperiode og bortfalder først fra den efterfølgende periode.
+Der findes ingen redigerings- eller sletningsmulighed for eksisterende rækker – kun oprettelse af nye og afslutning af den aktive.
+Et partielt unikt indeks (uq_employee_supplements_one_open_row) sikrer på databaseniveau at en medarbejder kun kan have ÉN åbentstående række ad gangen (WHERE end_date = '9999-12-31') – forhindrer et race condition ved samtidige oprettelser.
+Ved lønberegning slår get_active_supplement_for_period(db, employee_id, periode_start, periode_slut) (calculators/rates_loader.py) op efter den række hvis gyldighedsperiode OVERLAPPER den beregnede periode. Overlapper flere rækker (fordi et nyt tillæg er oprettet midt i en periode), vinder rækken med nyeste start_date – for hele perioden (ingen dag-for-dag splitning). Denne regel gør samtidig en genberegning af en gammel, afsluttet periode historisk korrekt: det tillæg der dengang overlappede perioden, ændres ikke bagudrettet af senere oprettede tillæg.
+TEKNISK NOTE: hourly_rate forhøjes med tillæggets value umiddelbart efter det almindelige overenskomstopslag i _calculate_employee() (payroll_router.py) – ÉN variabel der allerede bruges alle steder nedstrøms (normaltid/kode 1, SH-betaling, CSV-rækkerne for AFSPADSERING/SYGDOM/BARSEL/SKOLE_KURSUS m.fl.). Samme funktion genbruges af absence_overview_router.py, så Fraværsoversigtens viste sats altid stemmer overens med den sats der reelt udbetales i lønkørslen.
+6.4.2  API-endepunkter
+
+Alle fire endepunkter kræver rettigheden manage_employee_supplements. Medarbejder-modalen (fanen 'Medarbejdere') viser tillæggets aktuelle værdi i et read-only felt under Overenskomsttype (hentet via GET /active/{id}) – feltet kan ikke redigeres eller udfyldes derfra, kun under fanen 'Tillæg'.
+6.5  §56-aftale og advarsler
+Employee.paragraf_56 (Boolean) markerer at en medarbejder har en §56-aftale, med paragraf_56_start_date og paragraf_56_end_date som begge er påkrævede felter når flaget er sat. Sættes flaget til false (via medarbejder-modalen eller automatisk, se nedenfor), nulstiller serveren begge datofelter til NULL. Feltet har PT. ingen direkte kobling til selve lønberegningen eller den eksisterende fraværstype '§56 syg' – det er et rent stamdata-/varslingsfelt.
+En daglig baggrundstjek (kørt ved hvert kald til GET /api/employees, _sweep_expired_paragraf_56()) slår automatisk paragraf_56 fra for enhver medarbejder hvis paragraf_56_end_date er overskredet – datoerne bevares uændret, kun det aktive flag ryddes. Brugere med rettigheden paragraf_56_alert advares to steder:
+GET /api/employees/paragraf56-alerts returnerer medarbejdere hvis slutdato ligger inden for 30 dage (kommende udløb) og medarbejdere der netop er auto-deaktiveret (nyligt udløbet).
+Frontend viser popup ved login for begge kategorier. Afvisning gemmes pr. bruger og pr. alert-type (Paragraf56AlertDismissal-tabellen) via POST /api/employees/{id}/dismiss-paragraf56-alert – IKKE globalt: en kollega uden afvisning ser stadig advarslen.
+Ændres paragraf_56_end_date på medarbejderen, nulstilles ALLE brugeres afvisninger for den medarbejder automatisk, så advarslen kan dukke op igen.
+TEKNISK NOTE: Oprettes en 'Sygdom'-aktivitet manuelt for en medarbejder med aktivt paragraf_56-flag, viser frontend (ikke backend) et bekræftelsesvalg: fortsæt som almindelig 'Sygdom', eller konvertér til den eksisterende fraværstype '§56 syg' i stedet. Der er ingen automatisk konvertering – begge veje kræver et aktivt valg fra brugeren.
+
+7  Lønkørsel
+Lønkørslen foregår i routers/payroll_router.py. KUN aktiviteter med status 'approved' indgår i beregningen.
+7.1  API-endepunkter
+
+Genåbning sveiper desuden 'forvildede' aktiviteter: aktiviteter der er blevet oprettet, mens perioden var lukket, bliver af get_billing_period() automatisk placeret i den EFTERFØLGENDE periode i stedet (se kapitel 3). Ved genåbning flyttes disse aktiviteter automatisk tilbage til den nu-genåbnede periode, så de igen indgår i dens beregning.
+7.2  Beregningslogik (_calculate_employee)
+Itererer alle 14 dage i perioden – ikke kun dage med aktiviteter.
+Dage uden aktivitet returneres med 0 timer på alle kolonner.
+Overnatning (activity_type = 'overnatning'): tæller forekomster som overnight_count og springer dagslinje-logikken over (continue). Eksponeres i resultatet som overnight_count, overnight_rate og overnight_kr (flat sats pr. forekomst fra Salttillæg og overnatning.xlsx).
+Fraværsdage vises med typenavn i stedet for timer i dagsoversigten, men timerne beregnes og summeres stadig separat pr. fraværstype (fx sygdom_hours, afspadsering_hours, feriefri_hours, barsel_hours) og indgår i Danløn CSV'en, hvis løntypen er sat til 'Medtag i CSV' i Stamdata. Ferie er en undtagelse: den tælles, men er som default ekskluderet fra CSV'en.
+For normale aktiviteter: kalder calculate_overtime() med aktivitetens start/slut, pauseintervaller og normaltimer for den pågældende dag.
+Summerer normal tid, OT_BEFORE, OT_13 og OT_EXTRA timer samt pålæsning/aflæsning.
+Beregner kr. = timer × timesats (normal) + tillægstimer × satser.
+Returnerer dict med totaler og linjeposter pr. dag (alle 14 dage i perioden).
+7.3  Excel-formatering i prøvekørsel
+Excel-filen (_build_proevekoersel_workbook() i payroll_router.py) har 16 kolonner, i denne rækkefølge:
+
+TEKNISK NOTE: Excel-kolonnen 'Normal tid' er IKKE det samme som calc['normal_hours'] i beregnings-resultatet (afsnit 7.2), som indeholder ALLE arbejdede timer (tillæg er additive, se afsnit 5.2). Excel-kolonnen trækker OT_BEFORE, OT_13 (+ kode 8) og OT_EXTRA (+ kode 9) fra, så den udelukkende viser timer der udbetales til ren normalsats uden tillæg oveni – til brug for kontrolformål.
+
+7.4  Danløn CSV-format
+Kolonnerne i den eksporterede CSV-fil (semikolon-separeret). Kolonne 5 og 6 er valgfrie per løntypekode og styres via Stamdata:
+
+CSV-kolonneopsætningen konfigureres per løntypekode i Stamdata → Løntypekoder: Antal-type (Timer/Antal), Sats-kilde (timesats, overtidssatser, salttillæg, overnatning, dagpenge), Inkluder sats og Inkluder total.
+VIGTIGT: De fleste Danløn-koder der seedes automatisk ved allerførste opstart (fra calculators/pay_rates.py's DANLOEN_CODE_*-konstanter) er STADIG placeholder-værdien "1" – de rigtige koder var pt. ikke oplyst af lønafdelingen da systemet blev bygget. Eneste undtagelser med reelle koder fra start er søgnehelligdagskoderne (4/63) og feriefri-koden for fuldlønnede (5). FØR systemet tages i egentlig produktionsbrug, skal hver enkelt løntypekode under Stamdata → Løntypekoder derfor gennemgås og rettes til den faktiske Danløn-kode – ellers vil flere forskellige lønarter blive eksporteret under samme (forkerte) kode "1".
+7.5  Timeseddel-udsendelse pr. mail
+Ud over PDF-download (afsnit 7.1/7.3) kan PDF-timesedler sendes direkte til medarbejderens registrerede mailadresse via routers/timeseddel_router.py.
+
+TEKNISK NOTE: Alle tre endepunkter kræver 'payroll'-rettigheden. Fejl ved selve mailafsendelsen (fx forkert SMTP-opsætning) logges internt med medarbejderens navn/id, mens brugeren kun ser en generisk fejlbesked – hærdet 2026-08-29 for ikke at lække interne SMTP-fejldetaljer. SMTP-opsætningen (server, port, afsenderadresse, adgangskode) konfigureres i .env-filen, ikke i Stamdata.
+7.6  Springertillæg
+Springertillæg (2026-08-14) er en løntypekode (SPRINGERTILLAEG) der giver samme timetal som løntypekode 1 (Normal tid), men KUN for de medarbejdere der i den enkelte lønperiode har fået sat et flueben i aktivitetsoversigten – ét flueben under medarbejderens navn, ét pr. medarbejder pr. periode. Fluebenet nulstilles automatisk hver ny periode (ingen række i employee_springer_flags = ikke sat) og kan ikke ændres når perioden er låst.
+Tilladelsen toggle_springer styrer hvem der må sætte/fjerne fluebenet – den gives som standard til alle roller (se afsnit 11.3 i Brugervejledningen). Satsen konfigureres i Stamdata → Tillæg (label 'Springertillæg') ligesom salttillæg/overnatning.
+
+8  Aktivitetshåndtering
+8.1  Statusflow
+pending → approved (godkendt – approved_by sættes til brugerens initialer) → deactivated (deaktiveret – deactivated_by sættes til brugerens initialer).
+Fraværstyper (ferie, sygdom, afspadsering, skole/kursus mv.) oprettes direkte som approved, med approved_by sat til den opretstende brugers initialer (ikke pending, da de ikke skal manuelt godkendes bagefter).
+approved_by og deactivated_by er separate felter – approved_by bruges udelukkende til godkendelser.
+8.2  Rettelse og fortryd
+Første rettelse: original_start_time og original_end_time gemmes automatisk.
+Efterfølgende rettelser: originaltiderne overskrives ikke.
+Fortryd: nulstiller start_time og end_time til de gemte originaler.
+8.3  Opdeling (split)
+En aktivitet kan opdeles ved et valgt tidspunkt. Systemet opretter to børneaktiviteter med parent_activity_id og split_part (1 og 2). Pauser og segmenter fordeles proportionalt til den korrekte del.
+8.4  Aktivitetsflags
+
+
+9  Frontendarkitektur
+Hele frontenden er én HTML-fil (templates/index.html) med én JavaScript-fil (static/js/app.js). Der bruges ingen React, Vue eller andre frameworks.
+9.1  State-management
+Et globalt state-objekt holder applikationens tilstand:
+
+9.2  Cache-busting
+main.py beregner app.js's ændringstidspunkt (st_mtime) og indsætter det som forespørgselsparameter: <script src='/static/js/app.js?v={mtime}'>. Browsercachen brydes automatisk ved hver ændring af filen.
+9.3  Datetime-picker
+En brugerdefineret datetime-komponent erstatter browserens native datetime-local scroll-input. Komponenten består af: date-input (dato) + number-input (time, 0-23) + ':' + number-input (minut, 0-59). Alle styles er inline i JavaScript for at undgå browsercache-problemer.
+
+9.4  Date-picker (datovalg)
+En brugerdefineret dato-komponent (buildDatePicker) erstatter browserens native date-input på steder hvor det er vigtigt at kunne vælge årstal fra dropdown. Komponenten består af et tekstfelt der åbner et popup-kalender med måned-dropdown, årstal-dropdown (1950–2100) og en klassisk månedsgrid med klikbare datoer.
+
+Bruges på to steder i applikationen:
+Medarbejdermodal: 'Ansættelsesdato' og 'Fratrædelsesdato'.
+Aktivitetsoversigt: Datovælgeren i periodelinjen (hop til dato).
+TEKNISK NOTE: Popup'en bruger position:fixed og getBoundingClientRect() for korrekt placering inde i scrollbare modaler. Specialtilfældet 9999-12-31 (ingen fratrædelse) vises som '31-12-9999' og åbner kalenderen ved indeværende år.
+9.5  Filtrering
+Aktivitetstabellen har tre filtre der kombineres:
+
+9.6  Stamdata-view
+Stamdata-view aktiveres fra menupunktet '⚙️ Stamdata' i venstre menu (kræver 'stamdata'-rettighed). View'et indeholder en tab-navigator med ti faner – kun én pane er synlig ad gangen:
+
+Fraværstyper-fanen viser alle rækker fra master_absence_types med Aktiv-badge (grøn/grå). Alle typer har Rediger- og Slet-knap. Løntypekoder-fanen giver mulighed for at redigere type (label), Danløn-kode, Medtag i CSV, Antal-type (Timer/Antal), Sats-kilde, Inkluder sats og Inkluder total samt slette alle koder. Alle disse felter kan også sættes ved oprettelse af en ny løntypekode.
+Aftale-fanen viser rækkerne fra master_agreement_kinds med badges for Type (System/Brugeroprettet), Kræver overenskomsttype (Ja/Nej) og Aktiv. Systemtyperne har kun en Rediger-knap (label/aktiv/kræver overenskomsttype); brugeroprettede typer har desuden en Slet-knap. loadStamdataAgreementKinds() genindlæser efter hver ændring også state.agreementKinds via GET /api/employees/agreement-kinds, så medarbejder-modalens 'Aftale'-dropdown (fillAgreementKindSelect()) altid er opdateret uden sideopdatering. onAgreementKindChange() slår den valgte types requires_agreement_type op og viser/skjuler den røde stjerne ved Overenskomsttype-feltet i medarbejder-modalen.
+9.7  Pausehåndtering i oprettelsesmodalen
+Når en manuel aktivitet oprettes, kan der tilføjes et vilkårligt antal pauser via '+ Tilføj pause'-knappen. Pauserne gemmes i databasefeltet pause_intervals og fratrækkes automatisk i lønberegning, varighedsvisning og aktivitetsfordeling.
+
+Pauseinterval-flow ved POST af aktivitet:
+manualPauses[] sendes som pause_intervals i POST-body til POST /api/activities.
+ActivityCreate-skemaet validerer listen (list[list[str]]).
+_duration_minutes(a) i activities.py klipper hvert interval til aktivitetens bounds og fratrækker det fra bruttotiden. Påvirker is_under_4h og is_over_12h.
+calculate_overtime() i overtime.py bruger _subtract_pauses() til at fratrække pauserne i det korrekte tillægsvindue.
+openActivityDetail() i app.js beregner Aktivitetsfordeling-bjælken: for manuelle aktiviteter uden tachografsegmentdata beregnes Hvil/pause-% fra pause_intervals og Effektiv tid-% som resten.
+TEKNISK NOTE: Pausemodalen (modal-pause) bruger buildDatetimePicker med datofeltet skjult – brugeren ser kun HH:MM. Datoen arves fra aktivitetens startdato.
+
+10  Drift og vedligehold – ofte stillede spørgsmål
+10.1  Hvor er databasen, og hvordan kører den?
+Databasen er én enkelt fil: app/database/lonsystem.db. SQLite er ikke et separat program der skal startes – Python-koden læser og skriver direkte i filen. Ingen databaseserver, ingen porte, ingen baggrundstjeneste. Systemet opretter automatisk en ny, tom database første gang det startes, hvis filen ikke eksisterer.
+
+VIGTIGT: Filen bør IKKE ligge i en OneDrive- eller Dropbox-mappe når systemet er i produktion. Cloud-synkronisering og SQLite konflikter og kan i sjældne tilfælde korruptere databasen. På en produktionsserver skal filen ligge lokalt på serveren.
+10.2  Hvordan starter og stopper jeg serveren?
+Serveren (uvicorn) er den proces der holder systemet kørende og svarer på browser-forespørgsler.
+Stop serveren
+Tryk Ctrl+C i det terminalvindue hvor uvicorn kører.
+Alternativt: Åbn Task Manager → find python.exe → Afslut opgave.
+Start serveren
+Der er to måder at starte serveren på, afhængigt af situationen:
+Daglig drift (anbefalet):
+python.exe -m uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000
+Hurtig og stabil. Ændringer i Python-filer kræver manuel servergenstart (Ctrl+C → start igen).
+Under udvikling (når programmet ændres af en udvikler):
+python.exe -m uvicorn --app-dir app main:app --host 0.0.0.0 --port 8000 --reload
+Med --reload genstarter serveren automatisk hver gang en Python-fil gemmes, så ændringer træder i kraft ved næste browser-reload uden manuel genstart. Lidt langsommere end daglig drift, men bekvem under aktiv udvikling.
+Når serveren kører, er systemet tilgængeligt i browseren på http://127.0.0.1:8000 (lokal maskine) eller serverens IP-adresse på netværket.
+BEMÆRK: Ændringer i JavaScript-, CSS- og HTML-filer (app.js, style.css, index.html) træder altid i kraft ved browser-reload – uanset om serveren kører med eller uden --reload. Det er kun ændringer i Python-filer (.py) der kræver servergenstart.
+10.3  Hvad kræves for at flytte systemet til en fælles server?
+Da systemet er bygget som en webapplikation er det designet til delt brug. Alle ansatte tilgår det via en browser – ingen installation på klientmaskinen. Flytningen til en fælles server kræver:
+En dedikeret maskine (eksisterende server, spare-PC eller cloud-VM) der er tændt i arbejdstiden.
+Python 3.13 installeret på serveren.
+Koden og databasefilen kopieret til serveren (uden for en cloud-synkroniseret mappe).
+En fast lokal IP-adresse på servermaskinen (konfigureres i router eller af IT).
+Serveren sat op til at starte uvicorn automatisk ved opstart – på den nuværende produktionsserver løst via Windows Task Scheduler-opgaver (ikke en egentlig Windows-tjeneste/NSSM), se deploy/PRODUKTION_OPSAETNING.md for den fulde, trin-for-trin opsætning inkl. auto-deploy og natlig genstart.
+Ansatte åbner browseren og går til serverens IP-adresse og port, f.eks. http://192.168.1.50:8000.
+BEMÆRK: Hvis systemet skal tilgås uden for virksomhedens netværk (hjemmefra, fra mobil), kræves enten VPN-adgang til netværket eller en cloudserver med HTTPS-certifikat. Dette er en IT-beslutning der også indebærer en GDPR-vurdering af datalokation.
+10.4  Hvordan ryddes testdata og systemet gøres klar til produktion?
+Følgende fremgangsmåde sikrer et rent produktionssystem:
+Trin 1: Stop serveren (Ctrl+C eller Task Manager).
+Trin 2: Notér alle rigtige medarbejdere der skal oprettes: lønnumre, førerkortnumre, overenskomsttyper, timefordeling og afdelinger.
+Trin 3: Slet filen app/database/lonsystem.db.
+Trin 4: Kontrollér at Excel-filerne (Overtid satser.xlsx, Overenskomsttyper og timesatser.xlsx, Fraværstyper.xlsx) indeholder de korrekte satser – de bruges som udgangspunkt for seeding af Stamdata-tabellerne.
+Trin 5: Start serveren igen – systemet opretter automatisk en tom database og seeder Stamdata-tabellerne fra Excel-filerne.
+Trin 6: Kontrollér og juster om nødvendigt satser og fraværstyper i Stamdata-modulet (⚙️ Stamdata i menuen).
+Trin 7: Opret de rigtige medarbejdere i systemet.
+Trin 8: Systemet er klar til produktionsbrug.
+Excel-filerne bruges kun til den initiale seeding. Efterfølgende ændringer i satser og fraværstyper skal foretages via Stamdata-modulet i brugerfladen – ikke i Excel-filerne.
+
+11  Backup-utility
+Systemet leveres med et separat backup-utility der kører automatisk 4 gange dagligt og bevarer de seneste 5 dages backup-historik. Utility'et ligger i backup/-mappen ved siden af app/-mappen.
+11.1  Filer
+
+11.2  Hvad der tages backup af
+
+Hvert backup gemmes som en ZIP-fil med navneformatet lonsystem_YYYY-MM-DD_HH-MM.zip. ZIP-filer ældre end 5 dage slettes automatisk. Med 4 kørsler dagligt i 5 dage er der til enhver tid 20 backups i arkivet.
+11.3  Teknisk detalje – sikker kopiering
+SQLite-databasen kopieres via Pythons sqlite3.backup()-metode. Denne metode bruger SQLites interne backup-API og producerer en konsistent snapshot selv om der skrives til databasen samtidig (WAL-mode). Det er ikke sikkert blot at kopiere .db-filen direkte med shutil.copy() mens systemet kører.
+11.4  Installation
+Kør installer.ps1 én gang som Administrator:
+Trin 1: Søg på 'PowerShell' i Start-menuen.
+Trin 2: Højreklik → Kør som administrator.
+Trin 3: Kør: & "...\backup\installer.ps1"
+Trin 4: Test med: Start-ScheduledTask -TaskName "Lønsystem Backup"
+Opgaven kører som NT AUTHORITY\SYSTEM og kræver ingen gemt adgangskode. Den kører selv når ingen bruger er logget ind på serveren.
+11.5  Gendannelse fra backup
+Trin 1: Stop serveren (uvicorn).
+Trin 2: Pak den ønskede ZIP-fil ud.
+Trin 3: Kopier lonsystem.db til app/database/lonsystem.db (erstat den eksisterende).
+Trin 4: Kopier eventuelt Excel-filerne tilbage til app/ hvis de også er beskadigede.
+Trin 5: Start serveren igen.
+12  Netværksadgang fra andre maskiner
+Systemet er designet til at køre på én server og tilgås fra mange klientmaskiner via en webbrowser. Der kræves ingen installation på klientmaskinerne.
+12.1  Forudsætninger
+
+12.2  Åbn port 8000 i Windows Firewall
+Kør én gang som Administrator i PowerShell:
+New-NetFirewallRule -DisplayName "Lønsystem port 8000" -Direction Inbound -Protocol TCP -LocalPort 8000 -Action Allow -Profile Private
+12.3  Find serverens IP-adresse
+Kør ipconfig i PowerShell og aflæs IPv4 Address under det aktive netværkskort:
+ipconfig | Select-String 'IPv4'
+12.4  Tilgang fra klientmaskine
+Åbn en webbrowser på klientmaskinen og gå til serverens IP-adresse og port 8000. Eksempel hvis serverens IP er 192.168.1.29:
+http://192.168.1.29:8000
+OBS: Adressen 127.0.0.1 eller localhost virker kun på selve servermaskinen. Andre maskiner skal bruge serverens rigtige IP-adresse på netværket.
+
+13  Lønafregning
+Lønafregning (routers/payroll_settlement_router.py) er en selvstændig fane placeret under 'Lønkørsel' i venstre menu. Den viser periodetotaler og en 14-dages tabel pr. medarbejder, og genbruger _calculate_employee() (payroll_router.py) som eneste beregningskilde – ingen lønmatematik er duplikeret.
+I modsætning til de fleste andre visninger har Lønafregning ingen egen periode-navigation. Siden følger i stedet den globale periode (state.currentPeriodStart), som vælges via frem/tilbage-pilene i Aktivitetsoversigten – nøjagtig samme mekanisme som Lønkørsel allerede bruger. Uden valgt periode falder den tilbage til dagens periode.
+13.1  API-endepunkter
+
+Begge endepunkter kræver rettigheden payroll_settlement_view; export-csv kræver derudover payroll_settlement_export. Se afsnit 11.3/rettighedsoversigten i Brugervejledningen.
+13.2  Beregningslogik og fraværsbetaling
+_employee_settlement_data() (payroll_settlement_router.py) kalder _calculate_employee() og lægger to ting oveni: (1) overenskomstsats og personligt tillæg vises som to adskilte tal i stedet for kun den kombinerede hourly_rate, og (2) springertillæg (normalt usynligt i Lønkørsel-visningen) lægges til medarbejderens totale løn med eget kr-beløb.
+Fraværstyper med en etableret betalingsregel viser deres egne timer og beløb i dagens række (i stedet for 0,00) OG tæller med i medarbejderens 'Total løn' samt periodens samlede total. Følgende typer er dækket, hver med sin egen linje i topsummeringen 'Total sum for perioden' (kun vist hvis beløbet er større end 0 kr):
+
+TEKNISK NOTE: Feriefri vises som ÉN samlet linje uanset om medarbejderen er fuldlønnet eller timelønnet – emp.fuldloennet afgør i den almindelige Danløn-CSV kun hvilken kode (FERIEFRI_FULDLOENNET/-TIMELOENNET) timerne rapporteres under, ikke selve beløbet, som beregnes ens i begge tilfælde (hours × hourly_rate). Bekræftet af bruger 2026-08-25.
+Selvbetalt fridag, Barn 2-3.sygedag, Barsel u. løn og typen 'Fri' har ingen etableret betalingsregel i systemet (samme som i den almindelige Danløn CSV) og har derfor hverken beløb i dagsrækken eller egen linje i topsummeringen.
+'Total uden fravær' er en delsum der lægger Grundtimeløn inkl. tillæg, Overtid Timen før, Overtid 1-3 time efter og Øvrig overtid sammen – IKKE salttillæg eller nogen fraværstype. Den samlede 'Total sum for denne periode' er summen af alle medarbejderes fulde total_kr (arbejdstid + salt + springer + al fraværsbetaling).
+13.3  CSV-eksportformat
+CSV-filen (semikolon-separeret, UTF-8) indeholder KUN data pr. medarbejder – topsummeringen 'Total sum for perioden' skrives ikke med. For hver medarbejder skrives én række pr. dag i perioden (alle 14, også dage uden aktivitet), efterfulgt af én 'Total løn for [navn]'-række:
+
+Eksport kræver at den valgte periode er låst (status 'closed') – knappen giver en fejlbesked og udfører intet, hvis perioden stadig er åben. Administratorer er undtaget og kan altid eksportere, uanset periodens status. Eksport LÅSER ikke selv perioden (det gør kun 'Kør løn' under Lønkørsel).
+
+14  Dagsplan
+Dagsplan (routers/dagsplan_router.py) digitaliserer den daglige fordeling af vogne til chauffører, der tidligere foregik manuelt i et Excel-ark uden for systemet. Siden kobler sig til data der allerede findes i systemet: medarbejdere, vognpark, vagtplan/fravær og Aktivitetsoversigten. Databasemodellerne er beskrevet i afsnit 2.7-2.8.
+14.1  Permissions
+
+Tilføjes idempotent ved opstart (samme mønster som manage_baselines-permissionen). 'admin' får dem automatisk som systemrolle; øvrige roller tildeles dem ikke som default, men kan gives det via rolle-editoren.
+14.2  API-endepunkter
+
+vehicles.py (VehicleCreate/VehicleUpdate/VehicleResponse) og employees.py (EmployeeCreate/EmployeeUpdate/EmployeeResponse) er udvidet med hhv. description/dispatcher_group_id og fast_bil/fast_bil_vehicle_id – uændrede permissions (manage_vehicles/manage_employees).
+14.3  Farvestatus og mismatch-advarsel
+Medarbejderlisten i GET /api/dagsplan farvekoder hver medarbejder efter forrang gul > rød > grøn > grå: gul (comment_only – vagtplan-kommentar uden egentligt fravær), rød (absent – registreret fravær den dag), grøn (assigned – tildelt en vogn/EKSTRA-plads) og grå (none – hverken tildelt eller fraværende). En medarbejder med fravær forbliver gul selv når vedkommende samtidig er skrevet i chauffør-kolonnen.
+For hver tildelt medarbejder slås dagens 'normal'-type aktiviteter op. Findes mindst én med et vehicle_number der afviger fra den tildelte vogns vehicle_number, sættes mismatch_vehicle_number til den afvigende værdi – vist i frontend som et ⚠️-ikon med tooltip 'vognnummer i løn: xxx'. Andre aktivitetstyper (fravær) indgår ikke i sammenligningen.
+14.4  Autoudfyld af vognnummer
+create_manual_activity() (activities.py) slår daily_plan_assignments op på (employee_id, start_time.date()), når en 'normal tid'-aktivitet oprettes med tomt vehicle_number. Findes en tildeling med en vogn, udfyldes vehicle_number automatisk fra den. Gælder KUN 'normal tid' og overskriver aldrig et allerede udfyldt vognnummer – den eksisterende disponentgruppe-baserede autoudfyldning for fraværstyper (applyDispatcherGroupVehicleDefault() i frontend) er uændret og upåvirket. applyDagsplanVehicleDefault() i app.js udfører den tilsvarende autoudfyldning i frontend-formularen inden POST sendes.
+TEKNISK NOTE: 'EKSTRA'-rækkerne indgår aldrig i denne autoudfyldning (der er intet rigtigt vognnummer at udfylde med), og de indgår heller ikke i nogen lønberegning – kun 'Fast bil'/rigtige vogne gør. Se docs/superpowers/specs/2026-09-09-dagsplan-design.md for det fulde design.
+
+15  Vagtplan
+Vagtplan (routers/vagtplan_comments.py, 2026-08-21) er en 4-ugers oversigt over alle medarbejderes fravær og frie kommentarer, bygget oven på de samme render-funktioner som Aktivitetsoversigten (renderCellActivity, openManualActivityModal, openActivityDetail) i stedet for at duplikere dem. Backend er additivt: én ny tabel (vagtplan_comments) og én ny forespørgselstilstand på det eksisterende GET /api/activities-endepunkt.
+15.1  Datamodel
+
+Unik constraint på (employee_id, date) – kun én kommentar pr. medarbejder pr. dag. POST fungerer som upsert (opret/overskriv).
+15.2  API-endepunkter
+
+TEKNISK NOTE: 'Redigér egen linje' (vagtplan_edit_own) matcher udelukkende på Employee.initials mod den indloggede brugers AppUser.initials – der er INGEN eksplicit kobling mellem en AppUser-konto og et Employee-id ud over dette tekstmatch. Stemmer initialerne ikke overens, kan brugeren ikke redigere sin egen linje, selv med vagtplan_edit_own.
+15.3  Frontend
+Griddet viser 4 uger (28 dage) med ISO-ugenummer i kolonneoverskriften. Klik på en tom celle åbner samme opret-aktivitet-modal som Aktivitetsoversigten, men med en ekstra aktivitetstype 'Ingen (kun kommentar)' der IKKE opretter en Activity-række, kun en VagtplanComment. Klik på en eksisterende fraværs- eller kommentarcelle åbner hhv. den almindelige aktivitetsdetalje eller en dedikeret rediger/slet-kommentar-modal.
+'Fravær i morgen'-knappen viser en opsummeringsmodal med alle medarbejdere (inden for det valgte disponentgruppe-filter) der har fravær eller en kommentar registreret på dagen efter dags dato – et hurtigt overblik uden at skulle bladre til næste uge.
+
+16  Fraværsoversigt
+Fraværsoversigt (routers/absence_overview_router.py) viser aggregerede fraværstimer/-dage pr. medarbejder og pr. fraværstype over en valgfri datointerval, uafhængigt af lønperiodeinddelingen. Al data beregnes af de samme underliggende fraværs-summeringer som lønkørslen bruger – ingen duplikeret logik.
+16.1  API-endepunkter
+
+Alle fire endepunkter kræver rettigheden 'absence_overview'.
+
+17  Vognpark
+Vognpark-siden (routers/vehicles.py) administrerer køretøjer. Databasemodellen er beskrevet i afsnit 2.7; dette kapitel dækker selve administrationsfladen.
+
+Fra og med 2026-09-11 har hver vogn et boolean-felt 'vognpark' (default false). Vognpark-siden har to underfaner: 'Vognpark' (kun vogne med vognpark=true, standard-visningen) og 'Alle' (alle vogne, inkl. dem der reelt er afdelinger/interne poster). Dagsplans vognliste (kapitel 14) og medarbejder-modalens 'Fast bil'-dropdown filtreres BEGGE til kun vognpark=true – nyoprettede vogne vises derfor ikke i Dagsplan før feltet aktivt sættes. 'Meld materielt fravær'-vognsøgningen (afsnit 14.2) er upåvirket og viser fortsat alle vogne.
+VIGTIGT: Da default-værdien for vognpark er false, vil Dagsplans vognkolonne fremstå tom for alle vogne der er oprettet før denne funktion, indtil en administrator aktivt gennemgår Vognpark → fanen 'Alle' og markerer de relevante vogne.
+Komponent | Teknologi | Formål
+Backend | Python 3.13 + FastAPI | REST-API, forretningslogik, filgenerering
+Database | SQLite (WAL-mode) | Vedvarende lagring af medarbejder- og aktivitetsdata
+Frontend | HTML5 + Vanilla JavaScript + CSS | Brugerflade – ét HTML-dokument
+Server | Uvicorn (ASGI) | Serverer FastAPI-applikationen
+PDF-generering | ReportLab | Timesedler til medarbejdere
+Excel-generering | openpyxl | Prøvekørsel og satser
+Filparsing | Binær parsing (ingen eksternt bibliotek) | Indlæsning af .ddd tachografdata
+app/ | Al Python-kode, statiske filer, database og Excel-satser
+docs/ | Projektdokumentation (.md-filer og denne fil)
+præsentation/ | Præsentationsbygger og slides (til intern brug)
+Rodmappen | Brugerdokumenter: overenskomst-PDF, kravdokument, statusmøde-pptx m.m.
+main.py | Applikationens indgangspunkt. Registrerer alle routere, monterer statiske filer og serverer index.html med cache-busting.
+routers/activities.py | API-endepunkter for aktivitetshåndtering (opret, godkend, ret, opdel, fortryd).
+routers/employees.py | API-endepunkter for medarbejderstamdata og overenskomsttyper.
+routers/payroll_router.py | Lønkørsel: preview, prøvekørsel (Excel), Danløn CSV og PDF-timesedler.
+routers/import_ddd.py | Import af .ddd-filer via fildialoger (tkinter) og batch-import.
+calculators/overtime.py | Overtids- og tillægsberegning pr. aktivitet.
+calculators/rates_loader.py | Indlæser timesatser og overtidssatser fra DB (Stamdata). Excel-funktioner bruges kun som fallback ved tom DB.
+routers/stamdata.py | CRUD-endepunkter for stamdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder og fraværstyper. Kræver 'stamdata'-rettighed.
+calculators/pay_period.py | Beregner og opretter 14-dages lønperioder.
+database/models.py | SQLAlchemy-modeller (Employee, Activity, PayPeriod m.fl.).
+database/schemas.py | Pydantic-skemaer til validering af API-input og -output.
+parsers/ddd_parser.py | Binær parser for EU-tachografdata (.ddd-format).
+templates/index.html | Hele frontend-applikationen (ét HTML-dokument).
+static/js/app.js | JavaScript-applikationslogik (~5540 linjer).
+Felt | Type | Beskrivelse
+employee_number | String (unik) | Lønnummer – primær identifikator i lønsystemet
+tachograph_card_number | String (unik) | EU-førerkortnummer – bruges til at matche .ddd-filer
+first_name / last_name | String | Navn
+address / postal_code | String (opt.) | Adresse
+email / phone / mobile | String (opt.) | Kontaktoplysninger
+agreement_kind | String | Nøgle fra master_agreement_kinds.key (se afsnit 2.5) – ikke længere en fast enum-kolonne. Systemnøglerne hourly_fixed/hourly_flexible styrer stadig overtidsberegningen (se afsnit 5.5); nye, brugeroprettede nøgler springes automatisk over i den
+agreement_type | String | Overenskomsttype fra Excel-filen – bestemmer timesats
+fuldloennet | Boolean | Fuldlønnet status
+active | Boolean | Aktiv medarbejder (filtreres ved opslag)
+hire_date | Date | Ansættelsesdato
+termination_date | Date | Fratrædelsesdato (default 31-12-9999)
+work_schedule | JSON | {"even":[man..søn], "odd":[man..søn]} – normaltimer pr. dag i lig/ulige uge
+anciennitet_dismissed_at | DateTime (opt.) | Tidspunkt for afvisning af anciennitetsvarsel (nulstilles ved overenskomstskifte)
+dispatcher_group_id | Integer FK (opt.) | Én disponentgruppe (nullable) – se nedenfor
+fast_bil | Boolean | 'Fast bil'-indstilling – foreslår medarbejderen som standardchauffør på en bestemt vogn i Dagsplan (kapitel 14)
+fast_bil_vehicle_id | Integer FK (opt.) | Den faste vogn – kun relevant når fast_bil=true. Ikke begrænset til medarbejderens egen disponentgruppe
+ot_extra_alle_timer | Boolean | Særaftale: alle arbejdstimer giver Øvrig overtid (kode 9) oveni normal løn, uden dagligt loft – se afsnit 5.6
+afloeser | Boolean, default false | Afløser/substitutmedarbejder. Undertrykker søn-/helligdagstillæg (kode 4/63, afsnit 5.4) på søndage/helligdage MEDMINDRE der findes en godkendt 'normal tid'-aktivitet den dag – findes der kørsel, gælder de almindelige SH-regler uændret. Påvirker intet på almindelige hverdage/lørdage. Medarbejderen farvemarkeres separat i Medarbejderlisten, Vagtplan og Aktivitetsoversigten
+paragraf_56 / paragraf_56_start_date / paragraf_56_end_date | Boolean / Date (opt.) / Date (opt.) | §56-aftale (se afsnit 6.5) – begge datoer er påkrævede når paragraf_56=true, nulstilles til NULL server-side når feltet slås fra
+Felt | Type | Beskrivelse
+employee_id | FK → Employee | Tilknyttet medarbejder
+pay_period_id | FK → PayPeriod | Tilknyttet lønperiode
+trip_number | String (opt.) | Turnummer (max 6 tegn)
+source | Enum | tachograph (DDD-import) / manual (manuelt oprettet)
+activity_type | String(50) | normal / ferie / fri / afspadsering / skole_kursus / overnatning
+start_time / end_time | DateTime | Start- og sluttidspunkt
+availability_time_pct | Decimal | Rådighedstid i % (fra tachograf)
+rest_pause_pct | Decimal | Hvil/pause i % (fra tachograf)
+other_work_pct | Decimal | Andet arbejde i % (fra tachograf)
+driving_pct | Decimal | Kørsel i % (fra tachograf)
+loading_minutes | Integer (opt.) | Pålæsningstid i minutter
+unloading_minutes | Integer (opt.) | Aflæsningstid i minutter
+pause_intervals | JSON | [ ["ISO-start","ISO-slut"], ... ] – pauseintervaller
+segments | JSON | [ ["ISO-start","ISO-slut","type"], ... ] – tachografsegmenter
+original_start_time | DateTime (opt.) | Original tachograftid inden første rettelse
+original_end_time | DateTime (opt.) | Original tachograftid inden første rettelse
+status | Enum | pending / approved / deactivated
+approved_by | String (opt.) | Initialer på godkender (kun ved godkendelse)
+approved_at | DateTime (opt.) | Godkendelsestidspunkt
+deactivated_by | String (opt.) | Initialer på den der deaktiverede (kun ved deaktivering)
+updated_by | String (opt.) | Initialer på den bruger der senest gemte en rettelse via PATCH /api/activities/{id} – NULL indtil første redigering, overskrives ubetinget ved hver efterfølgende (ingen historik, samme mønster som approved_by/deactivated_by)
+comment | Text (opt.) | Kommentar (påkrævet ved godkendelse < 4 timer)
+parent_activity_id | FK → Activity | Peger på moderaktivitet ved opdeling
+split_part | Integer (opt.) | 1 eller 2 – rækkefølge af opdelingsdele
+start_date / end_date | Altid mandag–søndag, 14 dage
+status | open (aktiv) / preview (under kørsel) / closed (afsluttet)
+closed_at / closed_by | Tidspunkt og bruger ved afslutning
+pay_period_id | FK til lønperioden
+run_type | "preview" (prøvekørsel) eller "final" (endelig kørsel)
+run_at | Tidspunkt for kørslen
+run_by | Initialer på den der kørte løn
+csv_path | Sti til genereret Danløn CSV-fil
+excel_path | Sti til genereret Excel-fil
+Tabel | Indhold | Vigtige felter
+master_agreement_types | Overenskomsttyper og timesatser | name (unik), hourly_rate
+master_agreement_kinds | Aftaletyper ("Aftale"-feltet på medarbejderen) | key (unik, fast efter oprettelse), label, is_active, is_user_created, requires_agreement_type, sort_order
+master_overtime_rates | De tre overtidssatser | label (unik), rate
+master_supplement_rates | Salttillæg, Overnatning, Dagpenge §56 | label (unik), rate
+master_pay_types | Løntypekoder til Danløn CSV | code_key (unik), danloen_code, include_in_csv, csv_quantity_type, csv_rate_source, csv_include_rate, csv_include_total, sort_order
+master_absence_types | Fraværstyper der vises i UI | label, normalized_key (unik), is_active, is_user_created, sort_order
+Felt | Type | Beskrivelse
+date | DATE UNIQUE NOT NULL | Helligdagens dato – UNIQUE constraint forhindrer dubletter
+name | String NOT NULL | Navn, fx 'Påskedag', '1. maj', 'Grundlovsdag'
+half_day_from | String(5) NULL | '12:00' = fri fra middag; NULL = heldagshelligdag
+is_auto_generated | Boolean DEFAULT TRUE | TRUE = genereret af systemet; FALSE = manuelt oprettet
+Felt | Type | Beskrivelse
+registration_number | String | Nummerplade
+vehicle_number | String | Internt vognnummer
+description | Text (opt.) | 'Beskrivelse' – vises som kolonne 2 i Dagsplan (afsnit 14.3)
+dispatcher_group_id | Integer FK (opt.) | Mange vogne → én disponentgruppe. Adskilt fra DispatcherGroup.vehicle_id (gruppens egen 'standardvogn', bruges uændret til den eksisterende autoudfyldning af vognnummer på fraværstype-aktiviteter) – de to felter løser hver sin opgave og lever side om side
+Tabel | Felt | Beskrivelse
+daily_plan_assignments | date / vehicle_id / employee_id (opt.) / task (opt.) / informed | Én tildeling pr. vogn pr. dag. UniqueConstraint(date, vehicle_id) – upsert. employee_id kan være tomt (vogn uden chauffør den dag).
+daily_plan_extra_assignments | date / slot (1-10) / employee_id (opt.) / task (opt.) / informed | De 10 faste 'EKSTRA'-rækker (hjælp på pladsen/lærlinge). Persisteres i egen tabel siden 2026-09-09 (oprindeligt kun frontend-state, nulstillet ved datoskift – ændret efter brugerønske om at kunne se dem igen senere). Indgår ALDRIG i vognnummer-autoudfyldning.
+vehicle_absences | vehicle_id / date_from / date_to (opt.) / comment / created_by | Materielt fravær for en vogn. date_to=NULL betyder étdags-fravær (samme dag som date_from). En vogn regnes fraværende på dato d hvis date_from ≤ d ≤ (date_to ?? date_from).
+Ankerperiode | Mandag 1. juni 2026 – søndag 14. juni 2026
+Periode-start | Altid en mandag
+Periode-slut | Altid en søndag (14 dage efter start)
+Beregning | period_start_for_date(d): finder nærmeste mandag via modulo-14 fra ankerpunktet
+Nøgle | Tidsvindue | Betingelse | Beskrivelse
+OT_BEFORE
+(1 time før) | 05:00–06:00 | Arbejde i dette interval | Tillæg for arbejde 1 time inden normal arbejdstid. Sats × timer i vinduet.
+OT_13
+(1-3 timer efter) | 18:00–21:00
++ 06:00–18:00 over normaltid | Max 3 timer samlet | Tillæg for de første 3 overarbejdstimer. Inkluderer dag-timer ud over normaltid (06-18) og aftentimer (18-21).
+OT_EXTRA
+(Øvrigt overtid) | 21:00–05:00
++ overarbejde > 3 timer | Al resterende overarbejde | Tillæg for natarbejde og overarbejde ud over 3 timer. Højeste sats.
+Dagtype | Regel
+Lørdag | Regnes ALTID som en normal hverdag via calculate_overtime(), med lørdagens egne garanterede timer (typisk 0) som loft. Er loftet 0, giver den almindelige dagvindues-logik automatisk 'første op til 3 dagtimer → kode 8, resten → kode 9' – uden særkode (rettet 2026-07-02; den tidligere særregel for lørdag er fjernet).
+Søndag / heldagshelligdag | Alle garanterede timer → kode 4 (fuldlønnet) / kode 63 (timelønnet), additivt oveni kørselslønnen. Alle kørte timer → kode 1 + kode 9, UANSET tidspunkt (tids-tillæg tilsidesættes).
+1. maj (halvdagshelligdag, fri fra 12:00) | Garanti/2 → kode 4/63. Kørsel før 12:00 → kode 1. Kørsel efter 12:00: første 3 timer → kode 8, resten → kode 9.
+Grundlovsdag (halvdagshelligdag, fri fra 12:00) | Garanti/2 → kode 4/63. Kørsel før 12:00 → kode 1. Kørsel efter 12:00: ALLE timer → kode 9 (intet kode 8-trin).
+Stamdata-tabel | DB-funktion (rates_loader.py) | Indhold
+master_agreement_types | load_agreement_types_from_db(db) | Overenskomstnavn → timesats i kr.
+master_overtime_rates | load_overtime_rates_from_db(db) | De tre overtidstillæg og deres satser.
+master_supplement_rates | load_supplement_rates_from_db(db) | Salttillæg, Overnatning, Dagpenge §56.
+master_pay_types | load_pay_types_from_db(db) | Løntypekoder og Danløn-koder.
+master_absence_types | — (forespørges direkte i routers) | Fraværstyper der vises i UI.
+master_agreement_kinds | — (forespørges direkte i routers) | Aftaletyper til medarbejder-modalens 'Aftale'-dropdown.
+Fane | Indhold | CRUD-muligheder
+Overenskomsttyper | master_agreement_types | Opret, rediger navn/sats, slet
+Overtidssatser | master_overtime_rates | Rediger satser for de tre tillægstyper
+Tillæg | master_supplement_rates | Rediger satser for salttillæg, overnatning, §56
+Løntypekoder | master_pay_types | Opret nye, rediger type/kode/CSV-flag/antal-type/sats-kilde/inkl. sats/inkl. total, slet alle
+Fraværstyper | master_absence_types | Opret nye, aktiver/deaktiver, slet alle
+CVR nummer | master_cvr_numbers | Opret, rediger, sæt standard, slet
+Helligdage | holidays | Auto-generer for år, opret manuelt, slet. Kræver 'manage_holidays'-rettighed.
+Disponentgrupper | dispatcher_groups | Opret, omdøb/rediger beskrivelse, slet (fjerner automatisk tilknytning hos medlemmer)
+Aftale | master_agreement_kinds | Opret nye, rediger label/aktiv/kræver overenskomsttype. De to systemtyper (hourly_fixed/hourly_flexible) kan ikke slettes; nye typer kan slettes hvis ingen medarbejder bruger dem.
+Auto-godkendelse | (indstilling, ingen egen tabel) | Slå den statistiske baseline-auto-godkendelse til/fra globalt (GET/POST /api/auto-approval/settings). Kræver desuden 'manage_auto_approval'-rettigheden ud over 'stamdata'.
+Endepunkt | Metode | Rettighed | Beskrivelse
+GET /api/stamdata/holidays | GET | stamdata | Henter alle helligdage. Valgfri ?year=YYYY-filter.
+POST /api/stamdata/holidays | POST | manage_holidays | Opretter helligdag. Body: date (YYYY-MM-DD), name, half_day_from (opt.).
+DELETE /api/stamdata/holidays/{id} | DELETE | manage_holidays | Sletter helligdag med angivet id.
+POST /api/stamdata/holidays/generate/{year} | POST | manage_holidays | Auto-genererer helligdage for ét år (idempotent). År: 2020–2100.
+Felt | Type | Beskrivelse
+employee_id | FK → Employee | Tilknyttet medarbejder
+name | String | Altid 'Ikke overenskomstmæssigt tillæg' – hardkodet server-side, ikke redigerbar
+type | String | Altid 'Timebaseret' – hardkodet server-side
+value | Numeric(10,2) | Tillæggets værdi i kr/time. Skal være > 0, afrundes til 2 decimaler før gemning
+start_date | Date | Gyldighedsperiodens start – default dags dato ved oprettelse
+end_date | Date | Gyldighedsperiodens slut – default 9999-12-31 (åbentstående)
+Endepunkt | Metode | Beskrivelse
+/api/employee-supplements | GET | Liste, filtreret på employee_id/from/to (gyldighedsperiode-overlap).
+/api/employee-supplements/active/{id} | GET | Det aktuelt aktive tillæg for én medarbejder, eller null.
+/api/employee-supplements | POST | Opret nyt tillæg (se livscyklus ovenfor).
+/api/employee-supplements/{id}/end | POST | Afslut det aktuelt aktive tillæg fra og med den efterfølgende lønperiode.
+Endepunkt | Metode | Beskrivelse
+/api/payroll/preview | GET | Returnerer JSON med mellemregninger for alle eller én medarbejder.
+/api/payroll/proevekoersel-gem | POST | Genererer Excel-fil med prøvekørsel og downloader den til browseren (siden 2026-09-09 – tidligere blev filen gemt i en brugervalgt mappe på serveren).
+/api/payroll/export-csv | POST | Genererer Danløn CSV-fil og downloader den til browseren. Afviser (400) hvis perioden allerede er låst, eller der er afventende aktiviteter i perioden.
+/api/payroll/pdf-timesedler | POST | Genererer PDF-timesedler og downloader dem til browseren – én PDF direkte, eller en ZIP hvis flere medarbejdere har data.
+/api/payroll/reopen-period | POST | Genåbner en lukket ('closed') periode til 'open' igen. Kræver 'reopen_period'-rettighed.
+# | Kolonne | Indhold
+1 | Medarbejder | Navn – suffikset ' (springer)' tilføjes hvis medarbejderen har springertillæg aktiveret for perioden (afsnit 6.4).
+2 | Lønnr | Medarbejderens lønnummer.
+3 | Vognnr. | Køretøjsnummer for dagens aktivitet (blank ved fravær/totallinjer).
+4 | Dag | Dato (ÅÅÅÅ-MM-DD), eller 'TOTAL'/en tillægslabel (fx 'Søgnehelligdag', 'Sygdom med løn') på de fede opsummeringslinjer.
+5 | Starttid | Aktivitetens starttidspunkt.
+6 | Sluttid | Aktivitetens sluttidspunkt.
+7 | Total tid | Alle arbejdede timer den dag (efter fratrukne pauser), uanset om de udløser tillæg.
+8 | Pause i alt (min) | Summen af registrerede pauser den dag, i minutter. Segmenter der er rettet fra pause til arbejde via 'Ret linje' (activities.py: correct_segment) tælles ikke med.
+9 | Normal tid | Kun de timer af Total tid der IKKE udløser et overtidstillæg (kolonne 7 minus kolonne 10-12). Ved fravær vises fraværstypen her i stedet for et tal.
+10 | Overtid 1 time før | Timer i 05-06-vinduet (OT_BEFORE).
+11 | Overtid 1-3 timer efter | OT_13-timer, inkl. søndags-/helligdagskode 8.
+12 | Øvrig overtid | OT_EXTRA-timer, inkl. søndags-/helligdagskode 9.
+13 | Salttillæg (t) | Timer med salttillæg, hvis aktiveret på aktiviteten.
+14 | Salttillæg (kr.) | Beregnet salttillæg i kr.
+15 | Overnatning | 1 hvis dagen har en overnatnings-aktivitet, ellers blank.
+16 | Total kr. | Dagens/totallinjens samlede kronebeløb.
+Grøn første række | Første datalinje for hver medarbejder markeres med grøn baggrund (farve #D4EDCC, samme lyse brandtint som resten af systemet) for nem identifikation af ny medarbejder.
+Tom skillerække | Efter hver medarbejders totallinje indsættes en tom række som visuel adskillelse.
+Frossen headerrække | Headerrækken (række 1) er frossen og følger med ved lodret scroll. Overskrifter der er længere end dataindholdet (fx 'Overtid 1-3 timer efter') ombrydes over flere linjer i stedet for at gøre kolonnen unødvendigt bred.
+Kolonnebredder | Hver kolonne har en bredde tilpasset dataindholdet (8-24 enheder), så alle 16 kolonner kan ses uden vandret scroll på en almindelig skærm.
+Nul-dage | Dage uden aktivitet vises med 0 på alle talkolonner.
+Kolonne | Altid med? | Indhold
+CVR | Ja | Virksomhedens CVR-nummer
+Medarbejdernr | Ja | Lønnummer fra medarbejderkortet
+Lønkode | Ja | Danløn-kode for lønarten (konfigureres i Stamdata)
+Antal | Ja | Timer (2 decimaler) eller antal forekomster (heltal) afhængigt af Antal-type
+Sats | Valgfri | Sats i kr. (2 decimaler). Slås fra ved 'Inkluder sats' = Nej i Stamdata
+Total | Valgfri | Antal × Sats (2 decimaler). Tilføjes ved 'Inkluder total' = Ja i Stamdata
+Endepunkt | Metode | Beskrivelse
+/api/timeseddel/{id}/pdf | GET | Download én medarbejders PDF-timeseddel for en periode.
+/api/timeseddel/{id}/send | POST | Mailer PDF-timesedlen til medarbejderens registrerede e-mail. Fejler pænt (uden at afsløre SMTP-detaljer for brugeren) hvis medarbejderen ikke har en e-mailadresse registreret.
+/api/timeseddel/send-all | POST | Bulk-udsendelse for en periode (evt. filtreret til én medarbejder). Returnerer en opdelt status: sendt / sprunget over (ingen mail) / sprunget over (ingen aktiviteter) / fejlet.
+Endepunkt | Metode | Beskrivelse
+/api/activities/springer-flags?pay_period_id= | GET | Returnerer {employee_id: true} for alle medarbejdere med fluebenet sat i perioden. Kræver kun login.
+/api/activities/springer-flag | POST | Upsert på (employee_id, pay_period_id). Kræver toggle_springer. Afvises (400) hvis perioden er lukket.
+is_under_4h | Aktiviteten er under 4 timer – kommentar påkrævet ved godkendelse.
+is_over_12h | Aktiviteten er over 12 timer – vises som advarsel i UI.
+is_manual | Aktiviteten er manuelt oprettet (source=manual, ikke fra tachograf).
+is_edited | Tiderne er blevet ændret fra tachografdata.
+has_split_children | Aktiviteten er opdelt i to børneaktiviteter.
+state.employees | Liste af alle aktive medarbejdere (inkl. dispatcher_group, work_schedule osv.)
+state.activities | Alle aktiviteter for den valgte periode
+state.periodInfo | Aktuel periodeinfo: start/slut, tæller for pending/approved/deactivated
+state.agreementTypes | Overenskomsttyper og satser
+state.splitMin/Max | Grænser for opdeling (gemmes i state for validering)
+manualPauses | Pauseintervaller for aktivitet under oprettelse: liste af [ISO-start, ISO-slut]-par. Nulstilles ved åbning af oprettelsesmodalen.
+buildDatetimePicker(id, isoValue) | Bygger komponenten og indsætter den i elementet med det givne id.
+readDatetimePicker(id) | Læser de tre felter og returnerer ISO-datetime-streng.
+setDatetimePicker(id, isoValue) | Sætter alle tre felter fra en ISO-datetime-streng.
+buildDatePicker(id, initialValue) | Bygger komponenten i elementet med det givne id. Accepts ISO-dato eller tom streng.
+readDatePicker(id) | Returnerer den valgte dato som ISO-streng (YYYY-MM-DD).
+setDatePicker(id, iso) | Opdaterer display og hidden-felt til en ny ISO-dato. Opdaterer også kalender-griddet.
+Status-filter | Alle / Afventer / Godkendt / Deaktiveret
+Medarbejder-filter | Viser kun aktiviteter for valgte medarbejder. Opdateres automatisk når afdelingsfilter ændres.
+Afdelings-filter | Filtrerer aktivitetstabellen OG medarbejder-dropdown til kun at vise medarbejdere i den valgte disponentgruppe.
+switchStamdataTab(tab) | Skifter aktiv pane og opdaterer fane-styling (border, farve, vægt).
+loadStamdata() | Kaldes fra setView('stamdata') og indlæser data til alle ti faner parallelt.
+btn-stamdata-add-* | '+Tilføj'-knap i toolbar vises kun for den aktive fane.
+Funktion (app.js) | Beskrivelse
+addManualPause() | Læser startdato fra aktivitetens starttid og åbner modal-pause med dt-picker (datofeltet skjult – kun HH:MM vises).
+confirmPause() | Validerer at slut > start, tilføjer [ISO-start, ISO-slut] til manualPauses[] og lukker modal-pause.
+deleteManualPause(idx) | Fjerner pause ved index fra manualPauses[] og opdaterer listen.
+renderManualPauses() | Tegner #manual-pauses-list med pause-badges og ×-slet-knapper.
+Placering | app/database/lonsystem.db
+Størrelse | Starter ved ~140 KB, vokser efterhånden som data opbygges
+Backup | Kopiér filen (mens serveren er stoppet) for at tage backup
+Nulstilling | Slet filen – systemet opretter en tom database ved næste opstart
+backup/backup.py | Selve backup-scriptet. Kan køres manuelt eller via Task Scheduler.
+backup/installer.ps1 | PowerShell-script der registrerer backup-opgaven i Windows Task Scheduler.
+backup/arkiv/ | Mappe med ZIP-filer – én pr. kørsel.
+backup/backup.log | Logfil med tidsstempler og resultater for alle kørsler.
+app/database/lonsystem.db | Databasen – det vigtigste. Kopieres via SQLites eget backup-API, sikkert mens systemet kører.
+app/Overtid satser.xlsx | Overtidssatser.
+app/Overenskomsttyper og timesatser.xlsx | Timesatser og overenskomsttyper.
+app/Afdelinger.xlsx | Historisk Excel-fil – disponentgrupper læses ikke længere herfra, men fra databasetabellen dispatcher_groups (se afsnit 2.1).
+--host 0.0.0.0 | Uvicorn skal lytte på alle netværksgrænseflader (ikke kun 127.0.0.1). Sat i .claude/launch.json.
+Windows Firewall | Port 8000 skal åbnes for indgående TCP-trafik på det private netværk.
+Fast lokal IP-adresse | Servermaskinens IP bør være fast (konfigureres i router eller netværksindstillinger).
+Endepunkt | Metode | Beskrivelse
+/api/payroll-settlement/preview | GET | JSON med periodetotaler og pr.-medarbejder headline + 14-dages tabel. Parameter period_start (valgfri, default dagens periode).
+/api/payroll-settlement/export-csv | POST | Genererer CSV-filen og downloader den til browseren (siden 2026-09-09 – tidligere blev filen gemt i en brugervalgt mappe på serveren). Kræver låst periode – se afsnit 13.3.
+Fraværstype | Sats der bruges
+Sygdom, Barn 1.sygedag, Graviditetsbetinget sygdom | Medarbejderens timesats (hourly_rate)
+§56 syg, Barn 1.sygedag u. 8 uger | Dagpengesats (Stamdata → Tillæg, 'Dagpenge §56')
+Sygdom u. 8 uger | Ulønnet – altid 0 kr., men timerne vises
+Barsel, Feriefri, Ferie, Skole/kursus, Afspadsering | Medarbejderens timesats (hourly_rate)
+Kolonne | Indhold
+Dato | dd-mm-åååå
+Lønnummer | Medarbejderens employee_number
+Normal timer … Øvrig overtid | Format T:mm (fx '7:30'), ikke decimaltal
+Total tid | Decimaltal med komma (fx '7,50')
+Total i kr. / Beløb | Dansk kr-format (fx '1.234,56'), identiske værdier
+Vognnummer | Aktivitetens vognnummer – overskrives af fraværstypens navn på fraværsdage
+dagsplan_view | Se Dagsplan-siden (begge underfaner Dagsplan og Materiel fravær), read-only.
+dagsplan_edit | Redigere tildelinger, afkrydse 'informeret', melde/fjerne materielt fravær.
+Endepunkt | Metode | Rettighed | Beskrivelse
+/api/dagsplan?date= | GET | dagsplan_view | Samlet svar for én dag: vehicles (filtrerbar på disponentgruppe/medarbejder) + employees (altid ufiltreret, farvestatus + fraværstekst).
+/api/dagsplan/assignment | PATCH | dagsplan_edit | Upsert på (date, vehicle_id). Body: {date, vehicle_id, employee_id?, task?, informed?}.
+/api/dagsplan/extra-assignment | PATCH | dagsplan_edit | Upsert på en af de 10 faste EKSTRA-rækker.
+/api/vehicle-absences?date= | GET | dagsplan_view | Materielt fravær der er aktivt på den angivne dato.
+/api/vehicle-absences | POST | dagsplan_edit | Meld materielt fravær. Body: {vehicle_id, date_from, date_to?, comment}.
+/api/vehicle-absences/{id} | DELETE | dagsplan_edit | Fjern en materielt fravær-registrering.
+Felt | Type | Beskrivelse
+employee_id | FK → Employee | Tilknyttet medarbejder
+date | Date | Den dag kommentaren gælder for
+comment | Text | Fri tekst
+Endepunkt | Metode | Rettighed | Beskrivelse
+/api/vagtplan-comments?from=&to=&employee_id= | GET | vagtplan_view | Kommentarer i en datointerval, valgfrit filtreret på medarbejder.
+/api/vagtplan-comments | POST | vagtplan_edit_own / vagtplan_edit_all | Opret/overskriv kommentar (upsert). 'edit_own' tillader kun brugerens egen række (matches på initialer mod medarbejderens initials-felt).
+/api/vagtplan-comments/{id} | DELETE | vagtplan_edit_own / vagtplan_edit_all | Slet kommentar.
+/api/activities?date_from=&date_to= | GET | vagtplan_view | Ny forespørgselstilstand på det eksisterende aktivitets-endepunkt: frit datointerval i stedet for period_start – bruges kun af Vagtplan.
+Endepunkt | Metode | Beskrivelse
+/api/absence-overview/data | GET | Fraværstotaler (timer/dage) pr. medarbejder og -type for en fra/til-datointerval.
+/api/absence-overview/employee-options | GET | Medarbejdere + disponentgrupper til filterdropdowns.
+/api/absence-overview/export-per-employee | GET | Excel-eksport: én række pr. kalenderdag med fravær pr. medarbejder. Filtreres på alle/disponentgruppe/enkelt medarbejder.
+/api/absence-overview/export-per-type | GET | Excel-eksport aggregeret pr. fraværstype. Filtreres på hvilke fraværstyper der skal medtages.
+Endepunkt | Metode | Rettighed | Beskrivelse
+/api/vehicles | GET | login | Liste over alle køretøjer.
+/api/vehicles | POST | manage_vehicles | Opret. Registration_number skal være unikt.
+/api/vehicles/{id} | PATCH | manage_vehicles | Rediger.
+/api/vehicles/{id} | DELETE | manage_vehicles | Slet – blokeres (400) hvis vognens registration_number bruges af eksisterende aktiviteter.

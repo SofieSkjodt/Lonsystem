@@ -1,0 +1,452 @@
+Lønsystem
+Brugervejledning
+Poul Schou A/S  ·  CVR 13246505
+September 2026
+
+1  Introduktion
+Lønsystemet er et webbaseret program der håndterer registrering og lønberegning for lastbilchauffører hos Poul Schou A/S. Systemet henter automatisk kørselsdata fra chaufførernes digitale tachografer (.ddd-filer) og giver mulighed for at godkende, rette og eksportere løndata til Danløn.
+Systemet tilgås via en almindelig webbrowser – der er ingen installation nødvendig på den enkelte computer. Åbn browseren og gå til systemets adresse på det lokale netværk.
+Log ind med initialer og adgangskode, eller med knappen 'Log ind med Microsoft' hvis virksomhedens IT har aktiveret single sign-on (Microsoft Entra ID). SSO-login kræver stadig at du allerede er oprettet som bruger i systemet med den korrekte mailadresse udfyldt – der oprettes ikke automatisk en ny bruger ved første SSO-login.
+1.1  Tre hovedområder
+
+2  Navigation
+2.1  Venstre menu
+Menuen er delt i tre grupper. Hvilke punkter du ser afhænger af din rolles rettigheder (se kapitel 11).
+
+
+
+
+
+2.2  Periodenavigation
+Øverst på skærmen vises den aktuelle lønperiode (14 dage). Brug piletasterne (‹ og ›) til at navigere til forrige eller næste periode. Du kan også bruge datovælgeren til at hoppe direkte til en specifik dato: klik på datofeltet for at åbne en kalender med måned- og årstaldropdown.
+2.3  Statuschips
+
+Du kan klikke på en chip for hurtigt at filtrere tabellen til den pågældende status.
+
+3  Import af tachografdata
+Tachografdata gemmes på chaufførernes digitale fører-kort som .ddd-filer. Disse filer importeres i systemet, som automatisk opretter aktiviteter for alle registrerede arbejdsdage.
+3.1  Fremgangsmåde
+Trin 1: Klik på 'Importer .ddd' i den venstre menu.
+Trin 2: Vælg 'Vælg filer' for at importere enkeltfiler, eller 'Vælg mappe' for at importere alle .ddd-filer i en mappe.
+Trin 3: En Windows-filhåndterings-dialog åbner sig – naviger til filerne og bekræft valget.
+Trin 4: Systemet importerer filerne og viser en pop-up med resultatet: enten '✅ Importering succesfuld', eller en opdelt oversigt over antal importerede, opdaterede og sprunget over – med den konkrete årsag til hver sprunget-over-gruppe.
+GODT AT VIDE: Systemet springer automatisk allerede importerede aktiviteter over (baseret på medarbejder + starttidspunkt). Det er sikkert at importere samme mappe flere gange. Pop-up'en skelner mellem 'sprunget over – allerede importeret' og 'sprunget over – ukendt førerkortnummer' (med de konkrete kortnumre), så det altid er tydeligt hvorfor en aktivitet ikke kom med.
+GODT AT VIDE: Bliver et førerkort læst af flere gange (fx først midt på en vagt og senere igen efter vagtens afslutning), genkender systemet nu automatisk den mere komplette udlæsning og UDVIDER den eksisterende aktivitet i stedet for at springe den over (rettet 2026-07-02). Var aktiviteten allerede godkendt, bliver den automatisk sat tilbage til 'Afventer', så den udvidede tid skal godkendes igen, før den tæller med i lønkørslen.
+GODT AT VIDE: Alle importkørsler logges under Brugerstyring → Hændelseslog med samme opsummering, så du kan slå det op igen senere – også selvom pop-up'en er lukket.
+3.2  Forudsætninger
+Chaufføren skal være oprettet i systemet med korrekt førerkortnummer.
+Førerkortnummeret i systemet skal være de første 14 tegn af kortnummeret: landekode (2 bogstaver) + 12 cifre (f.eks. DK000000178901) – IKKE de sidste 2 cifre. De sidste 2 cifre er kortets udskiftnings-/fornyelsesindeks og ændrer sig hver gang kortet fornys, så de er ikke en del af det stabile kortnummer.
+Stemmer kortnummeret ikke, importeres 0 aktiviteter uden fejlmelding – kun 'Sprunget over'-tallet stiger. Kontrollér og ret kortnummeret i Stamdata hvis en import ikke giver de forventede aktiviteter.
+GODT AT VIDE: Starter chaufførens dag med en kort pause (fx et par minutter inden kørslen begynder), vises denne pause nu som en del af dagens arbejdstid i aktivitetstabellen. Pausen aflønnes stadig ikke – den trækkes fra som hvil/pause ligesom systemets øvrige pauser.
+GODT AT VIDE: Km-start og km-slut hentes fra førerkortet, som kun gemmer et begrænset antal køretøjsbrug-poster. Ældre dage vil derfor kunne mangle km-data, selvom resten af aktiviteten er importeret korrekt.
+BEMÆRK: Hører et importeret skift til en periode der allerede er kørt løn på (status 'Lukket'), importeres det ikke stiltiende. Systemet spørger i stedet om det skal importeres ind i den EFTERFØLGENDE, åbne periode. Svarer du nej, husker systemet dit svar permanent – samme skift bliver ikke spurgt om igen ved en senere import af samme mappe.
+4  Aktivitetstabellen
+Aktivitetstabellen er systemets hovedvisning. Den viser alle chauffører i rækker og de 14 dage i perioden som kolonner. Hver celle indeholder aktiviteternes start- og sluttidspunkt.
+4.1  Farvekodning
+
+4.2  Symboler og advarsler
+
+4.3  Filtrering
+Brug filtrene i toppen af tabellen til at indsnævre visningen:
+Status: Vis alle aktiviteter, kun afventende, kun godkendte eller kun deaktiverede.
+Medarbejder: Filtrer til én bestemt chauffør.
+Afdeling: Vis kun chauffører fra den valgte afdeling. Medarbejder-filteret opdateres automatisk.
+4.4  Vagter over midnat og periodegrænser
+En kørselsvagt der starter på en søndag eller en helligdag og strækker sig over midnat vises opdelt i to – ét stykke i hver af de to datokolonner, med sit eget klokkeslæt-interval. Det er kun en visningsmæssig opdeling (samme princip som lønberegningen bruger for søn-/helligdage); klik på et af stykkerne åbner altid den samlede, oprindelige aktivitet. Vagter der starter en almindelig hverdag eller lørdag vises som hidtil (start i én kolonne, slut i den næste).
+En vagt der starter sidst i én periode og slutter ind i den næste periode, vises nu i begge perioders aktivitetstabel, så den ikke 'forsvinder' ved periodeskifte.
+BEMÆRK: Registrerer eller retter du en aktivitet, hvis dato hører til en periode der allerede er kørt løn på (status 'Lukket'), lægges den automatisk over i den EFTERFØLGENDE periode i stedet for at blive afvist. Det gælder både manuel oprettelse/rettelse og import af .ddd-filer.
+4.5  Springertillæg-flueben
+Under hver medarbejders navn i aktivitetstabellen findes et lille flueben 'Springertillæg'. Er det sat for en medarbejder, får vedkommende springertillæg for hele den viste lønperiode – samme timetal som Normal tid, men udbetalt under sin egen lønkode. Kræver rettigheden 'Sæt springertillæg' (gives som standard til alle roller).
+Fluebenet gælder KUN den periode du står i – det nulstilles automatisk ved næste periode og skal sættes igen.
+Fluebenet kan ikke ændres når perioden er låst (der er kørt løn).
+Beløbet vises særskilt i prøvekørslen (' (springer)' efter navnet, afsnit 9.1) og i Lønafregning (afsnit 12.2) – ikke som en synlig linje i selve Aktivitetsoversigten.
+
+5  Aktivitetsdetaljer og godkendelse
+Klik på et tidsemærke i tabellen for at åbne detaljevisningen for aktiviteten. Her kan du se alle oplysninger og foretage ændringer.
+5.1  Hvad kan du se?
+
+5.2  Hvad kan du gøre?
+Ret starttid / sluttid
+Angiv en ny dato og et nyt klokkeslæt. Brug piltasterne i time- og minutfeltet eller skriv tallene direkte. Klik 'Gem rettelse' for at gemme. Systemet bevarer de originale tachograftider automatisk.
+Fortryd rettelse
+Nulstiller tiderne til de originale værdier fra tachografen.
+Opdel aktivitet
+Del en vagt i to – fx hvis en chauffør skifter tur midt på dagen. Vælg tidspunktet for opdelingen. Systemet opretter to nye aktiviteter og fordeler pauser og segmenter korrekt.
+Godkend
+Godkend aktiviteten så den indgår i lønkørslen. Angiv dine initialer. Aktiviteter under 4 timer kræver altid en kommentar.
+Deaktiver
+Markér aktiviteten som inaktiv. Den indgår ikke i lønberegningen men slettes ikke fra databasen.
+VIGTIGT: KUN godkendte aktiviteter medtages i lønkørslen. Husk at gennemgå og godkende alle relevante aktiviteter inden du kører løn.
+6  Manuelle aktiviteter
+Brug manuelle aktiviteter til at registrere ferie, afspadsering, fri, skole/kursus eller andre vagter der ikke fremgår af tachografen.
+6.1  Oprettelse
+Trin 1: Klik på '+ Tilføj aktivitet' knappen i aktivitetstabellen.
+Trin 2: Vælg medarbejder og aktivitetstype.
+Trin 3: Angiv start- og sluttidspunkt.
+Trin 4: Tilføj eventuelle pauser ved at klikke '+ Tilføj pause' (se afsnit 6.3).
+Trin 5: Udfyld eventuelt turnummer og pålæsning/aflæsning (kun for normale aktiviteter).
+Trin 6: Klik 'Gem aktivitet'.
+6.2  Fraværstyper og overnatning
+Når du vælger en fraværstype eller overnatning, sker følgende automatisk:
+Felterne for turnummer, pålæsning og aflæsning skjules (ikke relevante).
+Aktiviteten godkendes automatisk (approved_by sættes til din bruger) – kræver ikke separat godkendelse bagefter.
+Ferie, sygdom, feriefri m.fl.: starttidspunktet sættes automatisk til 06:00, og sluttidspunktet beregnes ud fra medarbejderens normaltimer den pågældende dag. Vælger du 'Til dato' for at oprette en periode, oprettes én aktivitet PR. HVERDAG i perioden (ikke én sammenhængende aktivitet) – hver dag tæller sine egne normaltimer (typisk 7,4 t).
+Afspadsering som periode ('Til dato' udfyldt) følger samme regel: 7,4 t (eller medarbejderens skemalagte timer) pr. hverdag, uanset klokketid. En enkelt afspadseringsdag (uden 'Til dato') kan derimod redigeres til en delvis dag med selvvalgt start-/sluttid, og den faktiske varighed bruges da i lønberegningen.
+De tilgængelige fraværstyper administreres i Stamdata-modulet under fanen 'Fraværstyper'. Her kan du aktivere og deaktivere typer, tilføje nye typer og slette eksisterende.
+
+6.3  Registrering af pauser
+For normale aktiviteter kan du registrere de pauser chaufforen har holdt i løbet af arbejdsdagen. Pauserne fratrækkes automatisk i den effektive arbejdstid og indgår korrekt i beregningen af overtidstillæg.
+Trin 1: Angiv aktivitetens starttidspunkt (påkrævet – pausedatoen arves herfra).
+Trin 2: Klik '+ Tilføj pause'. En dialogboks åbner sig med titel 'Pause 1', 'Pause 2' osv.
+Trin 3: Angiv pausens starttidspunkt og sluttidspunkt (kun klokkeslæt – dato sættes automatisk).
+Trin 4: Klik 'Tilføj'. Pausen vises i listen med start- og sluttid og en ×-slet-knap.
+Trin 5: Gentag for yderligere pauser. Klik × for at fjerne en pause.
+GODT AT VIDE: Pausefelterne vises kun for normale aktiviteter. For fraværstyper (ferie, fri m.fl.) og overnatning er pausesektionen skjult.
+Pauserne påvirker tre steder i systemet:
+Sum, effektiv tid – vises i aktivitetsdetaljerne og er fratrukket pausetid.
+Aktivitetsfordeling – manuelle aktiviteter med pauser viser 'Effektiv tid' (blå) og 'Hvil/pause' (grå) i %-bjælken.
+Lønberegning – pauser fratrækkes i det præcise tidsvindue de afholdes, så overtidstillæg beregnes korrekt.
+
+7  Medarbejdere
+Klik på 'Medarbejdere' i venstre menu for at se og redigere medarbejderstamdata.
+7.1  Søg og filtrér
+Øverst på siden kan medarbejderlisten indsnævres på tre måder, som kan kombineres frit:
+Søgefelt: skriv et navn eller lønnummer for hurtigt at finde en bestemt medarbejder.
+Afdeling: vælg én afdeling for kun at se dens medarbejdere, eller 'Ingen gruppe' for at se medarbejdere uden en tilknyttet afdeling. Alle afdelinger er med i listen, også dem der i Stamdata er sat til ikke at vises i aktivitetsoversigten.
+Vis inaktive: medtag fratrådte/deaktiverede medarbejdere i listen.
+7.2  Opret ny medarbejder
+Klik '+ Opret medarbejder' og udfyld felterne:
+
+GODT AT VIDE: De tilgængelige aftaletyper administreres i Stamdata-modulet under fanen 'Aftale'. Her kan en administrator ændre teksten på de to oprindelige typer, samt tilføje flere aftaletyper og bestemme om Overenskomsttype skal være påkrævet for hver af dem. Vælges en type der ikke kræver Overenskomsttype, forsvinder den røde stjerne ved feltet, og det kan stå tomt.
+VIGTIGT: Opret KUN en ny aftaletype hvis du er indforstået med konsekvensen: medarbejdere på en aftaletype ud over de to oprindelige ('Timelønnet, fast arbejdstid' og 'Timelønnet, ikke fastlagt arbejdstid') får IKKE noget overtidstillæg og INGEN søgnehelligdagsbetaling overhovedet – kun almindelig timeløn for de faktisk arbejdede timer, uanset tidspunkt eller dagtype. Den konkrete beregningsregel for en ny aftaletype skal udvikles særskilt, hvis den overhovedet skal afvige fra flad timeløn. Kontakt systemudvikler før en ny aftaletype tages i brug til en medarbejder, hvis der forventes overtid/SH-betaling.
+BEMÆRK: Hvis navn (for- og efternavn) eller førerkortnummer allerede findes på en anden medarbejder (aktiv eller inaktiv), viser systemet en advarsel ved oprettelse. Ved navnesammenfald kan du vælge 'OK, opret alligevel' for at oprette begge, eller 'Ændre' for at vende tilbage og rette. Ved sammenfald på førerkortnummer kan du KUN vælge 'Ændre' – to medarbejdere kan ikke dele samme førerkortnummer i databasen.
+7.3  Timefordeling
+Timefordelingen angiver medarbejderens normaltimer pr. ugedag i en 14-dages periode (uge A og uge B, svarende til ulige og lige ISO-uger). Standardværdier er:
+Mandag–torsdag: 7,5 timer
+Fredag: 7 timer
+Lørdag–søndag: 0 timer
+For hver dag kan du udfylde ENTEN et timeantal ELLER en fra/til-tid – begge felter står altid synlige side om side. Udfylder du fra/til-tid, beregner systemet automatisk timeantallet (sluttid minus starttid – en sluttid tidligere end starttid tolkes som en vagt der går over midnat) og overskriver timeantal-feltet. Et 'Ugentligt timeantal'-felt nederst i tabellen summerer automatisk timerne for hver uge, og opdateres med det samme uanset hvilken af de to indtastningsmåder du bruger.
+Normaltimerne bruges til beregning af overtidstillæg og til at auto-udfylde sluttidspunktet ved registrering af ferie.
+7.4  Anciennitetsvarsler
+Systemet kontrollerer løbende om medarbejdere har nået 9 måneders anciennitet og en tilsvarende overenskomsttype med højere sats. Hvis det er tilfældet, vises et pop-up-varsel. Varslet er styret af tilladelsen 'Anciennitetsvarsel' i Brugerstyring – som standard er den slået til for Administrator og Lønbogholder og fra for Disponent og Kontor. En administrator kan klikke tilladelsen til eller fra for enhver rolle. Husk at opdatere overenskomsttypen for medarbejderen.
+Når du klikker "Ændring foretaget" i varslet, gemmes afvisningen på medarbejderen i databasen (feltet anciennitet_dismissed_at). Varslet vises ikke igen – uanset computer eller browser. Hvis overenskomsttypen ændres på medarbejderen, nulstilles afvisningen automatisk, så varslet kan dukke op igen hvis ancienniteten stadig er relevant.
+7.5  Tillæg
+Ud over overenskomsttypens timesats kan en medarbejder have et individuelt kr/time-tillæg. Klik på 'Tillæg' i venstre menu for at administrere dette (kræver rettigheden 'Administrér medarbejdertillæg').
+Trin 1: Søg medarbejderen frem i søgefeltet (navn eller lønnummer).
+Trin 2: Klik på medarbejderen. En boks åbner sig med medarbejderens fulde tillægshistorik: status (Aktiv/Inaktiv), lønnummer, tillægsnavn, type, gyldighedsperiode og værdi i kr. Brug 'Fra'/'Til'-felterne til at indsnævre visningen til en bestemt periode – lader du dem stå tomme, vises hele historikken.
+Trin 3: Klik '+ Tilføj' (enten i boksen eller i toolbaren øverst på siden) for at oprette et nyt tillæg: vælg medarbejder (forudvalgt hvis du kom fra dennes boks), startdato (default dags dato) og værdi i kr/time. Tillægsnavn og type sættes automatisk og kan ikke ændres.
+GODT AT VIDE: Når et nyt tillæg oprettes, bliver medarbejderens tidligere tillæg automatisk gjort inaktivt fra og med dagen før den nye startdato. Der findes ikke en 'rediger'-funktion – en fejl rettes ved at oprette et nyt tillæg med den korrekte værdi.
+Har en medarbejder et aktivt tillæg der ikke længere skal gælde, klik 'Afslut' på den aktive række. Tillægget fortsætter med at gælde resten af den igangværende lønperiode og bortfalder først fra den efterfølgende periode – det stopper altså ikke med øjeblikkelig virkning midt i en periode.
+VIGTIGT: Tillægget lægges automatisk til medarbejderens grundsats i selve lønberegningen – både i prøvekørslen, PDF-timesedlerne, Danløn CSV'en (kode 1/normaltid) og i afspadsering, sygdom, barsel og skole/kursus. Det kræver ingen særskilt handling ud over at oprette/afslutte tillægget her.
+Findes der et aktivt tillæg på en medarbejder, vises værdien også som et read-only felt under Overenskomsttype, når du åbner medarbejderen under fanen 'Medarbejdere'. Feltet kan ikke redigeres derfra – kun under fanen 'Tillæg'.
+7.6  §56-advarsel
+Nærmer en medarbejders §56-slutdato (jf. §56-feltet i afsnit 7.2) sig, kan systemet advare brugere med tilladelsen '§56-advarsel' i Brugerstyring – som standard slået til for Lønbogholder, fra for Disponent og Kontor. En administrator kan klikke tilladelsen til eller fra for enhver rolle.
+Advarsel om snarlig udløb: vises fra 30 dage før slutdatoen og indeholder medarbejderens navn og den aktuelle slutdato.
+Automatisk deaktivering: overskrides slutdatoen uden at nogen har grebet ind, sætter systemet automatisk §56-feltet til fra på medarbejderen. Brugere med tilladelsen får i stedet en informationsbesked om at det er sket.
+BEMÆRK: Begge popups afvises PR. BRUGER, ikke pr. medarbejder – ser du en advarsel og afviser den, vises den stadig for kolleger med samme tilladelse, indtil de selv afviser den. Ændres medarbejderens §56-slutdato bagefter, nulstilles alle brugeres afvisning automatisk, så advarslen kan dukke op igen.
+7.7  §56-oversigt
+Klik på knappen '§56' i toolbaren på Medarbejdere-siden for at åbne en read-only liste over alle aktive medarbejdere der aktuelt har §56 afkrydset – med navn, startdato og slutdato. Listen følger det afdelingsfilter der er valgt på siden (afsnit 7.1), men ignorerer søgefeltet og 'Vis inaktive'.
+GODT AT VIDE: Opretter du en 'Sygdom'-aktivitet for en medarbejder der har §56 afkrydset, spørger systemet om aktiviteten skal forblive almindelig 'Sygdom', eller i stedet oprettes som den eksisterende fraværstype '§56 syg'. Fortryder du dialogen (klik uden for/Annuller), oprettes ingen aktivitet overhovedet.
+8  Helligdagskalender
+Systemet vedligeholder automatisk en kalender over danske helligdage. Helligdage fremhæves i aktivitetskalenderen og danner grundlag for fremtidig beregning af helligdagstillæg.
+8.1  Markering i aktivitetskalenderen
+Dage der er helligdage fremhæves med mørk grøn baggrund (#056a10) i aktivitetskalenderens kolonneoverskrifter. Halvdagshelligdage (1. maj og Grundlovsdag) vises med et '½ fra 12:00'-badge. Hold musen over overskriften for at se helligdagens navn.
+GODT AT VIDE: Helligdagskalenderen genereres automatisk for de næste 5 år ved serveropstart. Du behøver ikke gøre noget – den opdaterer sig selv.
+8.2  Administration af helligdage (Stamdata → Helligdage)
+Brugere med rettigheden 'Administrér helligdage' kan administrere helligdagskalenderen via Stamdata-menupunktet → fanen 'Helligdage':
+
+
+9  Lønkørsel
+Klik på 'Lønkørsel' i venstre menu for at beregne og eksportere løn. Husk: kun aktiviteter med status 'Godkendt' indgår i beregningen.
+9.1  Prøvekørsel
+Prøvekørslen beregner lønnen og downloader resultatet som en Excel-fil til din computer. Brug denne til at tjekke tallene inden den endelige kørsel.
+Klik 'Prøvekørsel'.
+Vælg evt. en bestemt medarbejder, eller lad feltet stå tomt for alle.
+Klik 'Dan Excel'. Filen downloades til din computer, og pop-up-vinduet lukker automatisk.
+Excel-filen viser alle 14 dage i perioden for hver medarbejder, med bl.a. disse kolonner:
+Total tid: alle arbejdede timer den dag.
+Pause i alt (min): summen af medarbejderens pauser den dag, i minutter.
+Normal tid, Tillæg 05-06, Tillæg OT1-3 og Øvrigt OT: fordeling af Total tid – Normal tid er de timer der IKKE udløser noget tillæg.
+Fraværsdage (Ferie, Fri, Afspadsering, Skole/kursus): vises med fraværstype i Normal tid-kolonnen.
+Dage uden registrering: vises med 0 på alle kolonner.
+Medarbejdere med springertillæg i perioden: får ' (springer)' tilføjet efter navnet.
+Første linje pr. medarbejder er markeret med grøn baggrund. Tom linje adskiller medarbejdere.
+GODT AT VIDE: Kolonnerne er gjort så smalle som muligt, og lange overskrifter ombrydes over flere linjer, så hele tabellen kan ses uden at skulle scrolle vandret.
+9.2  Dan PDF'er
+Genererer individuelle timesedler til alle medarbejdere som PDF-filer og downloader dem til din computer – én PDF direkte, hvis kun én medarbejder har data i perioden, ellers en samlet ZIP-fil.
+Klik 'Dan PDF'er'.
+Vælg fra/til-dato og evt. en bestemt medarbejder.
+Klik 'Dan PDF'er'. Filen(erne) downloades til din computer.
+GODT AT VIDE: Ud over download kan timesedler sendes direkte pr. mail til medarbejderens registrerede mailadresse – enten enkeltvis fra den relevante medarbejders linje i lønkørsel-visningen, eller samlet for alle med knappen 'Send timesedler' i PDF-modalen. Medarbejdere uden en registreret mailadresse springes automatisk over, og fejl ved selve afsendelsen (fx forkert mailopsætning) vises som en generel fejlbesked uden tekniske detaljer.
+9.3  Kør løn (Danløn CSV)
+Eksporterer den endelige lønfil til Danløn. Filen er i CSV-format og kan importeres direkte i Danløn.
+Klik 'Kør løn'.
+Bekræft at du er klar til at køre endelig løn.
+CSV-filen downloades til din computer.
+CSV-filen indeholder op til 6 kolonner per lønpost: CVR-nummer, medarbejdernr., lønkode, antal (timer eller forekomster), sats og evt. total. Hvilke kolonner der medtages afhænger af opsætningen i Stamdata → Løntypekoder.
+'Kør løn'-knappen er grå og kan ikke bruges, hvis der enten er aktiviteter i perioden, der endnu ikke er godkendt eller deaktiveret, eller hvis lønperioden allerede er kørt og låst. I begge tilfælde vises en advarsel, hvis man alligevel klikker på knappen. Afventende aktiviteter skal godkendes eller deaktiveres under fanen 'Aktiviteter', før knappen aktiveres igen. En allerede låst periode kan genåbnes under 'Administration' (kræver rettigheden 'Åbn låst lønperiode'), hvis der skal foretages ændringer og køres løn igen.
+GODT AT VIDE: Genåbner du en låst periode, henter systemet automatisk eventuelle aktiviteter der i mellemtiden er registreret for den periodes datoer (og som derfor blev lagt i den efterfølgende periode, se afsnit 3.2) tilbage til den nu-genåbnede periode. Du behøver ikke selv flytte dem.
+VIGTIGT: Kontrollér Danløn-koderne i Stamdata → Løntypekoder inden systemet tages i produktionsbrug: en del koder er ved leveringen sat til en midlertidig placeholder ('1') indtil lønafdelingen oplyser de rigtige Danløn-koder. Bruges systemet med placeholder-koder, kan flere forskellige lønarter havne under samme kode i Danløn.
+9.3.1  CSV-kolonneopsætning per løntypekode
+Under Stamdata → Løntypekoder kan du for hver løntype styre præcis hvad der eksporteres i CSV-filen:
+
+TIP: Inkluder sats = Nej og Inkluder total = Ja giver en CSV med kun antal og total – nyttigt når Danløn selv beregner satsen ud fra lønkoden.
+9.4  Hvad beregnes?
+For hver godkendt aktivitet beregnes følgende lønposter:
+
+9.5  Lørdage, søndage og helligdage
+Lørdage, søndage og helligdage har deres egne lønkoder ud over de tre almindelige tillæg (kode 1, 7, 8 og 9). Du behøver ikke gøre noget særligt ved registreringen – systemet genkender automatisk dagtypen ud fra helligdagskalenderen og ugedagen.
+
+GODT AT VIDE: En vagt der starter aftenen/natten før en søndag eller helligdag og fortsætter ind i den, vil i prøvekørslen og PDF-timesedlen kunne vise sig som to linjer i stedet for én – én for delen inden midnat, én for delen efter. Det er korrekt: de to dele følger hver sin dags regler. En vagt der fortsætter fra en almindelig hverdag/lørdag ind i en anden almindelig hverdag/lørdag vises derimod stadig som én sammenhængende linje.
+BEMÆRK: En medarbejder markeret som 'Afløser' (afsnit 7.2) får IKKE de garanterede søgnehelligdagstimer på en søndag/helligdag, medmindre vedkommende faktisk har en godkendt kørselsaktivitet den dag. Har afløseren kørt, gælder alle reglerne ovenfor helt som normalt.
+9.6  Særaftale: Øvrig overtid for alle timer
+En enkelt navngiven medarbejder kan have en individuel særaftale om at ALLE hans arbejdstimer giver Øvrig overtid oveni normal løn – uanset tidspunkt på døgnet, dagtype eller det sædvanlige daglige loft. Aftalen slås til via krydsfeltet 'Særaftale: Øvrig overtid for alle timer' i medarbejder-modalen (se afsnit 7.2).
+Erstatter de normale tillæg (05-06, 18-21/OT, nat) i stedet for at lægge oveni dem.
+Intet dagligt loft – fuld normalløn for samtlige arbejdstimer, uanset medarbejderens skemalagte timer.
+Gælder alle dage, også søndage, helligdage, 1. maj og Grundlovsdag.
+Kode 4/63 (søgnehelligdagsbetaling) er upåvirket og beregnes helt som normalt.
+VIGTIGT: Krydses feltet af for en medarbejder, slår ændringen automatisk igennem overalt: lønkørsel-preview, prøvekørsel, PDF-timesedler, Lønafregning og Danløn CSV. Brug kun feltet til den konkrete særaftale det er lavet til – det er ikke en generel 'overtidsbonus'-indstilling.
+
+10  Vigtige regler og opmærksomhedspunkter
+10.1  Inden lønkørsel – tjekliste
+Alle .ddd-filer er importeret for perioden.
+Alle relevante aktiviteter er gennemgået og godkendt.
+Aktiviteter med ! (under 4 timer) er godkendt med kommentar.
+Eventuelle rettelser er kontrolleret – brug 'Fortryd rettelse' ved fejl.
+Prøvekørsel er gennemgået og tallene ser korrekte ud.
+10.2  Opdatering af satser
+Timesatser og overtidssatser opdateres via Stamdata-modulet i systemets brugerflade. Ændringerne slår igennem ved næste beregning uden genstart.
+Trin 1: Klik på '⚙️ Stamdata' i venstre menu (kræver administrator-login).
+Trin 2: Vælg den relevante fane: 'Overenskomsttyper', 'Overtidssatser' eller 'Tillæg'.
+Trin 3: Klik på 'Rediger' ud for den sats der skal ændres.
+Trin 4: Indtast den nye sats og klik 'Gem'.
+
+VIGTIGT: Rediger ikke Excel-filerne med forventning om at ændringerne slår igennem. Excel bruges KUN til den initiale seeding af databasen ved første opstart. Al efterfølgende konfiguration sker via Stamdata-modulet.
+VIGTIGT: Opretter du en helt ny SATS (en ny række i Overtidssatser eller Tillæg, ikke bare en ny værdi på en eksisterende), har den IKKE automatisk nogen effekt på lønberegningen – kun eksisterende, kendte tillægstyper beregnes automatisk. En ny sats skal derefter kobles på en løntypekode via 'Sats-kilde' i Stamdata → Løntypekoder for i det hele taget at kunne komme med i CSV-eksporten, og selv da påvirker den ikke selve lønberegningen/prøvekørslen. Skal en helt ny tillægsregel indgå i selve lønberegningen, kræver det udviklerarbejde – kontakt systemudvikler.
+10.3  Fejl og usædvanlige situationer
+
+HUSK: Fratrædelsesdatoen for aktive medarbejdere skal stå på 31-12-9999. Udfyld kun fratrædelsesdatoen den dag en medarbejder forlader virksomheden.
+
+11  Brugerstyring og roller
+Klik på '🔑 Brugere' i venstre menu for at oprette login-brugere, styre hvilke roller de har, og se hændelsesloggen. Menupunktet er kun synligt for brugere hvis rolle har rettigheden 'Brugerstyring'. Siden har tre faner: Brugere, Roller og Hændelseslog.
+11.1  Brugere-fanen
+Klik '+ Opret bruger' og udfyld navn, initialer/brugernavn (bruges til login), mail (valgfri), rolle og adgangskode.
+
+BEMÆRK: Initialer skal være unikke (store/små bogstaver behandles ens) og bruges som brugernavn ved login.
+11.2  Roller-fanen
+En rolle er en navngivet samling af rettigheder. Hver bruger har præcis én rolle (sat i Brugere-fanen), og rollen bestemmer hvad brugeren kan se og gøre i systemet.
+
+TEKNISK NOTE: 'Administrér baselines' er ikke en selvstændig, tildelbar rettighed som de øvrige i rettighedsoversigten (afsnit 11.3) – kun Administrator-rollen har adgang til baseline-genopbygning (POST /api/auto-approval/rebuild-baselines), fordi systemroller altid har fuld adgang. Den kan IKKE tildeles en anden rolle via afkrydsningsboksene i Roller-fanen. 'Slå auto-godkendelse til/fra' (manage_auto_approval) er derimod en almindelig, tildelbar rettighed – se afsnit 11.3.
+BEMÆRK: Kun 'Administrator' er en beskyttet systemrolle. De øvrige roller – herunder 'Lønbogholder' og 'Disponent' – kan en administrator frit redigere (rettigheder og visningsnavn) eller slette, og der kan oprettes helt nye, skræddersyede roller efter behov. 'Kontor' er et eksempel på en sådan senere oprettet rolle, målrettet medarbejdere der kun skal kunne se og redigere deres egen linje i Vagtplan.
+Klik '+ Opret rolle' for at oprette en ny rolle: angiv et internt rollenavn (kun bogstaver, tal og underscore), et visningsnavn, og afkryds de ønskede rettigheder fra listen nedenfor. Klik 'Rediger' på en eksisterende, ikke-system-rolle for at ændre visningsnavn og rettigheder. En rolle kan kun slettes, hvis ingen brugere har den.
+11.3  Rettighedsoversigt
+
+TEKNISK NOTE: Rettigheder er additive og uafhængige af hinanden – der er ingen indbygget hierarki. En rolle med kun 'Se vagtplan' + 'Redigér egen linje i vagtplan' (som 'Kontor') ser IKKE Aktiviteter, Lønkørsel eller andre menupunkter, uanset hvor 'lille' rettigheden lyder.
+11.4  Hændelseslog-fanen
+Viser de seneste 500 hændelser i systemet, nyeste øverst: oprettelse/redigering af brugere og roller, rolleskift, samt Stamdata-ændringer (opret/redigér/slet). Hver linje viser tidspunkt, hvilken bruger der udførte handlingen, selve handlingen og en kort detaljetekst. Søgefeltet filtrerer på tværs af bruger, handling og detaljer; '⟲ Opdater' genindlæser listen.
+
+12  Lønafregning
+Klik på '🧾 Lønafregning' i venstre menu, lige under 'Lønkørsel'. Fanen giver et samlet overblik over periodens løn: én total-tabel øverst for hele perioden, og derunder én tabel pr. medarbejder med alle 14 dage. Menupunktet kræver rettigheden 'Lønafregning (se)', og eksportknappen kræver derudover 'Lønafregning (eksport)' (se afsnit 11.3).
+12.1  Periodetotalen øverst
+Den øverste tabel 'Total sum for perioden' viser: Grundtimeløn inkl. tillæg, Overtid Timen før, Overtid 1-3 time efter og Øvrig overtid, efterfulgt af delsummen 'Total uden fravær'. Herunder følger op til 11 fraværstyper (Sygdom, Sygdom u. 8 uger, Barn 1.sygedag, Barn 1.sygedag u. 8 uger, Graviditetsbetinget sygdom, §56 syg, Barsel, Feriefri, Ferie, Skole/kursus og Afspadsering) og til sidst 'Total sum for denne periode'. En linje vises KUN hvis den har et beløb større end 0 kr for den viste periode – har ingen medarbejder fx haft barsel, udelades 'Barsel'-linjen helt.
+12.2  Medarbejder-tabellerne
+Hver medarbejders kort viser i overskriften: overenskomsttype med sats i kr/time, personligt tillæg (hvis medarbejderen har et) og springertillæg (hvis aktiveret for perioden) – alle tre vist som separate tal, ikke lagt sammen. Derunder følger en tabel med én række pr. dag i perioden (også dage uden aktivitet, som vises med 0).
+
+Nederst i hver medarbejders tabel står 'Total løn for [navn]' – den fulde sum for medarbejderen i perioden: arbejdstid, overtid, salttillæg, springertillæg OG al fraværsbetaling med et beregnet beløb (se afsnit 12.1 for hvilke typer det gælder).
+12.3  Periode-visning
+Lønafregning har ingen egen periodevælger – siden følger i stedet den periode du senest har navigeret til med pilene (‹ ›) i Aktivitetsoversigten, ligesom Lønkørsel allerede gør. Har du ikke navigeret til en bestemt periode, vises dagens periode. Skal du fx tjekke eller eksportere en periode der er kørt løn for og siden er blevet 'gammel' (dagens periode er rykket videre), skal du først gå til Aktiviteter og bladre tilbage til den ønskede periode med '‹', og derefter klikke på Lønafregning.
+12.4  Eksportér CSV
+Knappen '💾 Eksportér CSV' downloader én CSV-fil til din computer for hele den viste periode med data for alle medarbejdere – ikke topsummeringen.
+Naviger til den ønskede periode (se afsnit 12.3).
+Klik '💾 Eksportér CSV'.
+Klik 'Eksportér'. Filen downloades til din computer.
+CSV-filen (semikolon-separeret) indeholder kolonnerne Dato, Lønnummer, Normal timer, Overtid 1 time før, Overtid 1-3 timer efter, Øvrig overtid, Total tid, Total i kr., Vognnummer og Beløb – én række pr. dag pr. medarbejder, efterfulgt af en 'Total løn for [navn]'-række.
+VIGTIGT: Eksport kræver at den viste periode er låst (der er kørt løn for den under Lønkørsel) – ellers vises en fejlbesked, og der eksporteres ikke. Administratorer er undtaget og kan altid eksportere, uanset periodens status. Selve eksporten LÅSER ikke perioden – det sker kun ved 'Kør løn' under Lønkørsel.
+
+13  Dagsplan
+Klik på '🗓️ Dagsplan' i venstre menu for at se og redigere dagens fordeling af vogne til chauffører – den digitale afløser for det Excel-ark, der tidligere blev brugt uden for systemet. Siden kræver rettigheden 'Se dagsplan'; redigering kræver desuden 'Redigér dagsplan' (se afsnit 11.3). Uden redigeringsrettighed ser du samme visning, men alle felter og knapper er låst.
+Siden har to underfaner, der deler samme valgte dato: 'Dagsplan' og 'Materiel fravær'.
+13.1  Dagsplan-fanen
+Øverst navigerer du mellem dage med ◀ / ▶ eller datovælgeren (default: dags dato). Disponentgruppe-filteret og det søgbare medarbejder-filter indsnævrer kun hovedtabellen – sidelisten med den fulde medarbejderoversigt er altid upåvirket af filtrene.
+
+Under hovedtabellen findes 10 faste 'EKSTRA'-rækker til hjælp på pladsen eller lærlinge – samme felter som ovenfor, men uden vognnummer og uden vognnummer-autoudfyldning på aktiviteter.
+En medarbejder med registreret fravær den valgte dag vises med rødt i sidelisten – og forbliver rødt, selv hvis vedkommende samtidig er skrevet i en Chauffør-kolonne.
+En vogn med meldt materielt fravær (se afsnit 13.2) vises rødt i hovedtabellen.
+Er der uoverensstemmelse mellem den tildelte vogn og vognnummeret på chaufførens egen 'normal tid'-aktivitet den dag, vises et ⚠️-ikon med tooltip 'vognnummer i løn: xxx' ved chaufførnavnet.
+BEMÆRK: Forsøger du at tildele en medarbejder, der allerede har en anden tildeling (eller registreret fravær) samme dag, viser systemet en advarsel i stedet for at blokere handlingen – bekræfter du, gennemføres dobbelttildelingen alligevel.
+GODT AT VIDE: Opretter du en 'normal tid'-aktivitet for en chauffør med en tildelt vogn i Dagsplan den pågældende dag, udfyldes vognnummeret automatisk på aktiviteten – medmindre feltet allerede er udfyldt. Dette rører ikke ved fraværstyper eller EKSTRA-rækkerne.
+13.2  Materiel fravær-fanen
+Registrér når en vogn er ude af drift (værksted, reparation m.m.). Klik 'Meld materielt fravær' (kræver 'Redigér dagsplan') og angiv vogn, 'Fra dato' (default: fanens valgte dato), en valgfri 'Til dato' (tom betyder étdags-fravær) samt en kommentar. Tabellen nedenfor viser dagens meldte fravær med en slet-knap.
+
+14  Vagtplan
+Klik på '🗓️ Vagtplan' i venstre menu for at se en 4-ugers oversigt over alle medarbejderes fravær og kommentarer, med ugenummer i kolonneoverskriften. Kræver rettigheden 'Se vagtplan'; redigering kræver desuden enten 'Redigér egen linje i vagtplan' (kun din egen række) eller 'Redigér alle linjer i vagtplan'.
+14.1  Registrering
+Klik på en tom celle for at registrere fravær eller en kommentar for medarbejderen den dag:
+Vælg en almindelig fraværstype (ferie, sygdom osv.) for at oprette en rigtig aktivitet – nøjagtig samme modal som i Aktivitetsoversigten (kapitel 6).
+Vælg 'Ingen (kun kommentar)' for blot at skrive en fri tekstnote uden at oprette nogen aktivitet – bruges fx til 'ringer ind kl. 10' eller lignende driftsnoter.
+Klik på en udfyldt celle for at se/redigere den. Fraværsaktiviteter åbner samme aktivitetsdetalje som i Aktivitetsoversigten; rene kommentarer åbner en lille rediger/slet-boks.
+14.2  Filtrering og 'Fravær i morgen'
+Afdelingsfiltret er en flervalgsliste (klik for at vælge flere grupper ad gangen; klik 'Vælg alle' først for kun at isolere én gruppe). Knappen 'Fravær i morgen' åbner en hurtig opsummering af alle medarbejdere (inden for det valgte filter) der har fravær eller en kommentar registreret på dagen efter i dag – uden at du behøver bladre en hel uge frem.
+GODT AT VIDE: Vagtplan og Aktivitetsoversigten viser samme underliggende data – opretter du en fraværsaktivitet i Vagtplan, ses den også i Aktivitetsoversigten, og omvendt.
+
+15  Fraværsoversigt
+Klik på '📊 Fraværsoversigt' i venstre menu for et samlet overblik over fravær pr. medarbejder og pr. fraværstype over en valgfri periode – uafhængig af de faste 14-dages lønperioder. Kræver rettigheden 'Fraværsoversigt'.
+Vælg en fra- og til-dato for den ønskede periode.
+Tabellen viser fraværstimer/-dage summeret pr. medarbejder og pr. fraværstype.
+15.1  Eksport
+To eksportknapper downloader Excel-filer med samme datointerval som den valgte visning:
+Eksportér pr. medarbejder: Eksporterer én række pr. kalenderdag med fravær, valgfrit afgrænset til alle medarbejdere, én disponentgruppe eller én enkelt medarbejder.
+Eksportér pr. fraværstype: Eksporterer summeret pr. fraværstype – vælg i en afkrydsningsliste hvilke fraværstyper der skal med (eller markér 'alle').
+
+16  Vognpark
+Klik på '🚛 Vognpark' i venstre menu for at se og redigere køretøjer. Kræver mindst 'Se vognpark'; opret/rediger/slet kræver 'Tilføj vogn'.
+
+Siden har to underfaner: 'Vognpark' viser kun de vogne der har fluebenet 'Vognpark' sat – det er dem der reelt kører gods og indgår i Dagsplan og 'Fast bil'-valget. 'Alle' viser samtlige oprettede vogne, inklusive interne poster/afdelinger der ikke skal med i den daglige vognfordeling.
+BEMÆRK: Nyoprettede vogne har som udgangspunkt IKKE fluebenet 'Vognpark' sat og vises derfor ikke i Dagsplan, før du aktivt går ind under fanen 'Alle' og krydser feltet af. 'Meld materielt fravær' (kapitel 13.2) og medarbejder-modalens 'Fast bil'-søgning viser i øvrigt alle vogne uanset dette flueben.
+Område | Formål
+Aktiviteter | Viser og håndterer alle chaufførers registrerede arbejdsdage i den aktuelle lønperiode.
+Lønkørsel | Beregner og eksporterer løn til Danløn samt genererer timesedler og prøvekørsler.
+Medarbejdere | Stamdata for alle chauffører: lønnummer, overenskomst, normaltimer, afdeling m.m.
+📋 Aktiviteter | Viser aktivitetstabellen for den aktuelle lønperiode.
+💰 Lønkørsel | Åbner lønkørselspanelet med prøvekørsel, PDF og CSV-eksport. Kræver 'Lønkørsel'-rettigheden.
+🧾 Lønafregning | Periodetotaler og pr.-medarbejder oversigt over lønnen (kapitel 12). Kræver 'Lønafregning (se)'.
+📊 Fraværsoversigt | Samlet oversigt over fravær pr. medarbejder/type, med eksport. Kræver 'Fraværsoversigt'-rettigheden.
+🗓️ Vagtplan | Ugentlig/periodisk vagtplanlægning pr. medarbejder. Kræver 'Se vagtplan'; redigering kræver desuden 'Redigér egen linje' eller 'Redigér alle linjer'.
+🗓️ Dagsplan | Daglig vogn/chauffør-fordeling og materielt fravær (kapitel 13). Kræver 'Se dagsplan'; redigering kræver desuden 'Redigér dagsplan'.
+📥 Importer .ddd | Import af tachografdata fra fil eller mappe. Kræver 'Importer .ddd'-rettigheden.
+👤 Medarbejdere | Oversigt over og redigering af medarbejderstamdata. Kræver mindst 'Se medarbejdere'.
+🚛 Vognpark | Oversigt over og redigering af køretøjer. Kræver mindst 'Se vognpark'.
+💵 Tillæg | Administration af individuelle kr/time-tillæg pr. medarbejder. Kræver 'Administrér medarbejdertillæg'.
+🔑 Brugere | Opret/rediger brugere og roller, se hændelseslog (kapitel 11). Kun synlig med 'Brugerstyring'-rettigheden.
+⚙️ Stamdata | Konfiguration af systemets masterdata: overenskomsttyper, overtidssatser, tillæg, løntypekoder (inkl. CSV-kolonneopsætning), fraværstyper, CVR-numre, helligdage, disponentgrupper og aftaletyper. Alle typer og koder kan oprettes, redigeres og slettes. Kræver 'Stamdata'-rettigheden.
+Chip | Farve | Betydning
+Afventer | Blå | Antal aktiviteter der venter på godkendelse.
+Godkendt | Grøn | Antal godkendte aktiviteter.
+Deaktiveret | Rød | Antal deaktiverede (inaktive) aktiviteter.
+Farve | Betydning
+Mørkeblå/grå (#44546a) | Afventer godkendelse (pending).
+Grøn | Godkendt aktivitet.
+Rød | Deaktiveret aktivitet.
+(K)-præfiks | Manuel aktivitet (ikke fra tachograf) vises med samme statusfarve som ovenfor, men med et '(K) '-præfiks i teksten – ingen separat farve.
+FERIE/FRI | Fraværstype – vises med tekst i grøn boks.
+Mørkegrøn kolonne (#056a10) | Helligdag – søjleoverskriften fremhæves med mørk grøn baggrund. Halvdagshelligdage vises med '½ fra HH:MM'-badge og navn som tooltip.
+❗ (udråbstegn) | Aktiviteten er under 4 timer lang. Kræver kommentar ved godkendelse. Vises kun når status er Afventer eller Deaktiveret – forsvinder ved godkendelse.
+⚠️ (advarselstrekant) | Aktiviteten er over 12 timer lang. Advarsel om usædvanlig lang vagt. Vises kun når status er Afventer eller Deaktiveret – forsvinder ved godkendelse.
+(K) prefix | Aktiviteten er et barn af en opdelt aktivitet.
+Start- og sluttid | Registreret tidspunkt fra tachografen (eller manuelt angivet).
+Effektiv tid | Samlet arbejdstid fratrukket pauser.
+Aktivitetsfordeling | Fordeling mellem kørsel, rådighedstid, andet arbejde og hvil/pause (fra tachografen).
+Detaljeret tidslinje | Alle segmenter med præcise tidspunkter.
+Status og godkender | Hvem har godkendt og hvornår.
+Ændret af | Initialerne på den bruger der sidst gemte en rettelse. Vises kun når aktiviteten faktisk er blevet redigeret.
+Type | Beskrivelse
+Ferie | Registrerer en feriedag. Start: 06:00. Slut: 06:00 + normaltimer for dagen. Tælles i timeoversigten, men er som default IKKE med i Danløn-CSV'en (kan slås til i Stamdata).
+Afspadsering | Registrerer afspadsering. Som periode ('Til dato') tæller hver hverdag 7,4 t/skemalagte timer; som enkeltdag bruges den faktiske start-/sluttid.
+Fri | Registrerer fridag.
+Skole/kursus | Registrerer skole- eller kursusdag.
+Overnatning | Registrerer en overnatning (flat sats pr. forekomst – ikke timer). Angiv blot datoen. Satsen hentes automatisk fra Stamdata (Tillæg-fanen).
+Felt | Påkrævet | Beskrivelse
+Aftale | Ja | Vælg fra listen der stammer fra Stamdata (Aftale-fanen) – som udgangspunkt 'Timelønnet, fast arbejdstid' eller 'Timelønnet, ikke fastlagt arbejdstid'. Administratorer kan tilføje flere aftaletyper i Stamdata.
+Overenskomsttype | Afhænger af Aftale | Bestemmer timesatsen. Vælg fra listen der stammer fra Stamdata (Overenskomsttyper-fanen). Feltet er kun obligatorisk (rød *) hvis den valgte Aftale-type kræver det – styres pr. aftaletype i Stamdata.
+Disponentgruppe | Nej | Afdeling – dropdown, en medarbejder kan højst tilhøre én gruppe ad gangen. Bruges til at filtrere aktivitetstabellen og fraværsoversigt-eksporten.
+Fast bil | Nej | Afkryds for at medarbejderen skal foreslås som standardchauffør på en bestemt vogn i Dagsplan (kapitel 13). Vises herefter et søgbart vognnummer-felt, ikke begrænset til egen disponentgruppe.
+Særaftale: Øvrig overtid for alle timer | Nej | Afkryds KUN for en medarbejder med en individuel aftale om at alle arbejdstimer skal give Øvrig overtid oveni normal løn, uden dagligt loft (se afsnit 9.6). Berører lønberegningen direkte – brug med omtanke.
+Afløser | Nej | Afkryd for en afløser/substitutmedarbejder. Medarbejderen får IKKE søgnehelligdagsbetaling (kode 4/63) på søndage/helligdage medmindre vedkommende faktisk har kørt den dag – se afsnit 9.5. Farvemarkeres separat i medarbejderlisten, Vagtplan og Aktivitetsoversigten.
+Lønnummer | Ja | Unikt lønnummer (bruges i Danløn-eksporten).
+Førerkortnummer | Nej | EU-førerkortnummer – påkrævet for at importere .ddd-filer korrekt.
+Navn | Ja | Fornavn og efternavn.
+Adresse / postnummer | Nej | Adresseoplysninger.
+E-mail / telefon | Nej | Kontaktoplysninger.
+Ansættelsesdato | Ja | Startdato for ansættelsen. Klik på feltet for at åbne en kalender med måned- og årstaldropdown.
+Fratrædelsesdato | Nej | Udfyldes KUN ved fratrædelse. Default er 31-12-9999. Klik på feltet for at åbne kalender-pickeren.
+Aktiv | — | Afkryd for at medarbejderen er aktiv i systemet.
+Fuldlønnet | — | Afkryd hvis medarbejderen er fuldlønnet.
+§56 | — | Afkryd hvis medarbejderen har en §56-aftale. Herefter skal start- og slutdato udfyldes (begge påkrævede, rød *) – slutdatoen skal ligge efter startdatoen. Se afsnit 7.6 om §56-advarslen.
+Handling | Beskrivelse
+Generer for år | Klik 'Generer [årstal]' for at auto-generere alle danske helligdage for det valgte år. Eksisterende datoer overskrives ikke.
+Tilføj manuelt | Klik '+Tilføj helligdag' for at oprette en særlig fridag med valgfri halvdagstid (fx en lukkedag).
+Slet helligdag | Klik 'Slet' på en helligdag for at fjerne den fra kalenderen. Auto-genererede og manuelle helligdage kan begge slettes.
+Faste helligdage | Nytårsdag, 1. maj (½), Grundlovsdag (½), Juleaftensdag, 1. og 2. juledag, Nytårsaftensdag
+Bevægelige helligdage | Skærtorsdag, Langfredag, Påskedag, 2. påskedag, Kristi Himmelfartsdag, Pinsedag, 2. pinsedag
+Store Bededag | Medtages ikke – afskaffet fra 2024
+Indstilling | Valgmuligheder | Beskrivelse
+Antal-type | Timer / Antal | Timer: eksporterer timetal med 2 decimaler. Antal: eksporterer antal forekomster som heltal (fx overnatninger).
+Sats-kilde | Timesats, OT-satser, Salt, Overnatning, Dagpenge §56 | Bestemmer hvilken sats der bruges til kolonnen Sats og beregning af Total.
+Inkluder sats | Ja / Nej | Ja: sats-kolonnen skrives i CSV. Nej: satsen udelades fra CSV, men bruges stadig til beregning af Total.
+Inkluder total | Ja / Nej | Ja: en ekstra total-kolonne tilføjes (antal × sats). Nej: ingen total-kolonne.
+Lønpost | Beskrivelse
+Normal løn | Timesats × normaltimer for dagen (fra medarbejderens timefordeling).
+Tillæg 05-06 | Forhøjet sats for arbejde mellem kl. 05:00 og 06:00.
+Tillæg 18-21 / OT | Forhøjet sats for arbejde kl. 18-21 og overarbejde op til 3 timer.
+Nat / ekstra OT | Højeste sats for natarbejde (21-05) og overarbejde over 3 timer.
+Pålæsning | Tillæg for pålæsningstid (minutter × minutsats).
+Aflæsning | Tillæg for aflæsningstid (minutter × minutsats).
+Salttillæg | Tillæg pr. time for kørsel med salt (registreret på aktiviteten). Sats fra Stamdata (Tillæg-fanen).
+Overnatning | Fast sats pr. overnatning (antal forekomster × sats). Sats fra Stamdata (Tillæg-fanen).
+Dag | Hvad sker der?
+Lørdag | Regnes som en almindelig hverdag. Har medarbejderen ingen garanterede timer den lørdag (det typiske), bliver kørte timer automatisk til kode 8/9 efter samme regler som en hverdags overarbejde.
+Søndag / helligdag | Garanterede timer udbetales som kode 4 (fuldlønnet) eller kode 63 (timelønnet), oveni evt. kørsel. Alt kørt arbejde går til kode 1 + kode 9 – uanset klokkeslæt.
+1. maj / Grundlovsdag | Halve helligdage: fri fra kl. 12:00. Kørsel før 12 tæller normalt, kørsel efter 12 følger særlige regler for disse dage.
+Overenskomsttyper-fanen | Timesatser for overenskomsttyper (normal løn).
+Overtidssatser-fanen | Satser for de tre overtidstillæg (1 time før, 1-3 timer efter, øvrigt).
+Tillæg-fanen | Sats for salttillæg (pr. time), overnatning (pr. forekomst) og §56.
+Situation | Hvad gør du?
+Forkert start- eller sluttid importeret | Åbn aktiviteten og brug 'Ret starttid/sluttid'. Brug 'Fortryd rettelse' hvis du fortryder.
+Chauffør er ikke i systemet (import fejler) | Opret medarbejderen med korrekt førerkortnummer og importér .ddd-filen igen.
+Import viser 0 importerede og mange 'sprunget over', selvom filerne er nye | Kontrollér medarbejderens førerkortnummer i Stamdata: det skal være de første 14 tegn (landekode + 12 cifre), uden de sidste 2 udskiftnings-/fornyelsescifre. Ret nummeret og importér filen igen.
+Aktivitet skal deles i to (f.eks. skift af tur) | Brug 'Opdel aktivitet' og angiv tidspunktet for opdelingen.
+Aktivitet skal ignoreres | Brug 'Deaktiver' – aktiviteten medtages ikke i lønberegningen men slettes ikke.
+Medarbejder har nået 9 måneder | Systemet viser et varsel. Opdater overenskomsttypen for medarbejderen.
+Lønkørslen viser ikke nye lønposter (fx overnatning) | Genstart serveren: tryk Ctrl+C i terminalvinduet hvor den kører (eller luk python.exe via Jobliste) og start den igen. Systemet indlæser ny beregningslogik ved opstart – se kapitel 10.2 i Teknisk dokumentation.
+Rediger | Ændrer navn, initialer, mail, rolle eller adgangskode på en eksisterende bruger.
+Aktiver / Deaktiver | Slår login til/fra uden at slette brugeren eller dens historik. En deaktiveret bruger kan ikke logge ind.
+Din egen konto | Kan redigeres, men ikke deaktiveres – knappen erstattes af teksten '(dig selv)'.
+Rolle | Type | Typiske rettigheder ved oprettelse
+Administrator | Systemrolle – kan ikke slettes, rettigheder kan ikke redigeres | Alt: lønkørsel, import, brugerstyring, åbn låst periode, administrér baselines, godkend aktiviteter, se kalender, sæt springertillæg, vagtplan (se + redigér alle linjer)
+Lønbogholder | Almindelig rolle – kan redigeres/slettes | Lønkørsel, fraværsoversigt, import, se/tilføj medarbejdere, se/tilføj vogne, anciennitetsvarsel, godkend aktiviteter, se kalender, administrér medarbejdertillæg, sæt springertillæg, vagtplan (se + redigér alle linjer)
+Disponent | Almindelig rolle – kan redigeres/slettes | Se medarbejdere, se vogne, godkend aktiviteter, se kalender, sæt springertillæg, vagtplan (se + redigér alle linjer)
+Kontor | Almindelig rolle – kan redigeres/slettes | Se vagtplan, redigér egen linje i vagtplan
+Rettighed (nøgle) | Vises som | Giver adgang til
+payroll | Lønkørsel | Menupunktet 'Lønkørsel': prøvekørsel, PDF-timesedler og Danløn CSV-eksport.
+absence_overview | Fraværsoversigt | Menupunktet 'Fraværsoversigt'.
+import_ddd | Importer .ddd | Menupunktet 'Importer .ddd' – import af tachografdata.
+user_management | Brugerstyring | Menupunktet '🔑 Brugere' – denne side (brugere, roller, hændelseslog).
+reopen_period | Åbn låst lønperiode | Mulighed for at genåbne en periode hvor der allerede er kørt løn.
+stamdata | Stamdata | Menupunktet '⚙️ Stamdata' – alle ti faner (se kapitel 7). Auto-godkendelse-fanen kræver desuden 'manage_auto_approval'.
+view_employees | Se medarbejdere | Menupunktet 'Medarbejdere' (læse-adgang).
+manage_employees | Tilføj medarbejdere | Opret/rediger medarbejdere under 'Medarbejdere'.
+view_vehicles | Se vognpark | Menupunktet 'Vognpark' (læse-adgang).
+manage_vehicles | Tilføj vogn | Opret/rediger køretøjer under 'Vognpark'.
+manage_employee_supplements | Administrér medarbejdertillæg | Menupunktet 'Tillæg' – oprette/afslutte kr/time-tillæg.
+manage_holidays | Administrér helligdage | Stamdata → Helligdage: opret, auto-generer og slet.
+anciennitet_alert | Anciennitetsvarsel | Modtag pop-up-varsler om medarbejdere med 9 måneders anciennitet.
+paragraf_56_alert | §56-advarsel | Modtag pop-up-varsler når en medarbejders §56-aftale nærmer sig udløb, og besked når den automatisk deaktiveres (se afsnit 7.6).
+approve_activities | Godkend aktiviteter | Godkend/deaktiver/ret/opdel aktiviteter i aktivitetstabellen.
+auto_approve_manual_activities | Auto-godkend ved oprettelse | Manuelt oprettede aktiviteter godkendes automatisk ved oprettelse, uden separat godkendelsestrin.
+manage_auto_approval | Slå auto-godkendelse til/fra | Slå den statistiske baseline-auto-godkendelse til/fra globalt, og genopbyg baselines.
+view_calendar | Se aktivitetskalender | Se aktivitetstabellen (kalendervisningen på forsiden).
+toggle_springer | Sæt springertillæg | Afkryds springertillæg-fluebenet i aktivitetsoversigten.
+vagtplan_view | Se vagtplan | Menupunktet 'Vagtplan' (læse-adgang).
+vagtplan_edit_own | Redigér egen linje i vagtplan | Ret kun sin egen række i Vagtplan (matches på initialer).
+vagtplan_edit_all | Redigér alle linjer i vagtplan | Ret alle medarbejderes rækker i Vagtplan.
+payroll_settlement_view | Lønafregning (se) | Menupunktet 'Lønafregning': periodetotaler og pr.-medarbejder oversigt (se kapitel 12).
+payroll_settlement_export | Lønafregning (eksport) | Eksportér Lønafregning som CSV. Kræver låst periode, medmindre brugeren er administrator.
+dagsplan_view | Se dagsplan | Menupunktet 'Dagsplan' (læse-adgang, se kapitel 13).
+dagsplan_edit | Redigér dagsplan | Redigér tildelinger og 'informeret'-afkrydsning, meld/fjern materielt fravær.
+Kolonne | Indhold
+Normal timer / Overtid 1 time før / Overtid 1-3 timer efter / Øvrig overtid | Vist som timer:minutter (fx '7:30'), ikke decimaltal.
+Total tid | Dagens samlede tid som decimaltal (fx '7,50').
+Total i kr. / Beløb | Dagens samlede løn i kr. På en fraværsdag med en betalt fraværstype (se afsnit 12.1) vises fraværstimernes egen værdi her i stedet for 0,00.
+Vognnummer | Aktivitetens vognnummer – på en fraværsdag vises i stedet fraværstypens navn (fx 'Sygdom'), selvom aktiviteten har et udfyldt vognnummer-felt.
+Kolonne | Indhold
+Vognnummer | Vognens nummer (fra Vognpark).
+Beskrivelse | Vognens beskrivelse, hvis udfyldt under Vognpark.
+Chauffør | Søgbar medarbejder-vælger. Er medarbejderens 'Fast bil' sat til denne vogn (se afsnit 7.2), foreslås vedkommende automatisk – forslaget kan altid ændres.
+Opgave | Frit tekstfelt.
+Informeret | Afkrydsningsfelt – markér når chaufføren er informeret om dagens tildeling.
+Felt | Beskrivelse
+Nummerplade | Registreringsnummer, fx 'DF67671'.
+Vognnummer | Internt vognnummer.
+Beskrivelse | Fri tekst, vises som ekstra kolonne i Dagsplan (kapitel 13).
+Disponentgruppe | Valgfri – knytter vognen til en afdeling.
+Vognpark | Afkryds for at vognen skal vises i Dagsplans vognkolonne og kunne vælges som 'Fast bil' på en medarbejder (se nedenfor).
