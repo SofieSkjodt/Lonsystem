@@ -54,3 +54,21 @@ def test_range_day_defaults_afspadsering_skips_zero_scheduled_day():
     from routers.activities import _range_day_defaults
     emp = _emp({"even": [8, 8, 0, 8, 8, 0, 0], "odd": [8, 8, 0, 8, 8, 0, 0]})
     assert _range_day_defaults("afspadsering", date(2026, 1, 7), emp) is None  # onsdag = 0
+
+
+def test_all_dates_includes_weekend():
+    from routers.activities import _all_dates
+    dates = _all_dates(date(2026, 1, 5), date(2026, 1, 11))  # man 5/1 - søn 11/1
+    assert dates == [date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7),
+                     date(2026, 1, 8), date(2026, 1, 9), date(2026, 1, 10),
+                     date(2026, 1, 11)]
+
+
+def test_all_dates_single_day():
+    from routers.activities import _all_dates
+    assert _all_dates(date(2026, 1, 7), date(2026, 1, 7)) == [date(2026, 1, 7)]
+
+
+def test_count_based_range_types_contains_overnatning_and_dob():
+    from routers.activities import _COUNT_BASED_RANGE_TYPES
+    assert _COUNT_BASED_RANGE_TYPES == {"overnatning", "dob_overnatning"}

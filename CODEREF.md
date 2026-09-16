@@ -646,6 +646,22 @@ Ny sidebar-side der digitaliserer den daglige fordeling af vogne til chauffører
 
 ---
 
+## Overnatning over en periode (2026-09-16, activities.py + app.js)
+- `_all_dates(start, end)` (activities.py, ved siden af `_weekday_dates`) – alle kalenderdage inkl.
+  weekend/helligdage. `_COUNT_BASED_RANGE_TYPES = {"overnatning", "dob_overnatning"}`.
+- `update_absence_group_dates()` bruger `_all_dates()` i stedet for `_weekday_dates()` for disse to
+  typer, og opretter tilføjede dage med `start_time == end_time == midnat` (ingen timeberegning) i
+  stedet for at kalde `_range_day_defaults()`.
+- Frontend: overnatnings-grenen i `confirmManualActivity()` (app.js) har nu sin egen periode-gren
+  (adskilt fra `_RANGE_TYPES`/`isRange`-mekanismen ferie m.fl. bruger) – ingen krav om
+  registreringsnummer, alle kalenderdage medtages, ét DOB-flueben gælder hele perioden.
+  `getAllDates(from, to)` ved siden af `getWeekdayDates()`.
+- `saveAbsencePeriodDates()` genkender nu gruppens `activity_type` og bruger `getAllDates` +
+  bredere overlapskontrol for overnatnings-grupper ved efterfølgende periode-redigering.
+- Se `docs/superpowers/specs/2026-09-16-overnatning-periode-design.md` for fulde designbeslutninger.
+
+---
+
 ## Vigtige mønstre
 
 ### Tilføj ny modal-knap-handling

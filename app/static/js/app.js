@@ -1652,25 +1652,39 @@ async function saveAbsencePeriodDates(groupId) {
   } catch (e) { toast(e.message, "error"); return; }
 
   const empId = group[0].employee_id;
+  const groupType = group[0].activity_type;
+  const isCountBased = groupType === "overnatning" || groupType === "dob_overnatning";
   const existingDates = group.map(g => g.start_time.slice(0, 10));
-  const newDates = getWeekdayDates(newStart, newEnd);
+  const newDates = isCountBased ? getAllDates(newStart, newEnd) : getWeekdayDates(newStart, newEnd);
   const toRemove = existingDates.filter(d => !newDates.includes(d));
   const toAdd    = newDates.filter(d => !existingDates.includes(d));
 
   if (toRemove.length === 0 && toAdd.length === 0) { toast("Ingen ændringer i perioden", "warning"); return; }
 
   if (toAdd.length > 0) {
-    const conflicts = toAdd.filter(iso =>
-      state.activities.some(a =>
-        a.employee_id === empId &&
-        a.activity_type === "normal" &&
-        a.start_time.slice(0, 10) === iso &&
-        a.status !== "deactivated"
-      )
-    );
+    const conflicts = isCountBased
+      ? toAdd.filter(iso =>
+          state.activities.some(a =>
+            a.employee_id === empId &&
+            a.status !== "deactivated" &&
+            new Date(iso + "T00:00:00") < new Date(a.end_time) &&
+            new Date(iso + "T23:59:59") > new Date(a.start_time)
+          )
+        )
+      : toAdd.filter(iso =>
+          state.activities.some(a =>
+            a.employee_id === empId &&
+            a.activity_type === "normal" &&
+            a.start_time.slice(0, 10) === iso &&
+            a.status !== "deactivated"
+          )
+        );
     if (conflicts.length > 0) {
       const dateList = conflicts.map(d => { const [y,m,day]=d.split("-"); return `${day}-${m}-${y}`; }).join(", ");
-      if (!window.confirm(`Der er allerede registreret kørsel på følgende dag${conflicts.length>1?"e":""}:\n${dateList}\n\nVil du alligevel udvide fraværsperioden til at inkludere den/dem?`)) return;
+      const msg = isCountBased
+        ? `Der er allerede registreret ${conflicts.length > 1 ? "aktiviteter" : "en aktivitet"} følgende dag${conflicts.length>1?"e":""}:\n${dateList}\n\nVil du alligevel udvide perioden til at inkludere den/dem?`
+        : `Der er allerede registreret kørsel på følgende dag${conflicts.length>1?"e":""}:\n${dateList}\n\nVil du alligevel udvide fraværsperioden til at inkludere den/dem?`;
+      if (!window.confirm(msg)) return;
     }
   }
 
@@ -2172,7 +2186,7 @@ function updateManualTypeVisibility() {
   const isCommentOnly  = (type === "__none__");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode;
+  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode || isOvernatning;
   const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
   // "Ingen (kun kommentar)" skal kun vise Medarbejder + Type + Vagtplan-kommentar –
@@ -2699,6 +2713,17 @@ function getWeekdayDates(from, to) {
   return dates;
 }
 
+function getAllDates(from, to) {
+  const dates = [];
+  const d = new Date(from + "T12:00:00");
+  const end = new Date(to  + "T12:00:00");
+  while (d <= end) {
+    dates.push(d.toISOString().slice(0, 10));
+    d.setDate(d.getDate() + 1);
+  }
+  return dates;
+}
+
 async function _afterManualActivitySaved(empId, dateIso) {
   if (_manualActivityContext.vagtplan) {
     const text = document.getElementById("manual-vagtplan-comment").value.trim();
@@ -2765,19 +2790,66 @@ async function confirmManualActivity() {
   if (actType === "overnatning") {
     if (!start) { toast("Angiv dato for overnatningen", "error"); return; }
     const isDob = document.getElementById("manual-dob").checked;
-    const dateStr = start.slice(0, 10);
-    const timeStr = dateStr + "T00:00:00";
-    try {
-      await POST("/api/activities", {
-        employee_id: empId,
-        activity_type: isDob ? "dob_overnatning" : "overnatning",
-        start_time: timeStr,
-        end_time:   timeStr,
-        source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
+    const fra = start.slice(0, 10);
+
+    if (!tilDato) {
+      // ── Enkeltdag: uændret adfærd ────────────────────────────────────────
+      const timeStr = fra + "T00:00:00";
+      try {
+        await POST("/api/activities", {
+          employee_id: empId,
+          activity_type: isDob ? "dob_overnatning" : "overnatning",
+          start_time: timeStr,
+          end_time:   timeStr,
+          source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
+        });
+        toast(isDob ? "DOB-overnatning oprettet" : "Overnatning oprettet", "success");
+        closeModal("modal-manual-activity");
+        await _afterManualActivitySaved(empId, fra);
+      } catch (e) { toast(e.message, "error"); }
+      return;
+    }
+
+    // ── Periode: én aktivitet pr. kalenderdag ────────────────────────────
+    if (tilDato < fra) { toast("Til dato skal være på eller efter fra dato", "error"); return; }
+    const dates = getAllDates(fra, tilDato);
+
+    const allOverlaps = [];
+    for (const iso of dates) {
+      const hits = state.activities.filter(a => {
+        if (a.employee_id !== empId) return false;
+        if (a.status === "deactivated") return false;
+        return new Date(iso + "T00:00:00") < new Date(a.end_time) &&
+               new Date(iso + "T23:59:59") > new Date(a.start_time);
       });
-      toast(isDob ? "DOB-overnatning oprettet" : "Overnatning oprettet", "success");
+      allOverlaps.push(...hits.map(h => ({ iso, act: h })));
+    }
+    if (allOverlaps.length > 0) {
+      const lines = allOverlaps.slice(0, 5).map(o =>
+        `• ${o.iso}: ${TYPE_LABELS[o.act.activity_type] || o.act.activity_type} ${formatTime(o.act.start_time)}–${formatTime(o.act.end_time)}`
+      );
+      if (allOverlaps.length > 5) lines.push(`  … og ${allOverlaps.length - 5} mere`);
+      if (!window.confirm(`Advarsel: ${allOverlaps.length} overlappende aktiviteter i perioden:\n\n${lines.join("\n")}\n\nVil du stadig oprette alle overnatninger?`)) return;
+    }
+
+    const absenceGroupId = _genGroupId();
+    let created = 0;
+    try {
+      for (const iso of dates) {
+        const timeStr = iso + "T00:00:00";
+        await POST("/api/activities", {
+          employee_id: empId,
+          activity_type: isDob ? "dob_overnatning" : "overnatning",
+          start_time: timeStr,
+          end_time:   timeStr,
+          absence_group_id: absenceGroupId,
+          source: _manualActivityContext.vagtplan ? "vagtplan" : undefined,
+        });
+        created++;
+      }
+      toast(`${created} ${isDob ? "DOB-overnatning" : "overnatning"}${created === 1 ? "" : "er"} oprettet`, "success");
       closeModal("modal-manual-activity");
-      await _afterManualActivitySaved(empId, dateStr);
+      await _afterManualActivitySaved(empId, dates[dates.length - 1]);
     } catch (e) { toast(e.message, "error"); }
     return;
   }

@@ -431,6 +431,19 @@ def _weekday_dates(start: date, end: date) -> list[date]:
     return dates
 
 
+def _all_dates(start: date, end: date) -> list[date]:
+    """Alle kalenderdage i [start, end] inkl. weekend/helligdage – mirror af getAllDates() i app.js."""
+    dates = []
+    d = start
+    while d <= end:
+        dates.append(d)
+        d += timedelta(days=1)
+    return dates
+
+
+_COUNT_BASED_RANGE_TYPES = {"overnatning", "dob_overnatning"}
+
+
 def _range_day_defaults(activity_type: str, d: date, employee: Employee) -> Optional[float]:
     """Timetal for én dag i en fraværsperiode, eller None hvis dagen skal
     springes over (afspadsering uden skemalagte timer denne ugedag). Mirror af
@@ -572,7 +585,8 @@ def update_absence_group_dates(group_id: str, body: AbsenceGroupDatesUpdate,
     if template.source == ActivitySource.vagtplan and not _has_vagtplan_edit_access(db, current_user, employee):
         raise HTTPException(403, "Ingen redigeringsret til Vagtplan for denne medarbejder")
 
-    new_dates = set(_weekday_dates(body.new_start_date, body.new_end_date))
+    date_fn = _all_dates if activity_type in _COUNT_BASED_RANGE_TYPES else _weekday_dates
+    new_dates = set(date_fn(body.new_start_date, body.new_end_date))
     if not new_dates:
         raise HTTPException(400, "Ingen hverdage i den valgte periode")
 
@@ -607,12 +621,15 @@ def update_absence_group_dates(group_id: str, body: AbsenceGroupDatesUpdate,
     # Trin 3: tilføj
     skipped: list[str] = []
     for d in to_add_dates:
-        hours = _range_day_defaults(activity_type, d, employee)
-        if hours is None:
-            skipped.append(d.isoformat())
-            continue
-        start_dt = datetime.combine(d, time(6, 0))
-        end_dt = start_dt + timedelta(minutes=round(hours * 60))
+        if activity_type in _COUNT_BASED_RANGE_TYPES:
+            start_dt = end_dt = datetime.combine(d, time(0, 0))
+        else:
+            hours = _range_day_defaults(activity_type, d, employee)
+            if hours is None:
+                skipped.append(d.isoformat())
+                continue
+            start_dt = datetime.combine(d, time(6, 0))
+            end_dt = start_dt + timedelta(minutes=round(hours * 60))
         period = get_billing_period(d, db)
         db.add(Activity(
             employee_id=template.employee_id,

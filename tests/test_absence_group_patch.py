@@ -162,3 +162,67 @@ def test_vagtplan_source_with_permission_succeeds(db, employee):
     body = AbsenceGroupDatesUpdate(new_start_date=date(2026, 1, 5), new_end_date=date(2026, 1, 6))
     result = update_absence_group_dates("grp-1", body, current_user=_user(role="disponent", initials="DSP"), db=db)
     assert len(result.activities) == 2
+
+
+def test_growing_overnatning_range_includes_weekend_with_midnight_times(db, employee):
+    from routers.activities import update_absence_group_dates
+    dates = [date(2026, 1, 5), date(2026, 1, 6)]  # man+tir
+    _make_group(db, employee, dates, activity_type="overnatning")
+
+    body = AbsenceGroupDatesUpdate(new_start_date=date(2026, 1, 5), new_end_date=date(2026, 1, 11))  # +weekend
+    result = update_absence_group_dates("grp-1", body, current_user=_user(), db=db)
+
+    remaining_dates = sorted(a.start_time.date() for a in result.activities)
+    assert remaining_dates == [date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7),
+                               date(2026, 1, 8), date(2026, 1, 9), date(2026, 1, 10),
+                               date(2026, 1, 11)]
+    saturday = next(a for a in result.activities if a.start_time.date() == date(2026, 1, 10))
+    assert saturday.start_time.strftime("%H:%M") == "00:00"
+    assert saturday.end_time == saturday.start_time
+    assert saturday.activity_type == "overnatning"
+    assert saturday.status == ActivityStatus.approved
+    assert result.skipped == []
+
+
+def test_growing_dob_overnatning_range_includes_weekend(db, employee):
+    from routers.activities import update_absence_group_dates
+    dates = [date(2026, 1, 5)]
+    _make_group(db, employee, dates, activity_type="dob_overnatning")
+
+    body = AbsenceGroupDatesUpdate(new_start_date=date(2026, 1, 5), new_end_date=date(2026, 1, 6))
+    result = update_absence_group_dates("grp-1", body, current_user=_user(), db=db)
+
+    remaining_dates = sorted(a.start_time.date() for a in result.activities)
+    assert remaining_dates == [date(2026, 1, 5), date(2026, 1, 6)]
+    for a in result.activities:
+        assert a.activity_type == "dob_overnatning"
+    new_day = next(a for a in result.activities if a.start_time.date() == date(2026, 1, 6))
+    assert new_day.start_time == new_day.end_time
+    assert new_day.start_time.strftime("%H:%M") == "00:00"
+
+
+def test_shrinking_overnatning_range_deletes_pending_days_outside_new_range(db, employee):
+    from routers.activities import update_absence_group_dates
+    dates = [date(2026, 1, 5), date(2026, 1, 6), date(2026, 1, 7)]
+    _make_group(db, employee, dates, activity_type="overnatning", status=ActivityStatus.pending)
+
+    body = AbsenceGroupDatesUpdate(new_start_date=date(2026, 1, 5), new_end_date=date(2026, 1, 6))
+    result = update_absence_group_dates("grp-1", body, current_user=_user(), db=db)
+
+    remaining_dates = sorted(a.start_time.date() for a in result.activities)
+    assert remaining_dates == [date(2026, 1, 5), date(2026, 1, 6)]
+    assert db.query(Activity).filter(Activity.absence_group_id == "grp-1").count() == 2
+
+
+def test_ferie_range_still_uses_weekday_dates_not_all_dates(db, employee):
+    """Regression: almindelige fraværstyper må IKKE pludselig få weekend-dage med."""
+    from routers.activities import update_absence_group_dates
+    dates = [date(2026, 1, 5)]
+    _make_group(db, employee, dates, activity_type="ferie")
+
+    body = AbsenceGroupDatesUpdate(new_start_date=date(2026, 1, 5), new_end_date=date(2026, 1, 11))  # +weekend
+    result = update_absence_group_dates("grp-1", body, current_user=_user(), db=db)
+
+    remaining_dates = sorted(a.start_time.date() for a in result.activities)
+    assert date(2026, 1, 10) not in remaining_dates  # lørdag
+    assert date(2026, 1, 11) not in remaining_dates  # søndag
