@@ -533,6 +533,7 @@ def build_teknisk():
         ("Duplikat-tjek/udvidelse", "Findes der allerede en aktivitet med samme medarbejder + starttid, opdateres km-data hvis de mangler. Har den nye fil desuden et SENERE sluttidspunkt end den eksisterende aktivitet (fx fordi kortet først blev læst af midt på en vagt og senere igen efter vagtens afslutning), udvides aktiviteten (sluttid, segmenter, pauser, procentfordeling) i stedet for at blive sprunget over – ellers ville den ekstra tid gå tabt for altid. Var aktiviteten allerede godkendt/deaktiveret, genåbnes den til 'afventende', så den udvidede tid skal godkendes igen (rettet 2026-07-02)."),
         ("Import af aktivitet", "_import_activity() returnerer 'new' (ny aktivitet), 'updated' (eksisterende aktivitet fik km-data udfyldt og/eller blev udvidet med en senere sluttid), 'skipped_unknown_card' (intet førerkortnummer matcher) eller 'skipped_duplicate' (allerede importeret, intet nyt at tilføje) – hver årsag tælles separat."),
         ("Km-start/km-slut", "_extract_daily_odometer() finder et separat array af (km, tidsstempel)-par i filen ved kæde-validering (mindst 5 elementer med præcis 20 bytes' afstand, ingen fast offset). km_start = km-standen tættest på dagens beregnede startminut; km_end = km_start + dagens egen kørte distance."),
+        ("Ufuldstændig-markering (is_likely_incomplete)", "Kun for filens ALLERSIDSTE vagt: markeres som formentlig ufuldstændig hvis vagten IKKE slutter i hvil OG (dagens km-distance er 0 ELLER vagtens varighed er under LONG_REST_THRESHOLD_MINUTES) – et signal om at kortet blev læst af midt i vagten, så resten af dagen mangler i filen. Vises i aktivitetstabellen som et rødt ✕-mærke med forklarende tooltip. En efterfølgende genimport med en nyere, mere komplet fil kan udvide/erstatte den ufuldstændige linje (se genimport-reglerne nedenfor); omvendt må en NY udlæsning der selv er markeret ufuldstændig, ALDRIG lægges fuldt ind oveni en allerede komplet linje – kun udvides."),
     ], 1):
         bullet(doc, f"{step[1]}", f"{i}. {step[0]}: ")
 
@@ -822,9 +823,9 @@ def build_teknisk():
         ["Fane", "Indhold", "CRUD-muligheder"],
         [
             ["Overenskomsttyper", "master_agreement_types", "Opret, rediger navn/sats, slet"],
-            ["Overtidssatser",    "master_overtime_rates",  "Rediger satser for de tre tillægstyper"],
-            ["Tillæg",            "master_supplement_rates","Rediger satser for salttillæg, overnatning, §56"],
-            ["Løntypekoder",      "master_pay_types",       "Opret nye, rediger type/kode/CSV-flag/antal-type/sats-kilde/inkl. sats/inkl. total, slet alle"],
+            ["Overtidssatser",    "master_overtime_rates",  "Rediger de tre systemsatser; opret/slet egne, brugeroprettede satser (kan ikke slettes, hvis en løntypekode bruger den som sats-kilde)"],
+            ["Tillæg",            "master_supplement_rates","Rediger systemsatserne (salttillæg, overnatning, DOB-overnatning, §56); opret/slet egne, brugeroprettede tillæg (samme slette-spærre som Overtidssatser)"],
+            ["Løntypekoder",      "master_pay_types",       "Opret nye, rediger type/kode/CSV-flag/antal-type/sats-kilde/inkl. sats/inkl. total, slet alle – INGEN 'i brug'-spærre ved sletning, heller ikke for systemsatser (kode 1/normal tid m.fl.)"],
             ["Fraværstyper",      "master_absence_types",   "Opret nye, aktiver/deaktiver, slet alle"],
             ["CVR nummer",        "master_cvr_numbers",     "Opret, rediger, sæt standard, slet"],
             ["Helligdage",        "holidays",               "Auto-generer for år, opret manuelt, slet. Kræver 'manage_holidays'-rettighed."],
@@ -848,6 +849,14 @@ def build_teknisk():
         "kun for CSV-eksporten – IKKE for selve lønberegningen/visningen i prøvekørsel og "
         "PDF-timesedler. En helt ny form for tillæg (fx et nyt tidsvindue eller en ny dagtype-"
         "regel) kræver udviklerarbejde i calculators/overtime.py eller day_type.py.",
+        "VIGTIGT"
+    )
+    note_box(doc,
+        "I modsætning til Overenskomsttyper/Overtidssatser/Tillæg/Aftale, som alle blokerer "
+        "sletning af en række der er i brug, har Løntypekoder-fanens Slet-knap INGEN tilsvarende "
+        "spærre – heller ikke for en systemseedet kode (fx den der ligger bag kode 1/normal tid). "
+        "delete_pay_type() sletter ubetinget uanset hvor mange steder koden bruges. Slet derfor "
+        "kun en løntypekode, hvis du er helt sikker på at den ikke længere skal med i Danløn CSV'en.",
         "VIGTIGT"
     )
 
@@ -1184,6 +1193,37 @@ def build_teknisk():
         "VIGTIGT"
     )
 
+    heading(doc, "Overnatning som periode", 2, "7.8")
+    body(doc, (
+        "Siden 2026-09-16 kan overnatning/DOB-overnatning oprettes for et datointerval ('Til dato' "
+        "i opret-modalen) i stedet for kun én dag ad gangen. Den isolerede overnatnings-gren i "
+        "confirmManualActivity() (app.js) udvides til selv at forgrene på om 'Til dato' er udfyldt "
+        "– den generelle periode-gren/_RANGE_TYPES (brugt af ferie/sygdom/afspadsering m.fl.) "
+        "røres IKKE, da overnatning hverken kræver registreringsnummer eller skematimer."
+    ))
+    body(doc, (
+        "getAllDates(fra, til) (app.js) / _all_dates() (activities.py, ny hjælpefunktion ved "
+        "siden af _weekday_dates()) genererer ALLE kalenderdage i intervallet, inkl. weekend og "
+        "helligdage – i modsætning til _weekday_dates(), som de øvrige periodetyper bruger. Ét "
+        "POST /api/activities pr. dag, alle med samme absence_group_id (samme mønster som "
+        "ferie-perioder) og enten alle 'overnatning' eller alle 'dob_overnatning' – DOB-fluebenet "
+        "gælder for hele perioden, ingen blanding pr. dag understøttet i ét opret-kald."
+    ))
+    body(doc, (
+        "Overlapskontrollen genbruger IKKE modal-absence-conflict/_absenceConflictConfirmed (den "
+        "mekanisme øvrige periodetyper bruger) – i stedet en simpel window.confirm() med op til 5 "
+        "konkrete overlap listet, som tjekker mod ENHVER overlappende aktivitet (ikke kun "
+        "'normal'). Samme bredere logik er kopieret ind (ikke delt som funktion, for at holde "
+        "overnatnings-grenen selvstændig)."
+    ))
+    note_box(doc,
+        "_calculate_employee() krævede INGEN ændring: overnight_count/dob_overnight_count tæller "
+        "allerede simpelthen antal Activity-rækker af typen i perioden, uanset om de stammer fra "
+        "enkeltdags- eller periode-oprettelse – lønkørsel, PDF-timeseddel og Danløn CSV er derfor "
+        "upåvirkede af denne ændring. Se docs/superpowers/specs/2026-09-16-overnatning-periode-design.md.",
+        "TEKNISK NOTE"
+    )
+
     # ── 8. Aktivitetshåndtering ───────────────────────────────────────────
     heading(doc, "Aktivitetshåndtering", 1, "8")
 
@@ -1312,10 +1352,10 @@ def build_teknisk():
         "periodens dage."
     ))
     for step in [
-        "Kun hverdage (mandag–fredag) indgår i beregningen af det nye datointerval.",
+        "Kun hverdage (mandag–fredag) indgår i beregningen af det nye datointerval for de fleste typer – UNDTAGEN overnatning/dob_overnatning (_COUNT_BASED_RANGE_TYPES), hvor _all_dates() bruges i stedet, så weekend/helligdage tælles med (afsnit 7.8).",
         "Dage der FJERNES fra perioden: afvises alt-eller-intet hvis nogen af dem hører til en lukket lønperiode, eller er splittet – ellers SLETTES de tilhørende aktiviteter permanent (db.delete()), ikke deaktiveres.",
-        "Dage der TILFØJES: en ny aktivitet oprettes for hver, med standardtimer fra medarbejderens timefordeling (lige/ulige uge). Er de skemalagte timer 0 for en given ugedag (fx afspadsering på en fridag), springes dagen over og rapporteres i svarets skipped-liste i stedet for at fejle.",
-        "Backend udfører INGEN konflikttjek mod eksisterende kørsel ('normal tid') på de tilføjede dage – det tjek er kun implementeret i frontend (se Brugervejledningen, afsnit 6.4).",
+        "Dage der TILFØJES: for almindelige fraværstyper oprettes en ny aktivitet med standardtimer fra medarbejderens timefordeling (lige/ulige uge) – er de skemalagte timer 0 for en given ugedag, springes dagen over og rapporteres i svarets skipped-liste i stedet for at fejle. For overnatning/dob_overnatning oprettes i stedet en midnatsstemplet nul-varighed-aktivitet pr. dag, som ved almindelig oprettelse – ingen skematime-beregning, ingen skip-mulighed.",
+        "Backend udfører INGEN konflikttjek mod eksisterende kørsel ('normal tid') på de tilføjede dage for de fleste typer – det tjek er kun implementeret i frontend (se Brugervejledningen, afsnit 6.4). For overnatning/dob_overnatning tjekker frontend i stedet mod ENHVER overlappende aktivitet, ikke kun 'normal'.",
     ]:
         bullet(doc, step)
     body(doc, (
@@ -1942,21 +1982,47 @@ def build_teknisk():
     body(doc, (
         "Fraværsoversigt (routers/absence_overview_router.py) viser aggregerede fraværstimer/"
         "-dage pr. medarbejder og pr. fraværstype over en valgfri datointerval, uafhængigt af "
-        "lønperiodeinddelingen. Al data beregnes af de samme underliggende fraværs-summeringer "
-        "som lønkørslen bruger – ingen duplikeret logik."
+        "lønperiodeinddelingen, samt en sats i kr/time pr. række."
     ))
 
     heading(doc, "API-endepunkter", 2, "16.1")
     header_table(doc,
         ["Endepunkt", "Metode", "Beskrivelse"],
         [
-            ["/api/absence-overview/data",                "GET", "Fraværstotaler (timer/dage) pr. medarbejder og -type for en fra/til-datointerval."],
+            ["/api/absence-overview/data",                "GET", "Fraværstotaler (timer/dage) + rate (kr/t) pr. medarbejder og -type for en fra/til-datointerval."],
             ["/api/absence-overview/employee-options",    "GET", "Medarbejdere + disponentgrupper til filterdropdowns."],
             ["/api/absence-overview/export-per-employee", "GET", "Excel-eksport: én række pr. kalenderdag med fravær pr. medarbejder. Filtreres på alle/disponentgruppe/enkelt medarbejder."],
             ["/api/absence-overview/export-per-type",     "GET", "Excel-eksport aggregeret pr. fraværstype. Filtreres på hvilke fraværstyper der skal medtages."],
         ]
     )
     body(doc, "Alle fire endepunkter kræver rettigheden 'absence_overview'.")
+
+    heading(doc, "Satsberegning – egen, ikke-delt logik", 2, "16.2")
+    body(doc, (
+        "I MODSÆTNING til Lønafregning (kapitel 13), som eksplicit genbruger "
+        "_calculate_employee() for at undgå duplikeret lønlogik, har Fraværsoversigt sin egen, "
+        "selvstændige sats-beregning (_PAID_ABSENCE_TYPES/_FIXED_RATE_ABSENCE, "
+        "absence_overview_router.py) – IKKE koblet til payroll_router.py."
+    ))
+    header_table(doc,
+        ["Konstant", "Indhold", "Betydning"],
+        [
+            ["_PAID_ABSENCE_TYPES", "sygdom, barn_1sygedag, barn_2_3sygedag, barsel, graviditetsbetinget_sygdom, skole_kursus", "Disse typer vises med emp.hourly_rate (overenskomstsats + evt. personligt tillæg) som rate. Alle andre typer, der ikke er i denne mængde eller i _FIXED_RATE_ABSENCE, vises med rate=0."],
+            ["_FIXED_RATE_ABSENCE",  "{'paragraf_56_syg': 137.43}",                                                             "Hardkodet kr-værdi direkte i koden – IKKE opslået fra Stamdata → Tillæg ('Dagpenge §56')."],
+        ],
+        [Cm(3.5), Cm(6), Cm(6.5)]
+    )
+    note_box(doc,
+        "Kendt uoverensstemmelse med den øvrige lønlogik (Lønafregning/Danløn CSV, kapitel 13): "
+        "(1) 137.43 for §56 syg er hardkodet her og opdateres IKKE hvis Stamdata → Tillæg → "
+        "'Dagpenge §56' ændres – de to steder kan derfor vise forskellige satser for samme "
+        "fraværstype. (2) _PAID_ABSENCE_TYPES udelader afspadsering, ferie og feriefri (som "
+        "Lønafregning betaler til hourly_rate) samt barn_1sygedag_u_8uger (som Lønafregning "
+        "betaler til dagpengesats) – disse vises derfor med rate=0 kr/t i Fraværsoversigt, selvom "
+        "de reelt udbetales. Dette er formentlig utilsigtet drift, ikke en bevidst designbeslutning "
+        "– bør rettes til at genbruge samme opslag som Lønafregning/_calculate_employee().",
+        "VIGTIGT"
+    )
 
     # ── 17. Vognpark ─────────────────────────────────────────────────────
     doc.add_page_break()
@@ -2252,6 +2318,7 @@ def build_bruger():
         ["⚠️ (advarselstrekant)", "Aktiviteten er over 12 timer lang. Advarsel om usædvanlig lang vagt. Vises kun når status er Afventer eller Deaktiveret – forsvinder ved godkendelse."],
         ["(K) prefix",             "Aktiviteten er et barn af en opdelt aktivitet."],
         ["● (lille prik)",         "Aktiviteten er auto-godkendt af systemet (statistisk baseline) – se kapitel 17."],
+        ["✕ (rødt kryds)",         "Vises kun på dagens sidste importerede vagt. Betyder at kortet formentlig er læst af MIDT i vagten (fx 0 km registreret den dag, eller vagten er usædvanligt kort) – resten af dagen mangler sandsynligvis. Hent en ny fil fra kortet senere og importér igen, så udvides/rettes vagten automatisk."],
     ])
 
     heading(doc, "Filtrering", 2, "4.3")
@@ -2435,9 +2502,21 @@ def build_bruger():
             ["Afspadsering",   "Registrerer afspadsering. Som periode ('Til dato') tæller hver hverdag 7,4 t/skemalagte timer; som enkeltdag bruges den faktiske start-/sluttid."],
             ["Fri",            "Registrerer fridag."],
             ["Skole/kursus",   "Registrerer skole- eller kursusdag."],
-            ["Overnatning",    "Registrerer en overnatning (flat sats pr. forekomst – ikke timer). Angiv blot datoen. Satsen hentes automatisk fra Stamdata (Tillæg-fanen)."],
+            ["Overnatning",    "Registrerer en overnatning (flat sats pr. forekomst – ikke timer). Angiv datoen, eller udfyld 'Til dato' for at registrere flere overnatninger i træk (se note nedenfor). Satsen hentes automatisk fra Stamdata (Tillæg-fanen)."],
             ["Overnatning – DOB",   "Krydses af INDE I Overnatning-oprettelsen (samme modal, ekstra 'DOB'-flueben) – registreres som en separat overnatningstype med sin egen sats i Stamdata → Tillæg. Vises som egen linje i PDF-timesedlen og prøvekørslens Excel-ark, men indgår PT. IKKE i Danløn CSV-eksporten."],
         ]
+    )
+    note_box(doc,
+        "Overnatning som periode ('Til dato' udfyldt) opretter ÉN overnatning PR. KALENDERDAG i "
+        "intervallet – inkl. lørdag, søndag OG helligdage (i modsætning til Ferie/Afspadsering "
+        "m.fl., som kun tæller hverdage). DOB-fluebenet gælder for hele perioden på én gang – det "
+        "er ikke muligt at blande almindelig og DOB-overnatning i samme oprettelse. Overlapper en "
+        "af dagene en anden allerede registreret aktivitet, vises en advarsel med de(n) berørte "
+        "dato(er), som du skal bekræfte for at fortsætte. En oprettet overnatningsperiode kan "
+        "bagefter forlænges/afkortes på samme måde som andre fraværsperioder (afsnit 6.4). "
+        "Registreringsnummer kræves fortsat ikke, hverken for én enkelt overnatning eller en "
+        "periode.",
+        "GODT AT VIDE"
     )
     body(doc, (
         "Sygdom, Barn 1.sygedag og Barsel omklassificeres automatisk til en ulønnet variant, "
@@ -2487,6 +2566,7 @@ def build_bruger():
     ))
     bullet(doc, "Dage der TILFØJES til perioden, får en ny aktivitet med samme standardtimer som ved oprettelse. Har medarbejderen 0 skemalagte timer den ugedag, springes dagen automatisk over.")
     bullet(doc, "Dage der FJERNES fra perioden, bliver PERMANENT slettet – ikke deaktiveret. Systemet viser altid en opsummering ('N dage slettes permanent / N dage oprettes') til bekræftelse, før noget gennemføres.")
+    bullet(doc, "For en Overnatnings-periode (afsnit 6.2) tælles ALLE kalenderdage i det nye interval, inkl. weekend/helligdage – ikke kun hverdage som for de øvrige fraværstyper.")
     note_box(doc,
         "Er en af dagene der skal fjernes i en lønperiode der allerede er kørt løn på ('Lukket'), "
         "afvises hele ændringen – ingen dage fjernes, før perioden evt. genåbnes. Det samme "
@@ -3246,7 +3326,15 @@ def build_bruger():
         "14-dages lønperioder. Kræver rettigheden 'Fraværsoversigt'."
     ))
     bullet(doc, "Vælg en fra- og til-dato for den ønskede periode.")
-    bullet(doc, "Tabellen viser fraværstimer/-dage summeret pr. medarbejder og pr. fraværstype.")
+    bullet(doc, "Tabellen viser fraværstimer/-dage summeret pr. medarbejder og pr. fraværstype, samt en sats i kr/time pr. række.")
+    note_box(doc,
+        "Satsen der vises her, opdateres IKKE nødvendigvis, hvis I ændrer satser i Stamdata. "
+        "Særligt §56-satsen kan afvige fra den aktuelle værdi i Stamdata → Tillæg, og fraværstyper "
+        "som Ferie, Feriefri og Afspadsering vises med 0 kr/t her, selvom de udbetales i den "
+        "faktiske lønkørsel. Brug Lønafregning (kapitel 12) eller den endelige Danløn-eksport som "
+        "facit for hvad der reelt udbetales – Fraværsoversigtens sats-kolonne er kun vejledende.",
+        "BEMÆRK"
+    )
 
     heading(doc, "Eksport", 2, "15.1")
     body(doc, "To eksportknapper downloader Excel-filer med samme datointerval som den valgte visning:")
