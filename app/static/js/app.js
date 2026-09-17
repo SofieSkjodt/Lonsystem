@@ -2565,12 +2565,15 @@ function _updateManualRegHint() {
   }
 }
 
+let _manualRegHighlightIndex = -1;
+
 function _renderManualRegDropdown(query) {
   const dropdown = document.getElementById("manual-reg-dropdown");
   const q = query.trim().toUpperCase();
   const matches = !q ? state.vehicles : state.vehicles.filter(v =>
     v.vehicle_number.toUpperCase().includes(q) || v.registration_number.toUpperCase().includes(q)
   );
+  _manualRegHighlightIndex = -1;
   dropdown.innerHTML = matches.length
     ? matches.map(v => `
         <div class="vehicle-search-item" data-num="${h(v.vehicle_number)}"
@@ -2578,12 +2581,40 @@ function _renderManualRegDropdown(query) {
           ${h(v.vehicle_number)} <span style="color:var(--text-light)">– ${h(v.registration_number)}</span>
         </div>`).join("")
     : `<div style="padding:8px 10px;color:var(--text-light);font-size:13px">Ingen køretøjer fundet</div>`;
-  dropdown.querySelectorAll(".vehicle-search-item").forEach(el => {
-    el.addEventListener("mouseover", () => el.style.background = "var(--bg)");
-    el.addEventListener("mouseout",  () => el.style.background = "");
+  dropdown.querySelectorAll(".vehicle-search-item").forEach((el, idx) => {
+    el.addEventListener("mouseover", () => _setManualRegHighlight(idx));
+    el.addEventListener("mouseout",  () => _setManualRegHighlight(-1));
     el.addEventListener("click", () => _selectManualRegVehicle(el.dataset.num));
   });
   dropdown.style.display = "block";
+}
+
+function _setManualRegHighlight(index) {
+  const dropdown = document.getElementById("manual-reg-dropdown");
+  const items = dropdown.querySelectorAll(".vehicle-search-item[data-num]");
+  items.forEach((el, i) => { el.style.background = i === index ? "var(--bg)" : ""; });
+  _manualRegHighlightIndex = index;
+}
+
+function _moveManualRegHighlight(delta) {
+  const dropdown = document.getElementById("manual-reg-dropdown");
+  const items = dropdown.querySelectorAll(".vehicle-search-item[data-num]");
+  if (!items.length) return;
+  let next = _manualRegHighlightIndex + delta;
+  if (next < 0) next = items.length - 1;
+  if (next >= items.length) next = 0;
+  _setManualRegHighlight(next);
+  items[next].scrollIntoView({ block: "nearest" });
+}
+
+function _selectManualRegHighlighted() {
+  const dropdown = document.getElementById("manual-reg-dropdown");
+  const items = dropdown.querySelectorAll(".vehicle-search-item[data-num]");
+  if (_manualRegHighlightIndex >= 0 && items[_manualRegHighlightIndex]) {
+    _selectManualRegVehicle(items[_manualRegHighlightIndex].dataset.num);
+    return true;
+  }
+  return false;
 }
 
 function _selectManualRegVehicle(vehicleNumber) {
@@ -2634,6 +2665,21 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   };
   document.getElementById("manual-reg").onfocus = function () {
     _renderManualRegDropdown(this.value);
+  };
+  document.getElementById("manual-reg").onkeydown = function (e) {
+    const dropdown = document.getElementById("manual-reg-dropdown");
+    if (dropdown.style.display !== "block") return;
+    if (e.key === "Tab" || e.key === "ArrowDown") {
+      e.preventDefault();
+      _moveManualRegHighlight(e.shiftKey ? -1 : 1);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      _moveManualRegHighlight(-1);
+    } else if (e.key === "Enter") {
+      if (_selectManualRegHighlighted()) e.preventDefault();
+    } else if (e.key === "Escape") {
+      dropdown.style.display = "none";
+    }
   };
   document.getElementById("manual-type").value = _manualActivityContext.vagtplan ? "ferie" : "normal";
   document.getElementById("manual-terminsdato").value = "";
