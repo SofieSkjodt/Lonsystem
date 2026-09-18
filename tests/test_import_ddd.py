@@ -294,6 +294,50 @@ def test_unchanged_readout_of_approved_activity_does_not_create_new_line(db, emp
     assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
 
 
+def test_stale_incomplete_reread_of_deactivated_activity_does_not_create_new_line(db, employee):
+    """
+    Reproducerer Alexander B. Knudsen 11/9-2026: en vagt blev først importeret
+    ufuldstændigt (kortet læst midt i vagten), senere genindlæst fuldt og
+    derefter deaktiveret (brugeren erstattede den med en manuel linje). Den
+    gamle, ufuldstændige .ddd-fil ligger stadig i ddd_input/ og bliver
+    genparset ved hver eneste geninport (scan_ddd_folder() aldersfiltrerer
+    kun på filens mtime, ikke på om den allerede er importeret) – uden at
+    tilføje NOGEN ny information ift. den allerede afgjorte, fulde vagt.
+    Det må ikke starte en ny konkurrerende linje hver gang.
+    """
+    start = datetime(2026, 9, 11, 6, 51)
+    cutoff = datetime(2026, 9, 11, 8, 57)
+    full_end = datetime(2026, 9, 11, 9, 55)
+    full_segments = [
+        (start, datetime(2026, 9, 11, 7, 23), "work"),
+        (datetime(2026, 9, 11, 7, 23), datetime(2026, 9, 11, 7, 47), "driving"),
+        (datetime(2026, 9, 11, 7, 47), cutoff, "work"),
+        (cutoff, full_end, "driving"),
+    ]
+    act = make_activity(db, employee, start=start, end=full_end, status=ActivityStatus.deactivated)
+    act.segments = [[s.isoformat(), e.isoformat(), n] for s, e, n in full_segments]
+    act.pause_intervals = []
+    db.commit()
+
+    # Samme kort, læst midt i vagten – segmenterne er et rent præfiks af de
+    # allerede kendte (grænsen falder præcis på en segmentovergang, som en
+    # tachograf-udlæsning altid vil gøre).
+    stale_incomplete = _parsed(
+        start, cutoff,
+        segments=full_segments[:3],
+        pauses=[],
+        is_likely_incomplete=True,
+    )
+
+    result, _ = _import_activity(stale_incomplete, db, employee)
+    db.refresh(act)
+
+    assert result == "skipped_duplicate"
+    assert act.end_time == full_end
+    assert act.status == ActivityStatus.deactivated
+    assert db.query(Activity).filter(Activity.employee_id == employee.id).count() == 1
+
+
 def test_legacy_corrected_segment_without_recorded_original_still_creates_one_more_line(db, employee):
     """
     Reproducerer Alexander B. Knudsen og Claus Ulrik Nicolaisen 9/9-2026: en

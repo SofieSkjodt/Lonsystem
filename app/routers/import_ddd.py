@@ -452,7 +452,27 @@ def _import_activity(
                     # (se models.py::Activity) omfatter kun 'pending'-rækker, så
                     # den nye linje kan uden problemer have samme starttidspunkt
                     # som den godkendte/deaktiverede aktivitet.
-                    if (
+                    #
+                    # UNDTAGELSE – ufuldstændig genlæsning af allerede kendt data
+                    # (bekræftet 2026-09-18: Alexander B. Knudsen 11/9). scan_ddd_folder()
+                    # genparser ALLE .ddd-filer under max_age_days ved hver import, også
+                    # en ældre, delvis udlæsning fra midt i en vagt der senere er
+                    # genindlæst fuldt og godkendt/deaktiveret. Den gamle fil bliver
+                    # liggende i ddd_input/ og ligner ved hver eneste geninport en "kortere
+                    # vagt" i forhold til den allerede afgjorte – uden at tilføje NOGEN ny
+                    # information – hvilket spawner en frisk konkurrerende linje igen og
+                    # igen. Er den nye udlæsning markeret ufuldstændig, starter den samme
+                    # sted, slutter tidligere, og dens segmenter/pauser er et rent præfiks
+                    # af det allerede afgjorte, er der intet nyt at vise en bruger – spring
+                    # stille over.
+                    is_stale_partial_reread = (
+                        act.is_likely_incomplete
+                        and act.start_time == baseline_start
+                        and act.end_time <= baseline_end
+                        and baseline_segments[: len(new_segments)] == new_segments
+                        and all(p in baseline_pauses for p in new_pause_intervals)
+                    )
+                    if not is_stale_partial_reread and (
                         act.start_time != baseline_start
                         or act.end_time != baseline_end
                         or new_segments != baseline_segments
