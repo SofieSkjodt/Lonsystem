@@ -88,6 +88,52 @@ def test_employee_settlement_data_includes_springer_kr_in_total(db, employee):
     assert data["total_kr"] == pytest.approx(8.0 * 150.00 + 8.0 * 20.00)
 
 
+def test_employee_settlement_data_includes_overnight_kr_in_total(db, employee):
+    """Overnatningstillæg manglede i Lønafregningens total – bruger opdagede at
+    'Total sum for denne periode' ikke viste den fulde løn (2026-09-21)."""
+    from calculators.pay_period import get_or_create_period_for_date
+    from database.models import ActivityStatus, MasterSupplementRate
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    from datetime import datetime
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    db.add(MasterSupplementRate(label="Overnatning", rate=Decimal("95.00")))
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    midnight = datetime(2026, 1, 5, 0, 0, 0)
+    make_activity(db, employee, midnight, midnight, activity_type="overnatning",
+                  status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    assert data["overnight_count"] == 1
+    assert data["overnight_rate"] == pytest.approx(95.00)
+    assert data["overnight_kr"] == pytest.approx(95.00)
+    assert data["total_kr"] == pytest.approx(95.00)
+
+
+def test_employee_settlement_data_includes_dob_overnight_kr_in_total(db, employee):
+    from calculators.pay_period import get_or_create_period_for_date
+    from database.models import ActivityStatus, MasterSupplementRate
+    from routers.payroll_settlement_router import _employee_settlement_data
+    from conftest import make_activity
+    from datetime import datetime
+    _setup_rates(db, employee, hourly=Decimal("150.00"))
+    db.add(MasterSupplementRate(label="DOB_overnatning", rate=Decimal("597.00"), is_user_created=True))
+    db.commit()
+    period = get_or_create_period_for_date(date(2026, 1, 1), db)
+    midnight = datetime(2026, 1, 5, 0, 0, 0)
+    make_activity(db, employee, midnight, midnight, activity_type="dob_overnatning",
+                  status=ActivityStatus.approved)
+
+    data = _employee_settlement_data(employee, period.start_date, period.end_date, db)
+
+    assert data["dob_overnight_count"] == 1
+    assert data["dob_overnight_rate"] == pytest.approx(597.00)
+    assert data["dob_overnight_kr"] == pytest.approx(597.00)
+    assert data["total_kr"] == pytest.approx(597.00)
+
+
 def _find_day(data, iso_date):
     return next(d for d in data["days"] if d["date"] == iso_date)
 
@@ -360,11 +406,15 @@ def test_page_totals_aggregates_across_employees():
          "ot_before_hours": 1.0, "ot_13_hours": 2.0, "ot_extra_hours": 0.0,
          "ot_rates": {OT_BEFORE_KEY: 50.0, OT_13_KEY: 75.0, OT_EXTRA_KEY: 100.0},
          "salt_kr": 0.0, "total_kr": 11250.0,
+         "overnight_count": 2, "overnight_kr": 190.0,
+         "dob_overnight_count": 0, "dob_overnight_kr": 0.0,
          "days": [{"absence_type": "Sygdom", "absence_kr": 1200.0}]},
         {"normal_hours": 70.0, "hourly_rate": 160.0, "springer_kr": 1600.0,
          "ot_before_hours": 0.0, "ot_13_hours": 0.0, "ot_extra_hours": 3.0,
          "ot_rates": {OT_BEFORE_KEY: 50.0, OT_13_KEY: 75.0, OT_EXTRA_KEY: 100.0},
          "salt_kr": 200.0, "total_kr": 11500.0,
+         "overnight_count": 1, "overnight_kr": 95.0,
+         "dob_overnight_count": 1, "dob_overnight_kr": 597.0,
          "days": [{"absence_type": "Ferie", "absence_kr": 800.0},
                    {"absence_type": "Skole/kursus", "absence_kr": 300.0},
                    {"absence_type": "Afspadsering", "absence_kr": 400.0},
@@ -398,6 +448,10 @@ def test_page_totals_aggregates_across_employees():
     assert totals["graviditetsbetinget_sygdom_kr"] == pytest.approx(444.0)
     assert totals["feriefri_kr"] == pytest.approx(555.0)
     assert totals["sygdom_u_8_uger_kr"] == pytest.approx(0.0)
+    assert totals["overnight_count"] == 3
+    assert totals["overnight_kr"] == pytest.approx(190.0 + 95.0)
+    assert totals["dob_overnight_count"] == 1
+    assert totals["dob_overnight_kr"] == pytest.approx(597.0)
 
 
 def test_payroll_settlement_preview_defaults_to_current_period(db, employee):

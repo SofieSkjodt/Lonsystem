@@ -158,6 +158,8 @@ def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
         Decimal(str(calc["normal_hours"])) * Decimal(str(calc["springer_rate"]))
         if calc["springer_enabled"] else Decimal("0")
     )
+    overnight_kr = Decimal(str(calc["overnight_kr"]))
+    dob_overnight_kr = Decimal(str(calc["dob_overnight_kr"]))
 
     days = _aggregate_days(calc["days"])
     # Alle fraværstyper med et beregnet beløb (sygdom, §56 syg, sygdom u. 8 uger,
@@ -168,7 +170,13 @@ def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
         (Decimal(str(d["absence_kr"])) for d in days if d.get("absence_kr") is not None),
         Decimal("0"),
     )
-    total_kr_with_extras = Decimal(str(calc["total_kr"])) + springer_kr + absence_kr_total
+    # Overnatnings-/DOB-overnatningstillæg manglede tidligere helt i Lønafregningens
+    # total – 'Total sum for denne periode' viste derfor ikke den fulde løn, når en
+    # medarbejder havde overnatninger (opdaget af bruger 2026-09-21). Rettet ved at
+    # lægge dem oveni total_kr, samme princip som springer_kr/absence_kr_total.
+    total_kr_with_extras = (
+        Decimal(str(calc["total_kr"])) + springer_kr + absence_kr_total + overnight_kr + dob_overnight_kr
+    )
 
     return {
         "employee_id": calc["employee_id"],
@@ -180,6 +188,12 @@ def _employee_settlement_data(emp, start: date, end: date, db: Session) -> dict:
         "springer_enabled": calc["springer_enabled"],
         "springer_rate": calc["springer_rate"],
         "springer_kr": float(springer_kr),
+        "overnight_count": calc["overnight_count"],
+        "overnight_rate": calc["overnight_rate"],
+        "overnight_kr": float(overnight_kr),
+        "dob_overnight_count": calc["dob_overnight_count"],
+        "dob_overnight_rate": calc["dob_overnight_rate"],
+        "dob_overnight_kr": float(dob_overnight_kr),
         "normal_hours": calc["normal_hours"],
         "hourly_rate": calc["hourly_rate"],
         "ot_before_hours": calc["ot_before_hours"],
@@ -236,9 +250,16 @@ def _page_totals(employees_data: list) -> dict:
     ot_13_kr = sum(e["ot_13_hours"] * e["ot_rates"].get(OT_13_KEY, 0) for e in employees_data)
     ot_extra_kr = sum(e["ot_extra_hours"] * e["ot_rates"].get(OT_EXTRA_KEY, 0) for e in employees_data)
     salt_kr = sum(e["salt_kr"] for e in employees_data)
+    overnight_count = sum(e["overnight_count"] for e in employees_data)
+    overnight_kr = sum(e["overnight_kr"] for e in employees_data)
+    dob_overnight_count = sum(e["dob_overnight_count"] for e in employees_data)
+    dob_overnight_kr = sum(e["dob_overnight_kr"] for e in employees_data)
     total_kr = sum(e["total_kr"] for e in employees_data)
     # Delsum "Total uden fravær": grundtimeløn t.o.m. øvrig overtid – IKKE salt
-    # (bruger var eksplicit: "fra grundtimeløn til og med øvrig overtid").
+    # eller overnatning (bruger var eksplicit: "fra grundtimeløn til og med
+    # øvrig overtid") – overnatning vises i stedet som egen linje, samme
+    # princip som Salttillæg, men tæller stadig med i total_kr (rettet 2026-09-21,
+    # se _employee_settlement_data).
     total_excl_absence_kr = grundtimeloen_kr + ot_before_kr + ot_13_kr + ot_extra_kr
     result = {
         "grundtimeloen_incl_tillaeg_kr": round(grundtimeloen_kr, 2),
@@ -247,6 +268,10 @@ def _page_totals(employees_data: list) -> dict:
         "ot_extra_kr": round(ot_extra_kr, 2),
         "total_excl_absence_kr": round(total_excl_absence_kr, 2),
         "salt_kr": round(salt_kr, 2),
+        "overnight_count": overnight_count,
+        "overnight_kr": round(overnight_kr, 2),
+        "dob_overnight_count": dob_overnight_count,
+        "dob_overnight_kr": round(dob_overnight_kr, 2),
         "total_kr": round(total_kr, 2),
     }
     for key, label in _PAGE_TOTAL_ABSENCE_LABELS.items():

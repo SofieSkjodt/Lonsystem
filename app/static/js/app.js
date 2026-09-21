@@ -4199,8 +4199,11 @@ function renderPayrollSettlement(data) {
     ["Overtid 1-3 time efter", t.ot_13_kr],
     ["Øvrig overtid", t.ot_extra_kr],
   ];
+  const gange = n => `${n} gang${n !== 1 ? "e" : ""}`;
   const settlementAbsenceItems = [
     ["Salttillæg", t.salt_kr],
+    [`Overnatning (${gange(t.overnight_count)})`, t.overnight_kr],
+    [`DOB Overnatning (${gange(t.dob_overnight_count)})`, t.dob_overnight_kr],
     ["Sygdom", t.sygdom_kr],
     ["Sygdom u. 8 uger", t.sygdom_u_8_uger_kr],
     ["Barn 1.sygedag", t.barn_1sygedag_kr],
