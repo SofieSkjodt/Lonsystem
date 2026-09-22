@@ -1117,7 +1117,11 @@ def export_csv_post(body: ExportCsvRequest,
 
     employees = _active_employees(db)
     csv_bytes = _build_danloen_csv(employees, period, db)
-    filename = f"danloen_{period.start_date.isoformat()}_{period.end_date.isoformat()}.csv"
+    week1 = period.start_date.isocalendar()[1]
+    week2 = period.end_date.isocalendar()[1]
+    start_dk = period.start_date.strftime("%d-%m-%Y")
+    end_dk = period.end_date.strftime("%d-%m-%Y")
+    filename = f"danloen, Lønuge {week1}-{week2}, {start_dk}-{end_dk}.csv"
 
     period.status = PayPeriodStatus.closed
     period.closed_at = datetime.utcnow()
@@ -1129,7 +1133,7 @@ def export_csv_post(body: ExportCsvRequest,
     return Response(
         content=csv_bytes,
         media_type="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
 
 
