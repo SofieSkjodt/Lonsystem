@@ -1035,6 +1035,11 @@ function renderActivitiesTable() {
           pay_period_id: p.id,
           enabled: checked,
         });
+        // Opdatér den lokale cache med det samme, så en senere fuld gentegning
+        // af tabellen (fx efter oprettelse af en aktivitet via refreshActivities())
+        // ikke overskriver brugerens seneste ændring med den forældede værdi fra
+        // sidste periode-indlæsning.
+        state.springerFlags = { ...(state.springerFlags || {}), [parseInt(el.dataset.empId)]: checked };
       } catch (err) {
         el.checked = !checked;
         toast(err.message, "error");
