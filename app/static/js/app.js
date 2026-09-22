@@ -2191,7 +2191,7 @@ function updateManualTypeVisibility() {
   const isCommentOnly  = (type === "__none__");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode || isOvernatning;
+  const isRangeType    = type === "ferie" || type === "selvbetalt_fridag" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode || isOvernatning;
   const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
   // "Ingen (kun kommentar)" skal kun vise Medarbejder + Type + Vagtplan-kommentar –
@@ -2905,7 +2905,7 @@ async function confirmManualActivity() {
     return;
   }
 
-  const _RANGE_TYPES = ["ferie", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "skole_kursus", "afspadsering"];
+  const _RANGE_TYPES = ["ferie", "selvbetalt_fridag", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "skole_kursus", "afspadsering"];
   const isRange = _RANGE_TYPES.includes(actType) && !!tilDato;
 
   if (!start || (!isRange && !end)) {
