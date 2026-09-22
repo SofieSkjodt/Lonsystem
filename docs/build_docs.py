@@ -344,7 +344,7 @@ def build_teknisk():
             ["pay_period_id",         "FK → PayPeriod", "Tilknyttet lønperiode"],
             ["trip_number",           "String (opt.)",  "Turnummer (max 6 tegn)"],
             ["source",                "Enum",           "tachograph (DDD-import) / manual (manuelt oprettet) / vagtplan"],
-            ["activity_type",         "String(50)",     "normal / ferie / fri / afspadsering / skole/kursus / overnatning / dob_overnatning (se afsnit 7.7) / sygdom(_u_8uger) / barn_1sygedag(_u_8uger) / barsel(_u_loen) / §56 syg / graviditetsbetinget sygdom / selvbetalt fridag – de '_u_...'/'_u_loen'-varianter sættes automatisk af anciennitetsreglerne i afsnit 8.7, ikke valgt direkte af brugeren"],
+            ["activity_type",         "String(50)",     "normal / ferie / fri / afspadsering / skole/kursus / overnatning / dob_overnatning (se afsnit 7.7) / sygdom(_u_8uger) / barn_1sygedag(_u_8uger) / barsel(_u_loen) / §56 syg / graviditetsbetinget sygdom / selvbetalt fridag / løn andet sted fra (2026-09-22, se afsnit 7.9) – de '_u_...'/'_u_loen'-varianter sættes automatisk af anciennitetsreglerne i afsnit 8.7, ikke valgt direkte af brugeren"],
             ["start_time / end_time", "DateTime",       "Start- og sluttidspunkt"],
             ["availability_time_pct", "Decimal",        "Rådighedstid i % (fra tachograf)"],
             ["rest_pause_pct",        "Decimal",        "Hvil/pause i % (fra tachograf)"],
@@ -567,6 +567,28 @@ def build_teknisk():
         "midt i importen af én aktivitet, rulles hele databasetransaktionen for den fil tilbage "
         "(ikke kun den ene aktivitet springes over), for at forhindre at én defekt post får "
         "efterfølgende poster til at fejle i kaskade.",
+        "TEKNISK NOTE"
+    )
+    note_box(doc,
+        "Rettet 2026-09-18: en ufuldstændig genlæsning (is_likely_incomplete) der intet nyt "
+        "fortæller i forhold til en allerede godkendt/deaktiveret linje – samme startpunkt, "
+        "tidligere sluttidspunkt, og segmenter/pauser der er et rent præfiks af den afgjorte linje "
+        "– springes nu stille over i stedet for at skabe en ny konkurrerende afventende linje. "
+        "scan_ddd_folder() genparser nemlig ALLE .ddd-filer under 7 dage gamle ved hver import, "
+        "ikke kun nye filer – en gammel, delvis kortudlæsning der bliver liggende i ddd_input/ "
+        "udløste derfor tidligere en frisk dublet-linje ved hver eneste efterfølgende import "
+        "(bekræftet for Alexander B. Knudsen 11/9-2026).",
+        "TEKNISK NOTE"
+    )
+    note_box(doc,
+        "Rettet 2026-09-22: en udlæsning på under VERY_SHORT_READING_MINUTES (15 minutter) i alt "
+        "markeres nu ALTID som is_likely_incomplete, uanset om den slutter i hvil eller ej. Kortet "
+        "stukket i læseren minutter inde i 'hvil' tidligt om morgenen (før dagens kørsel er "
+        "begyndt) blev tidligere IKKE fanget, fordi den oprindelige regel krævede at vagten ikke "
+        "endte i hvil – en kort morgenudlæsning der tilfældigvis endte i hvil blev derfor "
+        "fejlagtigt opfattet som en fuldgyldig, afsluttet vagt og udløste en ny dublet-linje ved "
+        "hver genimport, indtil filen faldt ud af det 7-dages importvindue (bekræftet for Claus "
+        "Lindskov Schmidt 15-16/9-2026, samme mønster fundet i ca. 35 andre vagter i ddd_input/).",
         "TEKNISK NOTE"
     )
 
@@ -1119,6 +1141,14 @@ def build_teknisk():
         "samme (forkerte) kode \"1\".",
         "VIGTIGT"
     )
+    note_box(doc,
+        "Filnavnet på den downloadede CSV-fil er rettet 2026-09-22 til det format Danløn-"
+        "importen forventer: \"danloen, Lønuge {uge1}-{uge2}, {dd-mm-åååå}-{dd-mm-åååå}.csv\" "
+        "(fx \"danloen, Lønuge 23-24, 01-06-2026-14-06-2026.csv\") – ugenumrene beregnes med "
+        "isocalendar() ud fra periodens start-/slutdato. Tidligere format var "
+        "\"danloen_ÅÅÅÅ-MM-DD_ÅÅÅÅ-MM-DD.csv\".",
+        "TEKNISK NOTE"
+    )
 
     heading(doc, "Timeseddel-udsendelse pr. mail", 2, "7.5")
     body(doc, (
@@ -1162,6 +1192,22 @@ def build_teknisk():
             ["/api/activities/springer-flags?pay_period_id=", "GET",  "Returnerer {employee_id: true} for alle medarbejdere med fluebenet sat i perioden. Kræver kun login."],
             ["/api/activities/springer-flag",                  "POST", "Upsert på (employee_id, pay_period_id). Kræver toggle_springer. Afvises (400) hvis perioden er lukket."],
         ]
+    )
+    body(doc, (
+        "Siden 2026-09-22 vises springertillæg desuden som en selvstændig linje (timer + beløb, "
+        "samme timetal/sats som CSV'en: emp.normal_hours × emp.springer_rate) i Lønkørsel-fanens "
+        "medarbejderkort (renderPayrollPreview(), app.js) og i PDF-timesedlens LØNOPSUMMERING "
+        "(_build_pdf(), timeseddel_router.py), lige efter 'Timer arbejdet'. Beløbet er – ligesom "
+        "Overnatning/DOB Overnatning – IKKE en del af emp.total_kr/calc['total_kr'], og lægges "
+        "derfor manuelt til i begge steders 'I alt'-linje (se afsnit 7.9)."
+    ))
+    note_box(doc,
+        "Rettet 2026-09-22: fluebenets checkbox-listener i aktivitetsoversigten opdaterer nu "
+        "state.springerFlags lokalt med det samme efter et vellykket gem. Uden denne rettelse "
+        "kunne en efterfølgende gentegning af tabellen (fx efter oprettelse af en ny aktivitet "
+        "via refreshActivities()) overskrive brugerens netop satte flueben med den forældede "
+        "værdi fra sidste periode-indlæsning, så springertillægget så ud til at forsvinde igen.",
+        "TEKNISK NOTE"
     )
 
     heading(doc, "DOB Overnatning", 2, "7.7")
@@ -1221,6 +1267,55 @@ def build_teknisk():
         "allerede simpelthen antal Activity-rækker af typen i perioden, uanset om de stammer fra "
         "enkeltdags- eller periode-oprettelse – lønkørsel, PDF-timeseddel og Danløn CSV er derfor "
         "upåvirkede af denne ændring. Se docs/superpowers/specs/2026-09-16-overnatning-periode-design.md.",
+        "TEKNISK NOTE"
+    )
+
+    heading(doc, "Løn andet sted fra", 2, "7.9")
+    body(doc, (
+        "Ny fraværstype (2026-09-22, normaliseret nøgle loen_andet_sted_fra) – IKKE en del af "
+        "Fraværstyper.xlsx, men seedet idempotent til master_absence_types ved opstart af "
+        "_ensure_loen_andet_sted_fra_absence_type() (session.py), samme mønster som "
+        "_ensure_springer_pay_type(). Opfører sig i beregningen fuldstændig som 'Selvbetalt "
+        "fridag': ingen gren i _calculate_employee() (payroll_router.py) → altid 0 kr., ingen "
+        "linje i Danløn CSV'en. Typen er tænkt som en kommentar til lønbogholderne om, at en "
+        "given dag bevidst er uden data i dette system (fx fordi medarbejderen har kørt for et "
+        "andet selskab/eksport den dag) – ikke som en fraværstype der skal udløse betaling her."
+    ))
+
+    heading(doc, "Selvbetalt fridag som periode", 2, "7.10")
+    body(doc, (
+        "Siden 2026-09-22 kan 'Selvbetalt fridag' (og 'Løn andet sted fra') oprettes for et "
+        "datointerval ('Til dato' udfyldt) på samme måde som Ferie – begge typer er tilføjet til "
+        "app.js' _RANGE_TYPES og isRangeType/isFerie-kontrollerne i updateManualTypeVisibility()/"
+        "confirmManualActivity(). Der oprettes én aktivitet PR. HVERDAG i perioden (_weekday_dates(), "
+        "ikke _all_dates() som Overnatning bruger, se afsnit 7.8), med samme 06:00-start og "
+        "normaltime-beregnede sluttid som en enkeltstående fraværsdag."
+    ))
+
+    heading(doc, "Lønkørsel-fanens og PDF-timesedlens samlede beløb ('I alt')", 2, "7.11")
+    body(doc, (
+        "Rettet 2026-09-22: Lønkørsel-fanens 'I alt'-beløb pr. medarbejder (renderPayrollPreview(), "
+        "app.js) medregnede tidligere kun total_kr + overnatning + DOB-overnatning + springertillæg. "
+        "Fraværstyper med et beregnet beløb (Sygdom, §56 syg/Barn 1.sygedag u. løn til dagpengesats, "
+        "Feriefri, Barsel, Skole/kursus – samme sæt som Lønafregningens absence_kr, afsnit 13.2) "
+        "talte IKKE med, selvom de reelt udbetales. grandTotalKr beregnes nu ved at lægge disse "
+        "fraværsbeløb (timer × hourly_rate hhv. dagpenge_sats) oveni de øvrige tillæg."
+    ))
+    body(doc, (
+        "Samme rettelse er lavet i PDF-timesedlens LØNOPSUMMERING (_build_pdf(), "
+        "timeseddel_router.py, 2026-09-22): fraværslinjerne (Afspadsering, Sygdom, Feriefri, "
+        "Barsel, §56 syg, Barn 1.sygedag u. løn, Kursus/Skole) viste tidligere kun timer og "
+        "'–'/'–' i Sats/DKK-kolonnerne. De viser nu den faktiske sats og det beregnede beløb "
+        "(samme satser som ovenfor: hourly_rate, eller dagpenge_sats for §56/Barn 1.sygedag u. "
+        "løn), og beløbet lægges til 'I alt'-linjens total_display_kr samt timerne til den viste "
+        "totaltid – så PDF-timesedlens 'I alt' nu stemmer overens med det beløb medarbejderen "
+        "reelt får i løn, og med Lønkørsel-fanens 'I alt' beskrevet ovenfor."
+    ))
+    note_box(doc,
+        "Begge rettelser er rene VISNINGS-rettelser i frontend/PDF-lag – selve lønberegningen i "
+        "_calculate_employee() og dermed Danløn CSV-eksporten var upåvirket af buggen; fraværet "
+        "blev allerede korrekt betalt, det var kun 'I alt'-summen i Lønkørsel-fanen og PDF-"
+        "timesedlen der tidligere undervurderede den reelle udbetaling.",
         "TEKNISK NOTE"
     )
 
@@ -1505,6 +1600,17 @@ def build_teknisk():
         ],
         [Cm(3.5), Cm(6), Cm(6.5)]
     )
+
+    heading(doc, "Vognnummer-søgefelt: tastaturnavigation", 2, "9.9")
+    body(doc, (
+        "Tilføjet 2026-09-17 (_renderManualRegDropdown()/_moveManualRegHighlight()/"
+        "_selectManualRegHighlighted() i app.js): vognnummer-feltet i opret-aktivitet-modalen "
+        "kan nu betjenes uden mus. Pil ned/Tab flytter markeringen én række ned i "
+        "søgeresultat-listen (wrapper til første række efter sidste), Shift+Tab/Pil op flytter "
+        "op, Enter vælger den markerede række, og Escape lukker dropdown'en uden at vælge. "
+        "_manualRegHighlightIndex (modul-scope) holder styr på den aktuelt markerede række og "
+        "nulstilles ved hvert nyt søgeopslag."
+    ))
 
     # ── 10. Drift og vedligehold (FAQ) ────────────────────────────────────────
     doc.add_page_break()
@@ -1799,15 +1905,24 @@ def build_teknisk():
         "TEKNISK NOTE"
     )
     body(doc, (
-        "Selvbetalt fridag, Barn 2-3.sygedag, Barsel u. løn og typen 'Fri' har ingen etableret "
-        "betalingsregel i systemet (samme som i den almindelige Danløn CSV) og har derfor hverken "
-        "beløb i dagsrækken eller egen linje i topsummeringen."
+        "Selvbetalt fridag, Løn andet sted fra (afsnit 7.9), Barn 2-3.sygedag, Barsel u. løn og "
+        "typen 'Fri' har ingen etableret betalingsregel i systemet (samme som i den almindelige "
+        "Danløn CSV) og har derfor hverken beløb i dagsrækken eller egen linje i topsummeringen."
     ))
     body(doc, (
         "'Total uden fravær' er en delsum der lægger Grundtimeløn inkl. tillæg, Overtid Timen "
-        "før, Overtid 1-3 time efter og Øvrig overtid sammen – IKKE salttillæg eller nogen "
-        "fraværstype. Den samlede 'Total sum for denne periode' er summen af alle medarbejderes "
-        "fulde total_kr (arbejdstid + salt + springer + al fraværsbetaling)."
+        "før, Overtid 1-3 time efter og Øvrig overtid sammen – IKKE salttillæg, overnatning eller "
+        "nogen fraværstype. Den samlede 'Total sum for denne periode' er summen af alle "
+        "medarbejderes fulde total_kr (arbejdstid + salt + springer + al fraværsbetaling)."
+    ))
+    body(doc, (
+        "Rettet 2026-09-21: Overnatning og DOB Overnatning manglede tidligere helt i "
+        "topsummeringens 'Total sum for denne periode' og i den enkelte medarbejders total – "
+        "beløbene (overnight_kr/dob_overnight_kr) lægges nu oveni total_kr på samme måde som "
+        "springer_kr/absence_kr_total. Topsummeringen viser dem som to selvstændige linjer "
+        "'Overnatning (N gange)' og 'DOB Overnatning (N gange)', placeret lige efter Salttillæg – "
+        "men de tæller fortsat IKKE med i delsummen 'Total uden fravær' (samme princip som "
+        "Salttillæg: vist separat, men inkluderet i den store total)."
     ))
 
     heading(doc, "CSV-eksportformat", 2, "13.3")
@@ -2355,7 +2470,8 @@ def build_bruger():
     ))
     bullet(doc, "Fluebenet gælder KUN den periode du står i – det nulstilles automatisk ved næste periode og skal sættes igen.")
     bullet(doc, "Fluebenet kan ikke ændres når perioden er låst (der er kørt løn).")
-    bullet(doc, "Beløbet vises særskilt i prøvekørslen (' (springer)' efter navnet, afsnit 9.1) og i Lønafregning (afsnit 12.2) – ikke som en synlig linje i selve Aktivitetsoversigten.")
+    bullet(doc, "Beløbet vises særskilt i prøvekørslen (' (springer)' efter navnet, afsnit 9.1), som egen linje i Lønkørsel-fanens medarbejderkort og i PDF-timesedlen (afsnit 9.4), samt i Lønafregning (afsnit 12.2).")
+    bullet(doc, "Sætter du fluebenet, og der derefter oprettes en ny aktivitet for medarbejderen (fx via import eller manuel oprettelse), forbliver fluebenet sat – det bliver ikke nulstillet ved en gentegning af aktivitetsoversigten (rettet 2026-09-22).")
 
     # ── 5. Aktivitetsdetaljer og godkendelse ──────────────────────────────
     doc.add_page_break()
@@ -2477,6 +2593,12 @@ def build_bruger():
         "BEMÆRK"
     )
     note_box(doc,
+        "Vognnummer-feltets søgeliste kan siden 2026-09-17 betjenes med tastaturet: Pil ned/Tab "
+        "flytter markeringen ned i listen (Shift+Tab/Pil op flytter op), Enter vælger det "
+        "markerede køretøj, og Escape lukker listen igen.",
+        "TIP"
+    )
+    note_box(doc,
         "Registrerer du en fraværstype på en dag hvor medarbejderen allerede har en kørsel "
         "('normal tid') registreret, viser systemet en advarsel med de(n) berørte dato(er) og "
         "spørger om du vil fortsætte alligevel. Vælg 'Annuller' for at rette datoen, eller "
@@ -2489,6 +2611,7 @@ def build_bruger():
     bullet(doc, "Felterne for turnummer, pålæsning og aflæsning skjules (ikke relevante).")
     bullet(doc, "Aktiviteten godkendes automatisk (approved_by sættes til din bruger) – kræver ikke separat godkendelse bagefter.")
     bullet(doc, "Ferie, sygdom, feriefri m.fl.: starttidspunktet sættes automatisk til 06:00, og sluttidspunktet beregnes ud fra medarbejderens normaltimer den pågældende dag. Vælger du 'Til dato' for at oprette en periode, oprettes én aktivitet PR. HVERDAG i perioden (ikke én sammenhængende aktivitet) – hver dag tæller sine egne normaltimer (typisk 7,4 t).")
+    bullet(doc, "Selvbetalt fridag og Løn andet sted fra kan siden 2026-09-22 også oprettes som en periode ('Til dato' udfyldt), på nøjagtig samme måde som Ferie – én aktivitet pr. hverdag i intervallet.")
     bullet(doc, "Afspadsering som periode ('Til dato' udfyldt) følger samme regel: 7,4 t (eller medarbejderens skemalagte timer) pr. hverdag, uanset klokketid. En enkelt afspadseringsdag (uden 'Til dato') kan derimod redigeres til en delvis dag med selvvalgt start-/sluttid, og den faktiske varighed bruges da i lønberegningen.")
 
     body(doc, (
@@ -2501,6 +2624,7 @@ def build_bruger():
             ["Ferie",          "Registrerer en feriedag. Start: 06:00. Slut: 06:00 + normaltimer for dagen. Tælles i timeoversigten, men er som default IKKE med i Danløn-CSV'en (kan slås til i Stamdata)."],
             ["Afspadsering",   "Registrerer afspadsering. Som periode ('Til dato') tæller hver hverdag 7,4 t/skemalagte timer; som enkeltdag bruges den faktiske start-/sluttid."],
             ["Fri",            "Registrerer fridag."],
+            ["Løn andet sted fra", "Tilføjet 2026-09-22. Fungerer som Selvbetalt fridag (0 kr., ingen linje i Danløn CSV) – bruges som en kommentar til lønbogholderne om, at dagen bevidst er korrekt uden data i dette system, fx fordi medarbejderen har kørt eksport/for et andet selskab den dag."],
             ["Skole/kursus",   "Registrerer skole- eller kursusdag."],
             ["Overnatning",    "Registrerer en overnatning (flat sats pr. forekomst – ikke timer). Angiv datoen, eller udfyld 'Til dato' for at registrere flere overnatninger i træk (se note nedenfor). Satsen hentes automatisk fra Stamdata (Tillæg-fanen)."],
             ["Overnatning – DOB",   "Krydses af INDE I Overnatning-oprettelsen (samme modal, ekstra 'DOB'-flueben) – registreres som en separat overnatningstype med sin egen sats i Stamdata → Tillæg. Vises som egen linje i PDF-timesedlen og prøvekørslens Excel-ark, men indgår PT. IKKE i Danløn CSV-eksporten."],
@@ -2852,7 +2976,7 @@ def build_bruger():
     ))
     bullet(doc, "Klik 'Kør løn'.")
     bullet(doc, "Bekræft at du er klar til at køre endelig løn.")
-    bullet(doc, "CSV-filen downloades til din computer.")
+    bullet(doc, "CSV-filen downloades til din computer. Filnavnet er (siden 2026-09-22) på formen 'danloen, Lønuge 23-24, 01-06-2026-14-06-2026.csv' – lønuge-numrene og datointervallet for den kørte periode.")
     body(doc, (
         "CSV-filen indeholder op til 6 kolonner per lønpost: CVR-nummer, medarbejdernr., lønkode, "
         "antal (timer eller forekomster), sats og evt. total. "
@@ -2913,7 +3037,18 @@ def build_bruger():
             ["Aflæsning",          "Tillæg for aflæsningstid (minutter × minutsats)."],
             ["Salttillæg",         "Tillæg pr. time for kørsel med salt (registreret på aktiviteten). Sats fra Stamdata (Tillæg-fanen)."],
             ["Overnatning",        "Fast sats pr. overnatning (antal forekomster × sats). Sats fra Stamdata (Tillæg-fanen)."],
+            ["Springertillæg",     "Samme timetal som Normal løn, kun for medarbejdere med springertillæg-fluebenet sat for perioden (afsnit 4.5). Sats fra Stamdata (Tillæg-fanen)."],
         ]
+    )
+    note_box(doc,
+        "Rettet 2026-09-22: 'I alt'-beløbet pr. medarbejder i Lønkørsel-fanen og i PDF-"
+        "timesedlens LØNOPSUMMERING medregner nu også fraværstyper med et beregnet beløb "
+        "(Sygdom, §56 syg, Barn 1.sygedag u. løn, Feriefri, Barsel, Skole/kursus – samme typer "
+        "som i Lønafregningen, afsnit 12.1). Tidligere manglede disse i selve 'I alt'-summen, "
+        "selvom de altid har talt korrekt med i den eksporterede Danløn CSV. PDF-timesedlens "
+        "fraværslinjer viser nu desuden sats og beløb i stedet for '–', så beløbet i 'I alt' på "
+        "timesedlen stemmer overens med det medarbejderen reelt får udbetalt.",
+        "GODT AT VIDE"
     )
 
     heading(doc, "Lørdage, søndage og helligdage", 2, "9.5")
@@ -3166,12 +3301,20 @@ def build_bruger():
     body(doc, (
         "Den øverste tabel 'Total sum for perioden' viser: Grundtimeløn inkl. tillæg, Overtid "
         "Timen før, Overtid 1-3 time efter og Øvrig overtid, efterfulgt af delsummen "
-        "'Total uden fravær'. Herunder følger op til 11 fraværstyper (Sygdom, Sygdom u. 8 uger, "
-        "Barn 1.sygedag, Barn 1.sygedag u. 8 uger, Graviditetsbetinget sygdom, §56 syg, Barsel, "
-        "Feriefri, Ferie, Skole/kursus og Afspadsering) og til sidst 'Total sum for denne "
-        "periode'. En linje vises KUN hvis den har et beløb større end 0 kr for den viste "
-        "periode – har ingen medarbejder fx haft barsel, udelades 'Barsel'-linjen helt."
+        "'Total uden fravær'. Herefter følger Salttillæg, Overnatning og DOB Overnatning (hver "
+        "med antal forekomster i parentes, fx 'Overnatning (3 gange)') og op til 11 fraværstyper "
+        "(Sygdom, Sygdom u. 8 uger, Barn 1.sygedag, Barn 1.sygedag u. 8 uger, Graviditetsbetinget "
+        "sygdom, §56 syg, Barsel, Feriefri, Ferie, Skole/kursus og Afspadsering), og til sidst "
+        "'Total sum for denne periode'. En linje vises KUN hvis den har et beløb større end 0 kr "
+        "for den viste periode – har ingen medarbejder fx haft barsel, udelades 'Barsel'-linjen "
+        "helt."
     ))
+    note_box(doc,
+        "Rettet 2026-09-21: Overnatning og DOB Overnatning talte tidligere IKKE med i 'Total sum "
+        "for denne periode' eller i den enkelte medarbejders samlede løn i denne fane – kun i "
+        "Lønkørsel-fanen og PDF-timesedlen. Beløbene indgår nu korrekt begge steder.",
+        "GODT AT VIDE"
+    )
 
     heading(doc, "Medarbejder-tabellerne", 2, "12.2")
     body(doc, (
@@ -3194,8 +3337,9 @@ def build_bruger():
     )
     body(doc, (
         "Nederst i hver medarbejders tabel står 'Total løn for [navn]' – den fulde sum for "
-        "medarbejderen i perioden: arbejdstid, overtid, salttillæg, springertillæg OG al "
-        "fraværsbetaling med et beregnet beløb (se afsnit 12.1 for hvilke typer det gælder)."
+        "medarbejderen i perioden: arbejdstid, overtid, salttillæg, overnatning, DOB "
+        "overnatning, springertillæg OG al fraværsbetaling med et beregnet beløb (se afsnit "
+        "12.1 for hvilke typer det gælder)."
     ))
 
     heading(doc, "Periode-visning", 2, "12.3")
