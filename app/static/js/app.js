@@ -3950,6 +3950,16 @@ function renderPayrollPreview(data) {
   for (const emp of data.employees) {
     if (emp.activity_count === 0 && emp.afspadsering_hours === 0) continue;
     any = true;
+    const grandTotalKr = emp.total_kr
+      + (emp.overnight_kr || 0)
+      + (emp.dob_overnight_kr || 0)
+      + (emp.springer_enabled ? emp.normal_hours * emp.springer_rate : 0)
+      + (emp.sygdom_hours || 0) * emp.hourly_rate
+      + (emp.paragraf_56_syg_hours || 0) * emp.dagpenge_sats
+      + (emp.barn_1sygedag_u_loen_hours || 0) * emp.dagpenge_sats
+      + (emp.feriefri_hours || 0) * emp.hourly_rate
+      + (emp.barsel_hours || 0) * emp.hourly_rate
+      + (emp.skole_kursus_hours || 0) * emp.hourly_rate;
     const el = document.createElement("div");
     el.className = "payroll-employee";
     el.innerHTML = `
@@ -3993,7 +4003,7 @@ function renderPayrollPreview(data) {
           <div>${fmtHours(emp.total_hours)}</div>
           <div>${fmtHoursHM(emp.total_hours)}</div>
           <div></div>
-          <div class="text-right">${fmtKr(emp.total_kr + (emp.overnight_kr || 0) + (emp.dob_overnight_kr || 0) + (emp.springer_enabled ? emp.normal_hours * emp.springer_rate : 0))}</div>
+          <div class="text-right">${fmtKr(grandTotalKr)}</div>
         </div>
       </div>`;
     container.appendChild(el);
