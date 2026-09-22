@@ -238,6 +238,7 @@ _BACKEND_ONLY_TYPES = {"sygdom_u_8uger", "sygdom_u_8_uger", "barn_1sygedag_u_8ug
 
 ### Fraværstyper.xlsx indeholder
 `Sygdom`, `Sygdom u. 8 uger`, `Afspadsering`, `Ferie`, `§56 syg`, `Barn 1.sygedag`, `Barn 2-3.sygedag`, `Barsel`, `Barsel u. løn`, `Feriefri`, `Graviditetsbetinget sygdom`, `Kursus/Skole`, `Selvbetalt fridag`.
+`Løn andet sted fra` (normaliseret nøgle `loen_andet_sted_fra`) er IKKE i Excel-filen – den seedes i stedet idempotent til `master_absence_types` af `_ensure_loen_andet_sted_fra_absence_type()` (session.py, kaldes fra `init_db()`), samme mønster som `_ensure_springer_pay_type()` osv. Opfører sig præcis som Selvbetalt fridag: ingen `elif`-gren i `_calculate_employee()` (payroll_router.py) → 0 kr., ingen CSV-linje, og er med i `isFerie`/`isRangeType`/`_RANGE_TYPES` i app.js (periode-oprettelse understøttet).
 
 ---
 

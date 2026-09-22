@@ -86,6 +86,25 @@ def test_ensure_springer_pay_type_seeds_rate_and_paytype(db, monkeypatch):
     assert db.query(MasterPayType).filter(MasterPayType.code_key == "SPRINGERTILLAEG").count() == 1
 
 
+def test_ensure_loen_andet_sted_fra_absence_type_seeds_and_is_idempotent(db, monkeypatch):
+    from database.models import MasterAbsenceType
+    from database.session import _ensure_loen_andet_sted_fra_absence_type
+    import database.session as session_module
+    from sqlalchemy.orm import sessionmaker
+    monkeypatch.setattr(session_module, "SessionLocal", sessionmaker(bind=db.get_bind()))
+
+    _ensure_loen_andet_sted_fra_absence_type()
+
+    row = db.query(MasterAbsenceType).filter(MasterAbsenceType.normalized_key == "loen_andet_sted_fra").first()
+    assert row is not None
+    assert row.label == "Løn andet sted fra"
+    assert row.is_active is True
+
+    # Idempotent
+    _ensure_loen_andet_sted_fra_absence_type()
+    assert db.query(MasterAbsenceType).filter(MasterAbsenceType.normalized_key == "loen_andet_sted_fra").count() == 1
+
+
 def test_load_springer_rate_from_db_returns_seeded_rate(db):
     from decimal import Decimal
     from database.models import MasterSupplementRate

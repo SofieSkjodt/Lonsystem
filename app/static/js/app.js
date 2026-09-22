@@ -2180,7 +2180,7 @@ function isoWeekNumber(d) {
 function updateManualTypeVisibility() {
   const type = document.getElementById("manual-type").value;
   const tilDatoVal = document.getElementById("manual-til-dato")?.value || "";
-  const isFerie        = (type === "ferie" || type === "selvbetalt_fridag");
+  const isFerie        = (type === "ferie" || type === "selvbetalt_fridag" || type === "loen_andet_sted_fra");
   const isSygdom       = (type === "sygdom" || type === "barn_1sygedag" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus");
   const isAfspadsering = (type === "afspadsering");
   // Afspadsering er kun dato-kun/periode-visuelt når "Til dato" er udfyldt – enkelt dag beholder redigerbar start-/sluttid (delvis dag).
@@ -2191,7 +2191,7 @@ function updateManualTypeVisibility() {
   const isCommentOnly  = (type === "__none__");
   const isDateOnly     = isFerie || isSygdom || isFeriefri || isBarsel || isOvernatning || isAfspadseringPeriode;
   const isAbsence      = ABSENCE_TYPES.has(type);
-  const isRangeType    = type === "ferie" || type === "selvbetalt_fridag" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode || isOvernatning;
+  const isRangeType    = type === "ferie" || type === "selvbetalt_fridag" || type === "loen_andet_sted_fra" || isFeriefri || isBarsel || type === "sygdom" || type === "paragraf_56_syg" || type === "graviditetsbetinget_sygdom" || type === "skole_kursus" || isAfspadseringPeriode || isOvernatning;
   const tilDatoFieldVisible = isRangeType || isAfspadsering;
 
   // "Ingen (kun kommentar)" skal kun vise Medarbejder + Type + Vagtplan-kommentar –
@@ -2697,7 +2697,7 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   document.getElementById("manual-til-dato").onchange = updateManualTypeVisibility;
   document.getElementById("manual-employee").onchange = () => {
     const t = document.getElementById("manual-type").value;
-    if (t === "ferie" || t === "selvbetalt_fridag") applyFerieDefaults();
+    if (t === "ferie" || t === "selvbetalt_fridag" || t === "loen_andet_sted_fra") applyFerieDefaults();
     if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "skole_kursus" || t === "barsel") applySygdomDefaults();
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
@@ -2710,7 +2710,7 @@ function openManualActivityModal(empId = null, dateIso = null, opts = {}) {
   // Lyt på dato-ændring inde i dt-picker containeren
   document.getElementById("manual-start").addEventListener("change", () => {
     const t = document.getElementById("manual-type").value;
-    if (t === "ferie" || t === "selvbetalt_fridag") applyFerieDefaults();
+    if (t === "ferie" || t === "selvbetalt_fridag" || t === "loen_andet_sted_fra") applyFerieDefaults();
     if (t === "sygdom" || t === "barn_1sygedag" || t === "paragraf_56_syg" || t === "skole_kursus" || t === "barsel") applySygdomDefaults();
     if (t === "afspadsering")                       applyAfspadseringDefaults();
     if (t === "feriefri")                           applyFeriefriDefaults();
@@ -2905,11 +2905,11 @@ async function confirmManualActivity() {
     return;
   }
 
-  const _RANGE_TYPES = ["ferie", "selvbetalt_fridag", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "skole_kursus", "afspadsering"];
+  const _RANGE_TYPES = ["ferie", "selvbetalt_fridag", "loen_andet_sted_fra", "feriefri", "barsel", "sygdom", "paragraf_56_syg", "graviditetsbetinget_sygdom", "skole_kursus", "afspadsering"];
   const isRange = _RANGE_TYPES.includes(actType) && !!tilDato;
 
   if (!start || (!isRange && !end)) {
-    const msg = (actType === "ferie" || actType === "selvbetalt_fridag" || actType === "feriefri" || actType === "barsel") ? "Angiv dato for fraværsdagen"
+    const msg = (actType === "ferie" || actType === "selvbetalt_fridag" || actType === "loen_andet_sted_fra" || actType === "feriefri" || actType === "barsel") ? "Angiv dato for fraværsdagen"
               : (actType === "sygdom" || actType === "barn_1sygedag" || actType === "paragraf_56_syg") ? "Angiv dato for sygedagen"
               : "Angiv start- og sluttid";
     toast(msg, "error");
