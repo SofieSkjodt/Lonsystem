@@ -515,6 +515,17 @@ ACTIVITY_NAMES = {
 # ud fra konkrete sager (47 min = pause i vagten, ~10 timer = skel mellem vagter).
 LONG_REST_THRESHOLD_MINUTES = 4 * 60
 
+# En udlæsning taget lige da chaufføren startede dagen (kortet stukket i
+# kortlæseren minutter inde i "hvil", før selve vagten er begyndt) fanges IKKE
+# af reglen nedenfor, fordi den kræver at vagten IKKE slutter i hvil. Ingen
+# rigtig vagt varer under VERY_SHORT_READING_MINUTES i alt – uanset om den
+# slutter i hvil eller ej – så det er et selvstændigt, pålideligt signal om at
+# resten af dagen mangler (bekræftet 2026-09-22: Claus Lindskov Schmidt 15-16/9
+# – en 3-minutters "hvil"-udlæsning kl. 03:3x blev opfattet som en fuldgyldig,
+# afsluttet vagt og skabte en ny dublet-linje ved hver eneste genimport, fordi
+# den aldrig blev genkendt som ufuldstændig).
+VERY_SHORT_READING_MINUTES = 15
+
 # Øvre grænse for hvor lang en "grænse-pause" (se _split_on_long_rests) må
 # være for at blive vist som en del af en tilstødende vagt i stedet for at
 # indgå i den udeladte lange hvileperiode. Bekræftede eksempler spænder fra
@@ -853,13 +864,15 @@ def _build_activities(
         # usandsynligt at være en hel vagt, uanset km-tallet.
         last_date = end_dt.date()
         is_last_shift_in_file = (shift_idx == len(final_shifts) - 1) and last_date == last_file_date
-        is_likely_incomplete = (
-            is_last_shift_in_file
-            and shift[-1][2] != ACTIVITY_REST
-            and (
-                distance_by_date.get(last_date, 0) == 0
-                or total_minutes < LONG_REST_THRESHOLD_MINUTES
+        is_likely_incomplete = is_last_shift_in_file and (
+            (
+                shift[-1][2] != ACTIVITY_REST
+                and (
+                    distance_by_date.get(last_date, 0) == 0
+                    or total_minutes < LONG_REST_THRESHOLD_MINUTES
+                )
             )
+            or total_minutes < VERY_SHORT_READING_MINUTES
         )
 
         day_start_ts = int(start_dt.replace(tzinfo=timezone.utc).timestamp())
