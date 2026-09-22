@@ -201,6 +201,19 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         sum_rows.append([_p(label, st), _p(_fmt_hm(hours), s_right),
                          _p(rate_str, s_right), _p(dkk_str, s_right)])
 
+    # Fravær tæller med i "I alt", samme princip og satser som Lønafregningens
+    # absence_kr_total (bekræftet af bruger 2026-08-25: "fravær skal ... tælle
+    # med i totalen") – tidligere viste rækkerne kun timer og '–' i Sats/DKK.
+    absence_kr_total = 0.0
+    absence_hours_total = 0.0
+
+    def add_absence_row(label, hours, rate):
+        nonlocal absence_kr_total, absence_hours_total
+        kr = hours * rate
+        absence_kr_total += kr
+        absence_hours_total += hours
+        add_row(label, hours, f'{_kr(rate)} kr/t', _kr(kr), True)
+
     if calc.get('normal_hours', 0) > 0.001:
         h = float(calc['normal_hours'])
         add_row('Timer arbejdet', h, f'{_kr(hr)} kr/t', _kr(h * hr))
@@ -223,20 +236,21 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         add_row('Salttillæg', float(calc['salt_hours']),
                 f"{_kr(calc.get('salt_rate', 0))} kr/t",
                 _kr(calc.get('salt_kr', 0)))
+    dagpenge = float(calc.get('dagpenge_sats', 137.43))
     if calc.get('afspadsering_hours', 0) > 0.001:
-        add_row('Afspadsering', float(calc['afspadsering_hours']), '–', '–', True)
+        add_absence_row('Afspadsering', float(calc['afspadsering_hours']), hr)
     if calc.get('sygdom_hours', 0) > 0.001:
-        add_row('Sygdom', float(calc['sygdom_hours']), '–', '–', True)
+        add_absence_row('Sygdom', float(calc['sygdom_hours']), hr)
     if calc.get('feriefri_hours', 0) > 0.001:
-        add_row('Feriefri', float(calc['feriefri_hours']), '–', '–', True)
+        add_absence_row('Feriefri', float(calc['feriefri_hours']), hr)
     if calc.get('barsel_hours', 0) > 0.001:
-        add_row('Barsel', float(calc['barsel_hours']), '–', '–', True)
+        add_absence_row('Barsel', float(calc['barsel_hours']), hr)
     if calc.get('paragraf_56_syg_hours', 0) > 0.001:
-        add_row('§56 syg', float(calc['paragraf_56_syg_hours']), '–', '–', True)
+        add_absence_row('§56 syg', float(calc['paragraf_56_syg_hours']), dagpenge)
     if calc.get('barn_1sygedag_u_loen_hours', 0) > 0.001:
-        add_row('Barn 1.sygedag u. løn', float(calc['barn_1sygedag_u_loen_hours']), '–', '–', True)
+        add_absence_row('Barn 1.sygedag u. løn', float(calc['barn_1sygedag_u_loen_hours']), dagpenge)
     if calc.get('skole_kursus_hours', 0) > 0.001:
-        add_row('Kursus/Skole', float(calc['skole_kursus_hours']), '–', '–', True)
+        add_absence_row('Kursus/Skole', float(calc['skole_kursus_hours']), hr)
     if calc.get('overnight_count', 0) > 0:
         count = int(calc['overnight_count'])
         rate  = float(calc.get('overnight_rate', 0))
@@ -263,10 +277,11 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         + float(calc.get('overnight_kr', 0))
         + float(calc.get('dob_overnight_kr', 0))
         + springer_kr
+        + absence_kr_total
     )
     sum_rows.append([
         _p('I alt', s_bold),
-        _p(_fmt_hm(float(calc.get('total_hours', 0))), s_bold_r),
+        _p(_fmt_hm(float(calc.get('total_hours', 0)) + absence_hours_total), s_bold_r),
         _p('', s_body),
         _p(f"{_kr(total_display_kr)} kr", s_bold_r),
     ])
@@ -359,9 +374,16 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         ]
         if has_salt:
             row.append(_p(_hm(day.get('salt_hours')), csr))
+        # Fraværsdage har total_hours/total_kr = 0 (fraværstimer tæller ikke med
+        # i loft-/overtidsberegningen) – de reelle timer/beløb ligger i stedet i
+        # absence_hours/absence_kr, samme kilde som Lønafregningens dagsvisning
+        # (_display_day i payroll_settlement_router.py), så "Total antal"/
+        # "Total kr." også viser fravær her.
+        disp_hours = day.get('absence_hours') if day.get('absence_hours') is not None else day.get('total_hours')
+        disp_kr    = day.get('absence_kr')    if day.get('absence_hours') is not None else day.get('total_kr')
         row += [
-            _p(_hm(day.get('total_hours')), csr),
-            _p(_vkr(day.get('total_kr')),  csr),
+            _p(_hm(disp_hours), csr),
+            _p(_vkr(disp_kr),  csr),
             _p(_esc(note), ca),
         ]
         day_rows.append(row)
