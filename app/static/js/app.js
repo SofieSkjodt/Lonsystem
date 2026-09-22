@@ -3972,6 +3972,7 @@ function renderPayrollPreview(data) {
       </div>
       <div class="payroll-rows">
         ${payrollRow("Normal tid", emp.normal_hours, emp.hourly_rate)}
+        ${payrollRow("Springertillæg", emp.springer_enabled ? emp.normal_hours : 0, emp.springer_rate)}
         ${payrollRow("Overtid 1 time før", emp.ot_before_hours, emp.ot_rates?.["Overtid 1 time før"])}
         ${payrollRow("Overtid 1-3 timer efter", (emp.ot_13_hours || 0) + (emp.sh_kode8_hours || 0), emp.ot_rates?.["Overtid 1-3 timer efter"])}
         ${payrollRow("Øvrig overtid", (emp.ot_extra_hours || 0) + (emp.sh_kode9_hours || 0), emp.ot_rates?.["Øvrigt overtid"])}
@@ -3992,7 +3993,7 @@ function renderPayrollPreview(data) {
           <div>${fmtHours(emp.total_hours)}</div>
           <div>${fmtHoursHM(emp.total_hours)}</div>
           <div></div>
-          <div class="text-right">${fmtKr(emp.total_kr + (emp.overnight_kr || 0) + (emp.dob_overnight_kr || 0))}</div>
+          <div class="text-right">${fmtKr(emp.total_kr + (emp.overnight_kr || 0) + (emp.dob_overnight_kr || 0) + (emp.springer_enabled ? emp.normal_hours * emp.springer_rate : 0))}</div>
         </div>
       </div>`;
     container.appendChild(el);

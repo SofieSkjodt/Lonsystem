@@ -204,6 +204,12 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
     if calc.get('normal_hours', 0) > 0.001:
         h = float(calc['normal_hours'])
         add_row('Timer arbejdet', h, f'{_kr(hr)} kr/t', _kr(h * hr))
+    springer_kr = 0.0
+    if calc.get('springer_enabled') and calc.get('normal_hours', 0) > 0.001:
+        h = float(calc['normal_hours'])
+        springer_rate = float(calc.get('springer_rate', 0))
+        springer_kr = h * springer_rate
+        add_row('Springertillæg', h, f'{_kr(springer_rate)} kr/t', _kr(springer_kr))
     if calc.get('ot_before_hours', 0) > 0.001:
         h = float(calc['ot_before_hours'])
         add_row('Overtid 1 time før', h, f'{_kr(ot_before_rate)} kr/t', _kr(h * ot_before_rate))
@@ -256,6 +262,7 @@ def _build_pdf(calc: dict, cvr_number: str = CVR_NUMBER) -> bytes:
         float(calc.get('total_kr', 0))
         + float(calc.get('overnight_kr', 0))
         + float(calc.get('dob_overnight_kr', 0))
+        + springer_kr
     )
     sum_rows.append([
         _p('I alt', s_bold),

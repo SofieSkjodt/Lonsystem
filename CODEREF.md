@@ -584,6 +584,12 @@ Ny løntypekode `SPRINGERTILLAEG` (kr/time-sats fra `MasterSupplementRate`, labe
 
 **Permission `toggle_springer`:** gives til ALLE roller (system og ikke-system) ved migrering, jf. beslutning om at åbne den for alle roller for nu.
 
+**Lønkørsel-fanen (2026-09-22, app.js `renderPayrollPreview()`):** viser en "Springertillæg"-linje pr. medarbejder (antal timer + beløb) via den generiske `payrollRow()`-helper, samme timetal/sats som CSV'en (`emp.normal_hours` × `emp.springer_rate`), kun når `emp.springer_enabled` er true — begge felter kommer allerede med i `/api/payroll/preview`-svaret fra `_calculate_employee()`. Beløbet er IKKE en del af `emp.total_kr` (ligesom Overnatning/DOB Overnatning), så det lægges manuelt til i "I alt"-rækken.
+
+**PDF-timesedler (2026-09-22, timeseddel_router.py `_build_pdf()`):** samme "Springertillæg"-linje i LØNOPSUMMERING-tabellen, lige efter "Timer arbejdet" — betinget af `calc['springer_enabled']` (ikke kun timetal > 0, da `normal_hours` altid er sat). Beløbet (`springer_kr`) lægges til `total_display_kr` i "I alt"-rækken, samme mønster som `overnight_kr`/`dob_overnight_kr`.
+
+**Klient-cache-faldgrube i aktivitetsoversigten (rettet 2026-09-22):** checkbox-listeneren for fluebenet skal opdatere `state.springerFlags` lokalt efter et vellykket POST — ellers overskriver en efterfølgende `renderActivitiesTable()`-gentegning (fx via `refreshActivities()` efter oprettelse af en aktivitet) fluebenet med den forældede værdi fra sidste periode-indlæsning.
+
 ---
 
 ## Aftale som Stamdata-tabel (2026-08-24, models.py + stamdata.py + employees.py + overtime.py + payroll_router.py)
